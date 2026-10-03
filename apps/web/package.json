@@ -9,9 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@novelia/auth-api": "github:auto-novel/auth#f68d9cc092a90a4962dd4c8d46f909033a95c8f0&path:packages/auth-api",
     "@novelia/forum-api": "workspace:*",
-    "@novelia/web-kit": "github:auto-novel/auth#c76da358b8f247240a86c690fe813df0d3ef9751&path:packages/web-kit",
+    "@novelia/web-kit": "github:auto-novel/auth#490e384368f018e670aa9cf8a30c8bb1d8512865&path:packages/web-kit",
     "@pinia/colada": "^1.4.4",
     "@tailwindcss/vite": "^4.3.3",
     "@vicons/material": "^0.13.0",

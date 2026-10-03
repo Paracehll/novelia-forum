@@ -1,14 +1,12 @@
-import type { AuthApi, AuthUser } from '@novelia/auth-api';
-import type { Ref } from 'vue';
+import type { createWebKit } from '@novelia/web-kit';
 
-export let authApi: AuthApi;
-export let authUser: Readonly<Ref<AuthUser | undefined>>;
-let client: ReturnType<AuthApi['createClient']>;
+type WebKit = ReturnType<typeof createWebKit>;
 
-export function initializeApi(
-  api: AuthApi,
-  profile: Readonly<Ref<AuthUser | undefined>>,
-) {
+export let authApi: WebKit['api'];
+export let authUser: WebKit['profile'];
+let client: ReturnType<WebKit['api']['createClient']>;
+
+export function initializeApi(api: WebKit['api'], profile: WebKit['profile']) {
   authApi = api;
   authUser = profile;
   client = authApi.createClient(
