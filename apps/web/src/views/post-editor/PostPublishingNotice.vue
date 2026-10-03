@@ -47,6 +47,10 @@ import { RouterLink } from 'vue-router';
         ，请勿单独发帖。
       </li>
       <li>
+        碰到此类建政小说时，不要在论坛发帖或群里讨论，请通过 QQ 或 Telegram
+        私信管理员处理。
+      </li>
+      <li>
         发言请遵守
         <RouterLink
           :to="{ name: 'community-rules' }"
