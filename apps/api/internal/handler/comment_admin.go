@@ -31,23 +31,12 @@ func (h *commentHandler) setStatus(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
-	var status int16
-	switch input.Status {
-	case "published":
-		status = repository.StatusPublished
-	case "hidden":
-		status = repository.StatusHidden
-	case "deleted":
-		status = repository.StatusDeleted
-	default:
-		return httpx.BadRequest("status 必须为 published、hidden 或 deleted")
-	}
-	err = h.repo.SetStatus(repository.CommentSubjectPost, id, status)
-	if repository.IsNotFound(err) {
-		return httpx.NotFound("评论不存在")
-	}
+	status, err := parseCommentStatus(input.Status)
 	if err != nil {
-		return httpx.InternalError(err, "设置评论状态失败")
+		return err
+	}
+	if err := h.commentUsecase.SetStatus(repository.CommentSubjectPost, id, status); err != nil {
+		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil
@@ -58,8 +47,8 @@ func (h *commentHandler) deleteAllByAuthor(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		return err
 	}
-	if err := h.repo.DeleteAllByAuthor(authorID); err != nil {
-		return httpx.InternalError(err, "删除用户评论失败")
+	if err := h.commentUsecase.DeleteAllByAuthor(authorID); err != nil {
+		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil
@@ -98,9 +87,9 @@ func (h *commentHandler) listAdmin(w http.ResponseWriter, r *http.Request) error
 			filter.Status = int16(status)
 		}
 	}
-	total, items, err := h.repo.ListAdmin(filter, pagination.Limit, pagination.Offset)
+	total, items, err := h.commentUsecase.ListAdmin(filter, pagination.Limit, pagination.Offset)
 	if err != nil {
-		return httpx.InternalError(err, "查询评论失败")
+		return transportError(err)
 	}
 	responses := make([]commentResponse, len(items))
 	for i, item := range items {
@@ -112,4 +101,17 @@ func (h *commentHandler) listAdmin(w http.ResponseWriter, r *http.Request) error
 	}
 	render.JSON(w, r, page[commentResponse]{Total: total, Items: responses})
 	return nil
+}
+
+func parseCommentStatus(value string) (int16, error) {
+	switch value {
+	case "published":
+		return repository.StatusPublished, nil
+	case "hidden":
+		return repository.StatusHidden, nil
+	case "deleted":
+		return repository.StatusDeleted, nil
+	default:
+		return 0, httpx.BadRequest("status 必须为 published、hidden 或 deleted")
+	}
 }

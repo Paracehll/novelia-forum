@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,6 +11,7 @@ import (
 	"auth/internal/domainfilter"
 	"auth/internal/httpx"
 	"auth/internal/repository"
+	"auth/internal/usecase"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
@@ -82,23 +82,23 @@ func newPostListItemResponse(value repository.PostDetails, favorited bool) postL
 }
 
 type postHandler struct {
-	postRepo     repository.PostRepository
-	favoriteRepo repository.FavoriteRepository
-	commentRepo  repository.CommentRepository
-	domains      *domainfilter.Filter
+	postRepo       repository.PostRepository
+	favoriteRepo   repository.FavoriteRepository
+	commentUsecase *usecase.CommentUsecase
+	domains        *domainfilter.Filter
 }
 
 func NewPostHandler(
 	postRepo repository.PostRepository,
 	favoriteRepo repository.FavoriteRepository,
-	commentRepo repository.CommentRepository,
+	commentUsecase *usecase.CommentUsecase,
 	domains *domainfilter.Filter,
 ) *postHandler {
 	return &postHandler{
-		postRepo:     postRepo,
-		favoriteRepo: favoriteRepo,
-		commentRepo:  commentRepo,
-		domains:      domains,
+		postRepo:       postRepo,
+		favoriteRepo:   favoriteRepo,
+		commentUsecase: commentUsecase,
+		domains:        domains,
 	}
 }
 
@@ -358,21 +358,18 @@ func (h *postHandler) listComments(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
-	if _, err := h.postRepo.Find(postID, false); err != nil {
-		return repoError(err, "查询帖子失败")
-	}
 	pagination, err := parsePagination(r.URL.Query(), 20, 100)
 	if err != nil {
 		return err
 	}
-	total, items, err := h.commentRepo.ListRoots(
+	total, items, err := h.commentUsecase.ListRoots(
 		repository.CommentSubjectPost,
 		repository.PostSubjectKey(postID),
 		pagination.Limit,
 		pagination.Offset,
 	)
 	if err != nil {
-		return httpx.InternalError(err, "查询评论失败")
+		return transportError(err)
 	}
 	response := make([]commentResponse, len(items))
 	for i, item := range items {
@@ -394,25 +391,19 @@ func (h *postHandler) listCommentReplies(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		return err
 	}
-	if _, err := h.postRepo.Find(postID, false); err != nil {
-		return repoError(err, "查询帖子失败")
-	}
 	pagination, err := parsePagination(r.URL.Query(), 20, 100)
 	if err != nil {
 		return err
 	}
-	total, items, err := h.commentRepo.ListReplies(
+	total, items, err := h.commentUsecase.ListReplies(
 		repository.CommentSubjectPost,
 		repository.PostSubjectKey(postID),
 		rootID,
 		pagination.Limit,
 		pagination.Offset,
 	)
-	if repository.IsNotFound(err) {
-		return httpx.NotFound("一级评论不存在")
-	}
 	if err != nil {
-		return httpx.InternalError(err, "查询评论回复失败")
+		return transportError(err)
 	}
 	response := make([]commentResponse, len(items))
 	for i, item := range items {
@@ -434,27 +425,19 @@ func (h *postHandler) createComment(w http.ResponseWriter, r *http.Request) erro
 	if err != nil {
 		return err
 	}
-	if err := validateComment(input, h.domains); err != nil {
+	if err := validateComment(input); err != nil {
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	comment, err := h.commentRepo.Create(repository.CreateCommentInput{
-		SubjectType:    repository.CommentSubjectPost,
+	comment, err := h.commentUsecase.CreatePost(repository.CreateCommentInput{
 		SubjectKey:     repository.PostSubjectKey(postID),
 		RootID:         input.RootID,
 		Content:        input.Content,
 		AuthorID:       principal.UserID,
 		AuthorUsername: principal.Username,
-		Attr:           "{}",
 	})
-	if repository.IsNotFound(err) {
-		return httpx.NotFound("帖子不存在")
-	}
-	if errors.Is(err, repository.ErrCommentsLocked) {
-		return httpx.Conflict("评论区已锁定")
-	}
 	if err != nil {
-		return httpx.InternalError(err, "创建评论失败")
+		return transportError(err)
 	}
 	response, err := newCommentResponse(r, *comment)
 	if err != nil {

@@ -82,3 +82,13 @@ func (c *HTTPChecker) Check(ctx context.Context, kind, key string) (int16, error
 		return 0, fmt.Errorf("subject service returned HTTP %d", response.StatusCode)
 	}
 }
+
+// ValidateKey checks a resource type and key without contacting the resource service.
+func ValidateKey(kind, key string) error {
+	resource, ok := registry[kind]
+	if !ok {
+		return ErrUnsupported
+	}
+	_, err := resource.resolve(key)
+	return err
+}

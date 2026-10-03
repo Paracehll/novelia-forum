@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"auth/internal/httpx"
 	"auth/internal/repository"
+	"auth/internal/usecase"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
@@ -36,7 +38,7 @@ func (r *listingCommentRepository) ListReplies(_ int16, subjectKey string, rootI
 func TestExternalCommentRepliesArePaginatedSeparately(t *testing.T) {
 	repo := &listingCommentRepository{rootID: 7}
 	router := chi.NewRouter()
-	NewExternalCommentHandler(repo, nil, nil).RegisterRoutes(router)
+	NewExternalCommentHandler(usecase.NewCommentUsecase(repo, nil, nil, nil)).RegisterRoutes(router)
 
 	for _, tc := range []struct {
 		path           string
@@ -110,7 +112,7 @@ func TestAdminCanEditCommentAfterWindow(t *testing.T) {
 				ID: 7, SubjectKey: "42", AuthorID: 1, CreatedAt: time.Now().Add(-tc.age),
 			}}
 			router := chi.NewRouter()
-			NewCommentHandler(repo, nil).RegisterRoutes(router)
+			NewCommentHandler(usecase.NewCommentUsecase(repo, nil, nil, nil)).RegisterRoutes(router)
 			token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 				"sub": "tester", "uid": tc.userID, "role": tc.role,
 			}).SignedString([]byte(httpx.AccessTokenSecret))
@@ -147,7 +149,7 @@ func TestAdminCanModifyExternalCommentAfterWindow(t *testing.T) {
 				AuthorID: 1, CreatedAt: time.Now().Add(-21 * time.Minute),
 			}}
 			router := chi.NewRouter()
-			NewExternalCommentHandler(repo, nil, nil).RegisterRoutes(router)
+			NewExternalCommentHandler(usecase.NewCommentUsecase(repo, nil, nil, nil)).RegisterRoutes(router)
 			token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 				"sub": "tester", "uid": 1, "role": tc.role,
 			}).SignedString([]byte(httpx.AccessTokenSecret))
@@ -181,30 +183,6 @@ func TestAdminCanModifyExternalCommentAfterWindow(t *testing.T) {
 	}
 }
 
-func TestValidateComment(t *testing.T) {
-	zero := int64(0)
-	positive := int64(1)
-	for _, tc := range []struct {
-		name    string
-		input   commentInput
-		wantErr bool
-	}{
-		{"normal", commentInput{Content: "评论", RootID: &positive}, false},
-		{"max length", commentInput{Content: strings.Repeat("字", 1000)}, false},
-		{"empty", commentInput{Content: " \n\t"}, true},
-		{"too long", commentInput{Content: strings.Repeat("字", 1001)}, true},
-		{"too long with padding", commentInput{Content: strings.Repeat("字", 1000) + " "}, true},
-		{"invalid root", commentInput{Content: "评论", RootID: &zero}, true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			err := validateComment(tc.input, nil)
-			if (err != nil) != tc.wantErr {
-				t.Fatalf("validateComment() error = %v, want error %v", err, tc.wantErr)
-			}
-		})
-	}
-}
-
 func TestValidateCommentUpdate(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -214,15 +192,13 @@ func TestValidateCommentUpdate(t *testing.T) {
 		{"content only", `{"content":"更新内容"}`, false},
 		{"root ID", `{"content":"更新内容","rootId":1}`, true},
 		{"null root ID", `{"content":"更新内容","rootId":null}`, true},
-		{"blank content", `{"content":" \n\t"}`, true},
-		{"long content", `{"content":"` + strings.Repeat("字", 1001) + `"}`, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPatch, "/comment/1", strings.NewReader(tc.body))
 			request.Header.Set("Content-Type", "application/json")
 			input, err := httpx.Body[commentUpdateInput](request)
 			if err == nil {
-				err = validateCommentUpdate(input, nil)
+				err = validateCommentUpdate(input)
 			}
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("comment update error = %v, want error %v", err, tc.wantErr)
@@ -325,5 +301,97 @@ func TestEmbeddedReplyVisibility(t *testing.T) {
 	}
 	if empty.Replies == nil || empty.Replies.Items == nil || len(empty.Replies.Items) != 0 || empty.Replies.Total != 0 {
 		t.Fatal("empty reply page must use an empty array")
+	}
+}
+
+func TestValidateComment(t *testing.T) {
+	zero := int64(0)
+	positive := int64(1)
+	for _, tc := range []struct {
+		name    string
+		input   commentInput
+		wantErr bool
+	}{
+		{"normal", commentInput{Content: "评论", RootID: &positive}, false},
+		{"invalid root", commentInput{Content: "评论", RootID: &zero}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateComment(tc.input)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("validateComment() error = %v, want error %v", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestInvalidCommentRequestsStopBeforeUsecase(t *testing.T) {
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": "tester", "uid": 1, "role": "admin",
+	}).SignedString([]byte(httpx.AccessTokenSecret))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A nil usecase makes any accidental call past parameter validation fail.
+	router := chi.NewRouter()
+	router.Route("/post", NewPostHandler(nil, nil, nil, nil).RegisterRoutes)
+	router.Route("/comment", NewCommentHandler(nil).RegisterRoutes)
+	router.Route("/admin/comment", NewCommentHandler(nil).RegisterAdminRoutes)
+	router.Route("/external", NewExternalCommentHandler(nil).RegisterRoutes)
+	for _, tc := range []struct{ method, path, body string }{
+		{http.MethodPost, "/post/42/comment", `{"content":"评论","rootId":0}`},
+		{http.MethodPut, "/admin/comment/7/status", `{"status":"invalid"}`},
+		{http.MethodPost, "/external/novel/wenku-book", `{"content":"评论","rootId":-1}`},
+		{http.MethodPost, "/external/unknown/wenku-book", `{"content":"评论"}`},
+		{http.MethodPost, "/external/novel/invalid", `{"content":"评论"}`},
+		{http.MethodPut, "/external/novel/7/status", `{"status":"invalid"}`},
+	} {
+		t.Run(tc.method+tc.path+tc.body, func(t *testing.T) {
+			request := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Authorization", "Bearer "+token)
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
+func TestInvalidCommentContentResponses(t *testing.T) {
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": "tester", "uid": 1, "role": "member",
+	}).SignedString([]byte(httpx.AccessTokenSecret))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, route := range []struct{ method, path string }{
+		{http.MethodPost, "/post/42/comment"},
+		{http.MethodPatch, "/comment/7"},
+		{http.MethodPost, "/external/novel/wenku-book"},
+		{http.MethodPatch, "/external/novel/7"},
+	} {
+		for _, content := range []string{"", " \n\t", strings.Repeat("字", 1001)} {
+			t.Run(route.method+route.path+"/"+strconv.Itoa(len(content)), func(t *testing.T) {
+				repo := &domainCommentRepository{}
+				comments := usecase.NewCommentUsecase(repo, nil, nil, nil)
+				router := chi.NewRouter()
+				router.Route("/post", NewPostHandler(nil, nil, comments, nil).RegisterRoutes)
+				router.Route("/comment", NewCommentHandler(comments).RegisterRoutes)
+				router.Route("/external", NewExternalCommentHandler(comments).RegisterRoutes)
+				body, err := json.Marshal(map[string]string{"content": content})
+				if err != nil {
+					t.Fatal(err)
+				}
+				request := httptest.NewRequest(route.method, route.path, strings.NewReader(string(body)))
+				request.Header.Set("Content-Type", "application/json")
+				request.Header.Set("Authorization", "Bearer "+token)
+				response := httptest.NewRecorder()
+				router.ServeHTTP(response, request)
+				if response.Code != http.StatusBadRequest || response.Body.String() != "content 不能为空且不能超过 1000 字" || repo.written {
+					t.Fatalf("status=%d body=%q written=%v", response.Code, response.Body.String(), repo.written)
+				}
+			})
+		}
 	}
 }

@@ -8,6 +8,7 @@ import (
 
 	"auth/internal/httpx"
 	"auth/internal/repository"
+	"auth/internal/usecase"
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -50,7 +51,7 @@ func TestAdminCommentList(t *testing.T) {
 			repo := &adminCommentRepository{}
 			router := chi.NewRouter()
 			router.Use(httpx.RequireAdmin)
-			NewCommentHandler(repo, nil).RegisterAdminRoutes(router)
+			NewCommentHandler(usecase.NewCommentUsecase(repo, nil, nil, nil)).RegisterAdminRoutes(router)
 			request := httptest.NewRequest(http.MethodGet, "/"+tc.query, nil)
 			if tc.role != "" {
 				token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": "tester", "uid": 1, "role": tc.role}).SignedString([]byte(httpx.AccessTokenSecret))

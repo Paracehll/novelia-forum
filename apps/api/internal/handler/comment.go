@@ -5,23 +5,19 @@ import (
 	"fmt"
 	"net/http"
 	"time"
-	"unicode/utf8"
 
-	"auth/internal/domainfilter"
 	"auth/internal/httpx"
 	"auth/internal/repository"
+	"auth/internal/usecase"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
 )
 
-type commentHandler struct {
-	repo    repository.CommentRepository
-	domains *domainfilter.Filter
-}
+type commentHandler struct{ commentUsecase *usecase.CommentUsecase }
 
-func NewCommentHandler(repo repository.CommentRepository, domains *domainfilter.Filter) *commentHandler {
-	return &commentHandler{repo: repo, domains: domains}
+func NewCommentHandler(commentUsecase *usecase.CommentUsecase) *commentHandler {
+	return &commentHandler{commentUsecase: commentUsecase}
 }
 
 func (h *commentHandler) RegisterRoutes(router chi.Router) {
@@ -39,21 +35,18 @@ type commentUpdateInput struct {
 	RootID  json.RawMessage `json:"rootId"`
 }
 
-func validateCommentUpdate(input commentUpdateInput, domains *domainfilter.Filter) error {
+func validateCommentUpdate(input commentUpdateInput) error {
 	if len(input.RootID) > 0 {
 		return httpx.BadRequest("rootId 不能修改")
 	}
-	return validateComment(commentInput{Content: input.Content}, domains)
+	return nil
 }
 
-func validateComment(input commentInput, domains *domainfilter.Filter) error {
-	if !validText(input.Content, 1, 1000) || utf8.RuneCountInString(input.Content) > 1000 {
-		return httpx.BadRequest("content 不能为空且不能超过 1000 字")
-	}
+func validateComment(input commentInput) error {
 	if input.RootID != nil && *input.RootID <= 0 {
 		return httpx.BadRequest("rootId 必须为正整数")
 	}
-	return checkDomainText(domains, "content", input.Content)
+	return nil
 }
 
 type commentResponse struct {
@@ -106,39 +99,12 @@ func newCommentThreadResponse(r *http.Request, value repository.CommentThread) (
 }
 
 func publicCommentContent(r *http.Request, value repository.Comment) string {
-	principal, err := httpx.AuthenticatedPrincipal(r)
-	if value.Status == repository.StatusPublished || (err == nil && principal.IsAdmin()) {
-		return value.Content
-	}
-	return ""
-}
-
-func (h *commentHandler) modifiableID(r *http.Request) (int64, error) {
-	id, err := httpx.ParseParamPositiveInt(r, "id")
-	if err != nil {
-		return 0, err
-	}
-	comment, err := h.repo.Find(repository.CommentSubjectPost, id)
-	if repository.IsNotFound(err) {
-		return 0, httpx.NotFound("评论不存在")
-	}
-	if err != nil {
-		return 0, httpx.InternalError(err, "查询评论失败")
-	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if comment.AuthorID != principal.UserID && !principal.IsAdmin() {
-		return 0, httpx.Forbidden("只能修改自己的评论")
-	}
-
-	const modificationWindow = 20 * time.Minute
-	if !principal.IsAdmin() && time.Now().After(comment.CreatedAt.Add(modificationWindow)) {
-		return 0, httpx.Forbidden("评论只能在发布后 20 分钟内编辑或删除")
-	}
-	return comment.ID, nil
+	return usecase.CommentContent(commentActor(principal), value)
 }
 
 func (h *commentHandler) update(w http.ResponseWriter, r *http.Request) error {
-	id, err := h.modifiableID(r)
+	id, err := httpx.ParseParamPositiveInt(r, "id")
 	if err != nil {
 		return err
 	}
@@ -146,15 +112,17 @@ func (h *commentHandler) update(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if err := validateCommentUpdate(input, h.domains); err != nil {
+	if err := validateCommentUpdate(input); err != nil {
 		return err
 	}
-	comment, err := h.repo.Update(repository.CommentSubjectPost, id, input.Content)
-	if repository.IsNotFound(err) {
-		return httpx.NotFound("评论不存在")
-	}
+	principal, _ := httpx.AuthenticatedPrincipal(r)
+	comment, err := h.commentUsecase.Update(
+		commentActor(principal),
+		repository.CommentSubjectPost,
+		id, input.Content,
+	)
 	if err != nil {
-		return httpx.InternalError(err, "更新评论失败")
+		return transportError(err)
 	}
 	response, err := newCommentResponse(r, *comment)
 	if err != nil {
@@ -165,17 +133,18 @@ func (h *commentHandler) update(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (h *commentHandler) delete(w http.ResponseWriter, r *http.Request) error {
-	id, err := h.modifiableID(r)
+	id, err := httpx.ParseParamPositiveInt(r, "id")
 	if err != nil {
 		return err
 	}
-	err = h.repo.SetStatus(repository.CommentSubjectPost, id, repository.StatusDeleted)
-	if repository.IsNotFound(err) {
-		return httpx.NotFound("评论不存在")
-	}
-	if err != nil {
-		return httpx.InternalError(err, "删除评论失败")
+	principal, _ := httpx.AuthenticatedPrincipal(r)
+	if err := h.commentUsecase.Delete(commentActor(principal), repository.CommentSubjectPost, id); err != nil {
+		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil
+}
+
+func commentActor(principal httpx.Principal) usecase.Actor {
+	return usecase.Actor{UserID: principal.UserID, IsAdmin: principal.IsAdmin()}
 }

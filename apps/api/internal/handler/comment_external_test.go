@@ -11,6 +11,7 @@ import (
 	"auth/internal/httpx"
 	"auth/internal/repository"
 	"auth/internal/subject"
+	"auth/internal/usecase"
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -38,7 +39,6 @@ func TestExternalCommentCreationChecksSubject(t *testing.T) {
 		{"invalid", subject.ErrInvalid, http.StatusBadRequest},
 		{"unsupported", subject.ErrUnsupported, http.StatusBadRequest},
 		{"unavailable", errors.New("upstream failed"), http.StatusServiceUnavailable},
-		{"unconfigured", nil, http.StatusServiceUnavailable},
 	} {
 		for _, body := range []string{`{"content":"评论"}`, `{"content":"回复","rootId":7}`} {
 			t.Run(tc.name+body, func(t *testing.T) {
@@ -51,20 +51,15 @@ func TestExternalCommentCreationChecksSubject(t *testing.T) {
 					}
 					return tc.err
 				})
-				var subjects subject.Checker = checker
-				wantChecks := 1
-				if tc.name == "unconfigured" {
-					subjects = nil
-					wantChecks = 0
-				}
 				router := chi.NewRouter()
-				NewExternalCommentHandler(repo, nil, subjects).RegisterRoutes(router)
+				comments := usecase.NewCommentUsecase(repo, nil, nil, checker)
+				NewExternalCommentHandler(comments).RegisterRoutes(router)
 				req := httptest.NewRequest(http.MethodPost, "/novel/web-syosetu-n1234", strings.NewReader(body))
 				req.Header.Set("Authorization", "Bearer "+token)
 				req.Header.Set("Content-Type", "application/json")
 				res := httptest.NewRecorder()
 				router.ServeHTTP(res, req)
-				if res.Code != tc.status || checks != wantChecks || repo.written != (tc.status == http.StatusCreated) {
+				if res.Code != tc.status || checks != 1 || repo.written != (tc.status == http.StatusCreated) {
 					t.Fatalf("status=%d checks=%d written=%v body=%s", res.Code, checks, repo.written, res.Body.String())
 				}
 			})
@@ -78,7 +73,8 @@ func TestExternalCommentReadsDoNotCheckSubject(t *testing.T) {
 		t.Fatal("reading historical comments must not check subject")
 		return nil
 	})
-	NewExternalCommentHandler(&listingCommentRepository{rootID: 7}, nil, checker).RegisterRoutes(router)
+	comments := usecase.NewCommentUsecase(&listingCommentRepository{rootID: 7}, nil, nil, checker)
+	NewExternalCommentHandler(comments).RegisterRoutes(router)
 	for _, path := range []string{"/novel/deleted", "/novel/deleted/7/reply"} {
 		res := httptest.NewRecorder()
 		router.ServeHTTP(res, httptest.NewRequest(http.MethodGet, path, nil))

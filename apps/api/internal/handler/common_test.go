@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"auth/internal/domainfilter"
 	"auth/internal/httpx"
 	"auth/internal/repository"
+	"auth/internal/usecase"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
@@ -55,7 +55,7 @@ func TestDomainFilterRejectsWrites(t *testing.T) {
 		{"post content update", http.MethodPatch, "/post/42/", `{"categoryId":1,"title":"标题","content":"evil.example"}`},
 		{"post comment create", http.MethodPost, "/post/42/comment", `{"content":"evil.example"}`},
 		{"post comment update", http.MethodPatch, "/comment/7", `{"content":"evil.example"}`},
-		{"external comment create", http.MethodPost, "/external/comment/novel/book", `{"content":"evil.example"}`},
+		{"external comment create", http.MethodPost, "/external/comment/novel/wenku-book", `{"content":"evil.example"}`},
 		{"external comment update", http.MethodPatch, "/external/comment/novel/7", `{"content":"evil.example"}`},
 	}
 	for _, tc := range cases {
@@ -63,9 +63,11 @@ func TestDomainFilterRejectsWrites(t *testing.T) {
 			posts := &writePostRepository{}
 			comments := &domainCommentRepository{}
 			router := chi.NewRouter()
-			router.Route("/post", NewPostHandler(posts, noFavoriteRepository{}, comments, domains).RegisterRoutes)
-			router.Route("/comment", NewCommentHandler(comments, domains).RegisterRoutes)
-			router.Route("/external/comment", NewExternalCommentHandler(comments, domains, nil).RegisterRoutes)
+			commentUsecase := usecase.NewCommentUsecase(comments, posts, domains, nil)
+			postHandler := NewPostHandler(posts, noFavoriteRepository{}, commentUsecase, domains)
+			router.Route("/post", postHandler.RegisterRoutes)
+			router.Route("/comment", NewCommentHandler(commentUsecase).RegisterRoutes)
+			router.Route("/external/comment", NewExternalCommentHandler(commentUsecase).RegisterRoutes)
 			request := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 			request.Header.Set("Content-Type", "application/json")
 			request.Header.Set("Authorization", "Bearer "+token)
@@ -90,10 +92,12 @@ func TestDomainFilterErrorMapping(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, value := range []string{strings.Repeat("a", domainfilter.MaxTextBytes+1), strings.Repeat("a", 4097) + ".example"} {
-		err := checkDomainText(domains, "content", value)
-		var response *httpx.HttpError
-		if !errors.As(err, &response) || response.StatusCode != http.StatusBadRequest {
-			t.Fatalf("expected bad request, got %v", err)
+		response := httptest.NewRecorder()
+		httpx.EH(func(http.ResponseWriter, *http.Request) error {
+			return checkDomainText(domains, "content", value)
+		})(response, httptest.NewRequest(http.MethodPost, "/", nil))
+		if response.Code != http.StatusBadRequest || response.Body.String() != "content 无法完成域名检查" {
+			t.Fatalf("unexpected response: %d %q", response.Code, response.Body.String())
 		}
 	}
 }

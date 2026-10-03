@@ -7,6 +7,7 @@ import (
 	"auth/internal/infra"
 	"auth/internal/repository"
 	"auth/internal/subject"
+	"auth/internal/usecase"
 	"log/slog"
 	"net/http"
 	"os"
@@ -51,6 +52,10 @@ func main() {
 	}
 
 	subjects := subject.NewHTTPChecker()
+	if subjects == nil {
+		slog.Error("Subject checker is not configured")
+		os.Exit(1)
+	}
 
 	// infra
 	db := infra.NewSQLDB(
@@ -68,11 +73,13 @@ func main() {
 	commentRepo := repository.NewCommentRepository(db)
 	favoriteRepo := repository.NewFavoriteRepository(db)
 
+	commentUsecase := usecase.NewCommentUsecase(commentRepo, postRepo, domains, subjects)
+
 	// handler
 	categoryHandler := handler.NewCategoryHandler(tagRepo)
-	postHandler := handler.NewPostHandler(postRepo, favoriteRepo, commentRepo, domains)
-	commentHandler := handler.NewCommentHandler(commentRepo, domains)
-	externalCommentHandler := handler.NewExternalCommentHandler(commentRepo, domains, subjects)
+	postHandler := handler.NewPostHandler(postRepo, favoriteRepo, commentUsecase, domains)
+	commentHandler := handler.NewCommentHandler(commentUsecase)
+	externalCommentHandler := handler.NewExternalCommentHandler(commentUsecase)
 	meHandler := handler.NewMeHandler(postRepo, favoriteRepo)
 
 	// router
