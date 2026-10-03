@@ -1,16 +1,91 @@
 <script setup lang="ts">
+import { CheckOutlined, CloseOutlined } from '@vicons/material';
 import { RouterLink } from 'vue-router';
+
+const permissions = [
+  { site: '论坛', name: '管理帖子收藏', allowed: [true, true, true] },
+  { site: '论坛', name: '发表、编辑帖子', allowed: [true, true, false] },
+  { site: '论坛', name: '发表、编辑评论', allowed: [true, true, false] },
+  { site: '小说', name: '发表、编辑评论', allowed: [false, true, false] },
+  { site: '小说', name: '管理小说收藏', allowed: [true, true, true] },
+  { site: '小说', name: '更新网页小说', allowed: [false, true, false] },
+  { site: '小说', name: '编辑网页小说', allowed: [false, true, false] },
+  { site: '小说', name: '创建、编辑文库小说', allowed: [false, true, false] },
+  { site: '小说', name: '上传文库小说', allowed: [true, true, true] },
+  { site: '小说', name: '编辑术语表', allowed: [false, true, false] },
+];
 </script>
 
 <template>
   <div class="page-container py-4 md:py-6">
-    <section class="mx-auto max-w-2xl text-sm leading-6 text-muted">
-      <p class="text-ink">
+    <section class="mx-auto max-w-2xl text-sm leading-6">
+      <h2 class="text-lg font-semibold">用户权限</h2>
+      <p class="mt-3 font-medium">用户权限说明（满月指注册满 30 天）：</p>
+      <div class="mt-2 overflow-x-auto">
+        <table class="w-full min-w-120 border-collapse text-left">
+          <thead>
+            <tr class="border-b border-current/15">
+              <th scope="col" class="px-3 py-2 font-medium">站点</th>
+              <th scope="col" class="px-3 py-2 font-medium">操作</th>
+              <th scope="col" class="px-3 py-2 text-center font-medium">
+                普通用户
+                <br />
+                未满月
+              </th>
+              <th scope="col" class="px-3 py-2 text-center font-medium">
+                普通用户
+                <br />
+                已满月
+              </th>
+              <th scope="col" class="px-3 py-2 text-center font-medium">
+                受限用户
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="permission in permissions"
+              :key="permission.name"
+              class="border-b border-current/10"
+            >
+              <td class="whitespace-nowrap px-3 py-2">
+                {{ permission.site }}
+              </td>
+              <th scope="row" class="px-3 py-2 font-normal">
+                {{ permission.name }}
+              </th>
+              <td
+                v-for="(allowed, index) in permission.allowed"
+                :key="index"
+                class="px-3 py-2 text-center"
+              >
+                <span
+                  class="inline-flex align-middle"
+                  :aria-label="allowed ? '允许' : '不允许'"
+                  role="img"
+                >
+                  <CheckOutlined
+                    v-if="allowed"
+                    class="size-5 text-green-600"
+                    aria-hidden="true"
+                  />
+                  <CloseOutlined
+                    v-else
+                    class="size-5 text-red-500"
+                    aria-hidden="true"
+                  />
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 class="mt-6 text-lg font-semibold">违规处理</h2>
+      <p class="mt-3">
         <span>一般违规行为会受到记分处罚，</span>
         <strong class="font-semibold">100 天内处罚累计达到 3 分</strong>
-        <span>，账号将转为受限状态。受限用户与新注册用户权限相同，</span>
-        <strong class="font-semibold">无法发布或编辑帖子、评论</strong>
-        <span>。账号受限后</span>
+        <span>，账号将转为受限状态，权限按上述说明限制。账号受限后</span>
         <strong class="font-semibold">不会自动解除</strong>
         <span>。处罚原因、依据和分值可在「</span>
         <RouterLink
@@ -22,14 +97,14 @@ import { RouterLink } from 'vue-router';
         <span>」中查看。</span>
       </p>
 
-      <p class="mt-4 font-medium text-ink">以下行为会受到记分处罚：</p>
+      <p class="mt-4 font-medium">以下行为会受到记分处罚：</p>
       <ul class="mt-2 list-disc space-y-1 pl-5">
         <li>侮辱、骚扰、攻击他人。</li>
         <li>刷屏、灌水、重复发布或持续发表无关内容。</li>
         <li>其他破坏正常讨论秩序的行为。</li>
       </ul>
 
-      <p class="mt-6 text-ink">
+      <p class="mt-6">
         <span>严重违规将</span>
         <strong class="font-semibold">直接封禁账号</strong>
         <span>，包括：</span>
@@ -43,7 +118,7 @@ import { RouterLink } from 'vue-router';
         </li>
       </ul>
 
-      <p class="mt-6 text-ink">
+      <p class="mt-6">
         <span>如果认为处罚或封禁有误，请</span>
         <strong class="font-semibold">联系管理员申请复核</strong>
         <span>。社区守则无法穷尽所有不当行为，最终解释权归管理员所有。</span>
