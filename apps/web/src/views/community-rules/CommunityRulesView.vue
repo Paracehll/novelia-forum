@@ -19,6 +19,10 @@ const permissions = [
 <template>
   <div class="page-container py-4 md:py-6">
     <section class="mx-auto max-w-2xl text-sm leading-6">
+      <header class="mb-5">
+        <h1 class="text-2xl font-bold tracking-tight text-ink">社区守则</h1>
+      </header>
+
       <h2 class="text-lg font-semibold">用户权限</h2>
       <p class="mt-3 font-medium">用户权限说明（满月指注册满 30 天）：</p>
       <div class="mt-2 overflow-x-auto">
