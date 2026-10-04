@@ -8,7 +8,6 @@ import (
 
 	"forum/internal/domain"
 	"forum/internal/httpx"
-	"forum/internal/repository"
 	"forum/internal/usecase"
 
 	"github.com/go-chi/chi/v5"
@@ -111,47 +110,47 @@ func (h *postHandler) RegisterRoutes(router chi.Router) {
 	})
 }
 
-func postFilterFrom(r *http.Request) (repository.PostFilter, error) {
-	sort := r.URL.Query().Get("sort")
+func parsePostListQuery(r *http.Request) (usecase.ListPostsQuery, error) {
+	query := r.URL.Query()
+	sort := query.Get("sort")
 	if sort == "" {
-		sort = repository.PostSortActive
+		sort = usecase.PostSortActive
 	}
 	switch sort {
-	case repository.PostSortActive, repository.PostSortNewest, repository.PostSortViews, repository.PostSortComments:
+	case usecase.PostSortActive, usecase.PostSortNewest, usecase.PostSortViews, usecase.PostSortComments:
 	default:
-		return repository.PostFilter{}, httpx.BadRequest("sort 必须为 active、newest、views 或 comments")
+		return usecase.ListPostsQuery{}, httpx.BadRequest("sort 必须为 active、newest、views 或 comments")
 	}
-	filter := repository.PostFilter{
-		CategorySlug: r.URL.Query().Get("category"),
-		Search:       strings.TrimSpace(r.URL.Query().Get("q")),
+	listQuery := usecase.ListPostsQuery{
+		CategorySlug: query.Get("category"),
+		Search:       strings.TrimSpace(query.Get("q")),
 		Sort:         sort,
 	}
-	for _, part := range r.URL.Query()["tag"] {
+	for _, part := range query["tag"] {
 		for _, value := range strings.Split(part, ",") {
 			id, err := strconv.ParseInt(value, 10, 64)
 			if err != nil || id <= 0 {
-				return filter, httpx.BadRequest("tag 必须为正整数")
+				return listQuery, httpx.BadRequest("tag 必须为正整数")
 			}
-			filter.TagIDs = append(filter.TagIDs, id)
+			listQuery.TagIDs = append(listQuery.TagIDs, id)
 		}
 	}
-	if !uniquePositiveIDs(filter.TagIDs) {
-		return filter, httpx.BadRequest("tag 不能重复")
+	if !uniquePositiveIDs(listQuery.TagIDs) {
+		return listQuery, httpx.BadRequest("tag 不能重复")
 	}
-	return filter, nil
+	return listQuery, nil
 }
 
 type postListFunc func(usecase.Actor, usecase.ListPostsQuery) (int64, []domain.PostListItem, error)
 
-func respondPosts(w http.ResponseWriter, r *http.Request, list postListFunc, filter repository.PostFilter) error {
+func respondPosts(w http.ResponseWriter, r *http.Request, list postListFunc, query usecase.ListPostsQuery) error {
 	pagination, err := parsePagination(r.URL.Query(), 20, 100)
 	if err != nil {
 		return err
 	}
+	query.Limit, query.Offset = pagination.Limit, pagination.Offset
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	total, items, err := list(commentActor(principal), usecase.ListPostsQuery{
-		Filter: filter, Limit: pagination.Limit, Offset: pagination.Offset,
-	})
+	total, items, err := list(commentActor(principal), query)
 	if err != nil {
 		return transportError(err)
 	}
@@ -164,11 +163,11 @@ func respondPosts(w http.ResponseWriter, r *http.Request, list postListFunc, fil
 }
 
 func (h *postHandler) list(w http.ResponseWriter, r *http.Request) error {
-	filter, err := postFilterFrom(r)
+	query, err := parsePostListQuery(r)
 	if err != nil {
 		return err
 	}
-	return respondPosts(w, r, h.postUsecase.List, filter)
+	return respondPosts(w, r, h.postUsecase.List, query)
 }
 
 func (h *postHandler) get(w http.ResponseWriter, r *http.Request) error {

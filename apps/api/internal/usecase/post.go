@@ -57,36 +57,49 @@ type PostResult struct {
 	Favorited bool
 }
 
+const (
+	PostSortActive   = "active"
+	PostSortNewest   = "newest"
+	PostSortViews    = "views"
+	PostSortComments = "comments"
+)
+
 type ListPostsQuery struct {
-	Filter        repository.PostFilter
+	CategorySlug  string
+	Search        string
+	Sort          string
+	TagIDs        []int64
+	AuthorName    string
+	AuthorID      int64
+	Status        *domain.PostStatus // nil includes all statuses in admin lists.
 	Limit, Offset int64
 }
 
 // Public and personal lists must never inherit privileged identity filters.
 func publicPostQuery(query ListPostsQuery) ListPostsQuery {
-	query.Filter.Status = domain.PostStatusPublished
-	query.Filter.AuthorName = ""
-	query.Filter.AuthorID = 0
-	query.Filter.FavoriteUserID = 0
+	status := domain.PostStatusPublished
+	query.Status = &status
+	query.AuthorName = ""
+	query.AuthorID = 0
 	return query
 }
 
 func (u *PostUsecase) List(actor Actor, query ListPostsQuery) (int64, []domain.PostListItem, error) {
-	return u.list(actor, publicPostQuery(query))
+	return u.list(actor, publicPostQuery(query), 0)
 }
 
 func (u *PostUsecase) ListAdmin(actor Actor, query ListPostsQuery) (int64, []domain.PostListItem, error) {
 	if err := checkPostAdmin(actor); err != nil {
 		return 0, nil, err
 	}
-	if query.Filter.Status != repository.PostStatusAll && !query.Filter.Status.Valid() {
+	if query.Status != nil && !query.Status.Valid() {
 		return 0, nil, Invalid(CodePostStatusInvalid, "status 必须为 all、0、1 或 2")
 	}
-	if query.Filter.AuthorID < 0 || query.Filter.FavoriteUserID < 0 {
+	if query.AuthorID < 0 {
 		return 0, nil, Invalid(CodePostAuthorInvalid, "用户 ID 必须为正整数")
 	}
-	query.Filter.AuthorName = strings.TrimSpace(query.Filter.AuthorName)
-	return u.list(actor, query)
+	query.AuthorName = strings.TrimSpace(query.AuthorName)
+	return u.list(actor, query, 0)
 }
 
 func (u *PostUsecase) ListMine(actor Actor, query ListPostsQuery) (int64, []domain.PostListItem, error) {
@@ -94,8 +107,8 @@ func (u *PostUsecase) ListMine(actor Actor, query ListPostsQuery) (int64, []doma
 		return 0, nil, PermissionDenied(CodePostAuthRequired, "需要登录")
 	}
 	query = publicPostQuery(query)
-	query.Filter.AuthorID = actor.UserID
-	return u.list(actor, query)
+	query.AuthorID = actor.UserID
+	return u.list(actor, query, 0)
 }
 
 func (u *PostUsecase) ListFavorites(actor Actor, query ListPostsQuery) (int64, []domain.PostListItem, error) {
@@ -103,27 +116,35 @@ func (u *PostUsecase) ListFavorites(actor Actor, query ListPostsQuery) (int64, [
 		return 0, nil, PermissionDenied(CodePostAuthRequired, "需要登录")
 	}
 	query = publicPostQuery(query)
-	query.Filter.FavoriteUserID = actor.UserID
-	return u.list(actor, query)
+	return u.list(actor, query, actor.UserID)
 }
 
-func (u *PostUsecase) list(actor Actor, query ListPostsQuery) (int64, []domain.PostListItem, error) {
+func (u *PostUsecase) list(actor Actor, query ListPostsQuery, favoriteUserID int64) (int64, []domain.PostListItem, error) {
 	if query.Limit <= 0 || query.Limit > 100 || query.Offset < 0 {
 		return 0, nil, Invalid(CodePostPaginationInvalid, "limit 必须为 1 到 100，offset 不能为负数")
 	}
-	if query.Filter.Sort == "" {
-		query.Filter.Sort = repository.PostSortActive
+	if query.Sort == "" {
+		query.Sort = PostSortActive
 	}
-	switch query.Filter.Sort {
-	case repository.PostSortActive, repository.PostSortNewest, repository.PostSortViews, repository.PostSortComments:
+	switch query.Sort {
+	case PostSortActive, PostSortNewest, PostSortViews, PostSortComments:
 	default:
 		return 0, nil, Invalid(CodePostSortInvalid, "sort 必须为 active、newest、views 或 comments")
 	}
-	if !uniquePostTagIDs(query.Filter.TagIDs) {
+	if !uniquePostTagIDs(query.TagIDs) {
 		return 0, nil, Invalid(CodePostTagInvalid, "tag 必须为不重复的正整数")
 	}
-	query.Filter.Search = strings.TrimSpace(query.Filter.Search)
-	total, posts, err := u.postRepo.List(query.Filter, query.Limit, query.Offset)
+	query.Search = strings.TrimSpace(query.Search)
+	status := domain.PostStatus(repository.PostStatusAll)
+	if query.Status != nil {
+		status = *query.Status
+	}
+	filter := repository.PostFilter{
+		CategorySlug: query.CategorySlug, Search: query.Search, Sort: query.Sort,
+		TagIDs: query.TagIDs, AuthorName: query.AuthorName, AuthorID: query.AuthorID,
+		Status: status, FavoriteUserID: favoriteUserID,
+	}
+	total, posts, err := u.postRepo.List(filter, query.Limit, query.Offset)
 	if err != nil {
 		return 0, nil, fmt.Errorf("post.list: %w", err)
 	}

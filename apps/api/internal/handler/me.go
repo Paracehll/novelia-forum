@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"forum/internal/httpx"
-	"forum/internal/repository"
 	"forum/internal/usecase"
 
 	"github.com/go-chi/chi/v5"
@@ -25,9 +24,9 @@ func (h *meHandler) RegisterRoutes(router chi.Router) {
 }
 
 func (h *meHandler) listPosts(w http.ResponseWriter, r *http.Request) error {
-	return respondPosts(w, r, h.postUsecase.ListMine, repository.PostFilter{})
+	return respondPosts(w, r, h.postUsecase.ListMine, usecase.ListPostsQuery{})
 }
 
 func (h *meHandler) listFavorites(w http.ResponseWriter, r *http.Request) error {
-	return respondPosts(w, r, h.postUsecase.ListFavorites, repository.PostFilter{})
+	return respondPosts(w, r, h.postUsecase.ListFavorites, usecase.ListPostsQuery{})
 }

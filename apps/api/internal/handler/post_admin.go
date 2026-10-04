@@ -7,7 +7,6 @@ import (
 
 	"forum/internal/domain"
 	"forum/internal/httpx"
-	"forum/internal/repository"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -22,12 +21,11 @@ func (h *postHandler) RegisterAdminRoutes(router chi.Router) {
 }
 
 func (h *postHandler) listAdminPosts(w http.ResponseWriter, r *http.Request) error {
-	filter, err := postFilterFrom(r)
+	listQuery, err := parsePostListQuery(r)
 	if err != nil {
 		return err
 	}
-	filter.Status = repository.PostStatusAll
-	filter.AuthorName = strings.TrimSpace(r.URL.Query().Get("author_name"))
+	listQuery.AuthorName = strings.TrimSpace(r.URL.Query().Get("author_name"))
 	if values, ok := r.URL.Query()["author_id"]; ok {
 		if len(values) != 1 {
 			return httpx.BadRequest("author_id 必须为正整数")
@@ -36,7 +34,7 @@ func (h *postHandler) listAdminPosts(w http.ResponseWriter, r *http.Request) err
 		if err != nil || authorID <= 0 {
 			return httpx.BadRequest("author_id 必须为正整数")
 		}
-		filter.AuthorID = authorID
+		listQuery.AuthorID = authorID
 	}
 	if values, ok := r.URL.Query()["status"]; ok {
 		if len(values) != 1 {
@@ -47,14 +45,15 @@ func (h *postHandler) listAdminPosts(w http.ResponseWriter, r *http.Request) err
 			if err != nil || !domain.PostStatus(status).Valid() {
 				return httpx.BadRequest("status 必须为 all、0、1 或 2")
 			}
-			filter.Status = domain.PostStatus(status)
+			value := domain.PostStatus(status)
+			listQuery.Status = &value
 		}
 	}
-	return respondPosts(w, r, h.postUsecase.ListAdmin, filter)
+	return respondPosts(w, r, h.postUsecase.ListAdmin, listQuery)
 }
 
 type postStatusInput struct {
-	Status domain.PostStatus `json:"status"`
+	Status *domain.PostStatus `json:"status" validate:"required"`
 }
 
 func (h *postHandler) setPostStatus(w http.ResponseWriter, r *http.Request) error {
@@ -67,7 +66,7 @@ func (h *postHandler) setPostStatus(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.postUsecase.SetStatus(commentActor(principal), id, input.Status); err != nil {
+	if err := h.postUsecase.SetStatus(commentActor(principal), id, *input.Status); err != nil {
 		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)

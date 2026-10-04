@@ -24,12 +24,68 @@ type listPostRepository struct {
 
 type capturingPostRepository struct {
 	repository.PostRepository
-	filter repository.PostFilter
+	filter        repository.PostFilter
+	limit, offset int64
 }
 
-func (r *capturingPostRepository) List(filter repository.PostFilter, _, _ int64) (int64, []domain.PostListItem, error) {
+func (r *capturingPostRepository) List(filter repository.PostFilter, limit, offset int64) (int64, []domain.PostListItem, error) {
 	r.filter = filter
+	r.limit, r.offset = limit, offset
 	return 0, nil, nil
+}
+
+type postStatusRepository struct {
+	repository.PostRepository
+	id     int64
+	status domain.PostStatus
+	writes int
+}
+
+func (r *postStatusRepository) SetStatus(id int64, status domain.PostStatus) error {
+	r.id, r.status = id, status
+	r.writes++
+	return nil
+}
+
+func TestPostStatusRequiresExplicitValue(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		body       string
+		wantHTTP   int
+		wantStatus domain.PostStatus
+	}{
+		{"missing", `{}`, http.StatusBadRequest, 0},
+		{"null field", `{"status":null}`, http.StatusBadRequest, 0},
+		{"null body", `null`, http.StatusBadRequest, 0},
+		{"published zero", `{"status":0}`, http.StatusNoContent, domain.PostStatusPublished},
+		{"hidden", `{"status":1}`, http.StatusNoContent, domain.PostStatusHidden},
+		{"deleted", `{"status":2}`, http.StatusNoContent, domain.PostStatusDeleted},
+		{"invalid status", `{"status":3}`, http.StatusBadRequest, 0},
+		{"negative status", `{"status":-1}`, http.StatusBadRequest, 0},
+		{"wrong type", `{"status":"0"}`, http.StatusBadRequest, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &postStatusRepository{}
+			router := chi.NewRouter()
+			router.Use(httpx.RequireAdmin)
+			NewPostHandler(usecase.NewPostUsecase(repo, nil, nil), nil).RegisterAdminRoutes(router)
+			request := httptest.NewRequest(http.MethodPut, "/42/status", strings.NewReader(tc.body))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Authorization", adminPostRequest(t, "/").Header.Get("Authorization"))
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			if response.Code != tc.wantHTTP {
+				t.Fatalf("status=%d want=%d body=%s", response.Code, tc.wantHTTP, response.Body.String())
+			}
+			if tc.wantHTTP == http.StatusNoContent {
+				if repo.writes != 1 || repo.id != 42 || repo.status != tc.wantStatus {
+					t.Fatalf("unexpected status write: %+v", repo)
+				}
+			} else if repo.writes != 0 {
+				t.Fatal("invalid request changed post status")
+			}
+		})
+	}
 }
 
 func TestAdminPostListStatusFilter(t *testing.T) {
@@ -59,6 +115,23 @@ func TestAdminPostListStatusFilter(t *testing.T) {
 		if repo.filter.Status != tc.wantStatus {
 			t.Fatalf("query %q: unexpected filter: %#v", tc.query, repo.filter)
 		}
+	}
+}
+
+func TestPostListQueryPreservesHTTPFilters(t *testing.T) {
+	repo := &capturingPostRepository{}
+	h := NewPostHandler(usecase.NewPostUsecase(repo, noFavoriteRepository{}, nil), nil)
+	request := httptest.NewRequest(http.MethodGet,
+		"/post/?category=discussion&q=%20title%20&sort=newest&tag=2,3&tag=4&page=3&page_size=25&author_id=99&status=1", nil)
+	if err := h.list(httptest.NewRecorder(), request); err != nil {
+		t.Fatal(err)
+	}
+	filter := repo.filter
+	if filter.CategorySlug != "discussion" || filter.Search != "title" || filter.Sort != repository.PostSortNewest ||
+		len(filter.TagIDs) != 3 || filter.TagIDs[0] != 2 || filter.TagIDs[1] != 3 || filter.TagIDs[2] != 4 ||
+		filter.Status != domain.PostStatusPublished || filter.AuthorID != 0 || filter.FavoriteUserID != 0 ||
+		repo.limit != 25 || repo.offset != 50 {
+		t.Fatalf("unexpected query mapping: filter=%+v limit=%d offset=%d", filter, repo.limit, repo.offset)
 	}
 }
 
@@ -186,7 +259,7 @@ func TestPostListOmitsContentAndDetailPreservesIt(t *testing.T) {
 	}
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/post/", nil)
-	if err := respondPosts(recorder, request, usecase.NewPostUsecase(listPostRepository{items: []domain.PostListItem{listItem}}, nil, nil).List, repository.PostFilter{}); err != nil {
+	if err := respondPosts(recorder, request, usecase.NewPostUsecase(listPostRepository{items: []domain.PostListItem{listItem}}, nil, nil).List, usecase.ListPostsQuery{}); err != nil {
 		t.Fatal(err)
 	}
 	var response page[map[string]json.RawMessage]

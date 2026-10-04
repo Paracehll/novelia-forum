@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"errors"
 	"fmt"
 	"math"
 	"net/url"
@@ -38,22 +37,6 @@ func parsePagination(query url.Values, defaultPageSize, maxPageSize int64) (pagi
 		return pagination{}, httpx.BadRequest("page 超出可支持的范围")
 	}
 	return pagination{Limit: pageSize, Offset: (page - 1) * pageSize}, nil
-}
-
-func repoError(err error, message string) error {
-	if repository.IsNotFound(err) {
-		return httpx.NotFound("资源不存在")
-	}
-	if errors.Is(err, repository.ErrInvalidCategory) {
-		return httpx.BadRequest("分类无效")
-	}
-	if errors.Is(err, repository.ErrInvalidTag) {
-		return httpx.BadRequest("标签无效")
-	}
-	if repository.IsUniqueViolation(err) {
-		return httpx.Conflict("资源已存在")
-	}
-	return httpx.InternalError(err, message)
 }
 
 func validText(value string, min, max int) bool {

@@ -17,6 +17,7 @@ type postUsecaseRepoStub struct {
 	post           domain.Post
 	listItem       domain.PostListItem
 	filter         repository.PostFilter
+	limit, offset  int64
 	input          repository.CreatePostInput
 	writes         int
 	incrementViews bool
@@ -24,8 +25,9 @@ type postUsecaseRepoStub struct {
 	updateErr      error
 }
 
-func (r *postUsecaseRepoStub) List(filter repository.PostFilter, _, _ int64) (int64, []domain.PostListItem, error) {
+func (r *postUsecaseRepoStub) List(filter repository.PostFilter, limit, offset int64) (int64, []domain.PostListItem, error) {
 	r.filter = filter
+	r.limit, r.offset = limit, offset
 	return 1, []domain.PostListItem{r.listItem}, r.err
 }
 func (r *postUsecaseRepoStub) Find(_ int64, increment bool) (*domain.Post, error) {
@@ -67,6 +69,62 @@ func (r *postUsecaseFavoriteStub) Has(_ int64, userID int64) (bool, error) {
 	return true, r.err
 }
 
+func TestPostListQueryMapsToRepositoryFilter(t *testing.T) {
+	status := domain.PostStatusHidden
+	repo := &postUsecaseRepoStub{}
+	u := NewPostUsecase(repo, nil, nil)
+	query := ListPostsQuery{
+		CategorySlug: "discussion", Search: " title ", Sort: PostSortNewest,
+		TagIDs: []int64{2, 3}, AuthorName: " alice ", AuthorID: 7,
+		Status: &status, Limit: 25, Offset: 50,
+	}
+	if _, _, err := u.ListAdmin(Actor{IsAdmin: true}, query); err != nil {
+		t.Fatal(err)
+	}
+	filter := repo.filter
+	if filter.CategorySlug != "discussion" || filter.Search != "title" || filter.Sort != repository.PostSortNewest ||
+		len(filter.TagIDs) != 2 || filter.TagIDs[0] != 2 || filter.TagIDs[1] != 3 ||
+		filter.AuthorName != "alice" || filter.AuthorID != 7 || filter.Status != status ||
+		filter.FavoriteUserID != 0 || repo.limit != 25 || repo.offset != 50 {
+		t.Fatalf("query mapping lost fields: filter=%+v limit=%d offset=%d", filter, repo.limit, repo.offset)
+	}
+	if query.Search != " title " || query.AuthorName != " alice " || *query.Status != domain.PostStatusHidden {
+		t.Fatal("mutated caller query")
+	}
+}
+
+func TestPostListQueryDefaultsAndValidation(t *testing.T) {
+	invalidStatus := domain.PostStatus(3)
+	for _, tc := range []struct {
+		name  string
+		query ListPostsQuery
+		code  string
+	}{
+		{"defaults", ListPostsQuery{Limit: 20}, ""},
+		{"invalid status", ListPostsQuery{Limit: 20, Status: &invalidStatus}, CodePostStatusInvalid},
+		{"invalid author", ListPostsQuery{Limit: 20, AuthorID: -1}, CodePostAuthorInvalid},
+		{"invalid sort", ListPostsQuery{Limit: 20, Sort: "invalid"}, CodePostSortInvalid},
+		{"duplicate tags", ListPostsQuery{Limit: 20, TagIDs: []int64{1, 1}}, CodePostTagInvalid},
+		{"invalid limit", ListPostsQuery{Limit: 101}, CodePostPaginationInvalid},
+		{"invalid offset", ListPostsQuery{Limit: 20, Offset: -1}, CodePostPaginationInvalid},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &postUsecaseRepoStub{}
+			u := NewPostUsecase(repo, nil, nil)
+			_, _, err := u.ListAdmin(Actor{IsAdmin: true}, tc.query)
+			if tc.code != "" {
+				if !isAppErrorCode(err, tc.code) {
+					t.Fatalf("error=%v want code=%s", err, tc.code)
+				}
+				return
+			}
+			if err != nil || repo.filter.Status != repository.PostStatusAll || repo.filter.Sort != repository.PostSortActive {
+				t.Fatalf("defaults: filter=%+v error=%v", repo.filter, err)
+			}
+		})
+	}
+}
+
 func TestPostListScopes(t *testing.T) {
 	for _, mode := range []string{"public", "mine", "favorites", "admin"} {
 		t.Run(mode, func(t *testing.T) {
@@ -74,9 +132,8 @@ func TestPostListScopes(t *testing.T) {
 			favorites := &postUsecaseFavoriteStub{}
 			u := NewPostUsecase(repo, favorites, nil)
 			actor := Actor{UserID: 7, IsAdmin: true}
-			query := ListPostsQuery{Limit: 20, Filter: repository.PostFilter{
-				Status: repository.PostStatusAll, AuthorName: "someone", AuthorID: 99, FavoriteUserID: 88,
-			}}
+			status := domain.PostStatusHidden
+			query := ListPostsQuery{Limit: 20, Status: &status, AuthorName: "someone", AuthorID: 99}
 			var total int64
 			var items []domain.PostListItem
 			var err error
@@ -101,13 +158,13 @@ func TestPostListScopes(t *testing.T) {
 				wantFavorite = 7
 			}
 			if mode == "admin" {
-				if repo.filter.Status != repository.PostStatusAll || repo.filter.AuthorID != 99 || repo.filter.FavoriteUserID != 88 || repo.filter.AuthorName != "someone" {
+				if repo.filter.Status != domain.PostStatusHidden || repo.filter.AuthorID != 99 || repo.filter.FavoriteUserID != 0 || repo.filter.AuthorName != "someone" {
 					t.Fatalf("admin filter lost: %+v", repo.filter)
 				}
 			} else if repo.filter.Status != domain.PostStatusPublished || repo.filter.AuthorName != "" || repo.filter.AuthorID != wantAuthor || repo.filter.FavoriteUserID != wantFavorite {
 				t.Fatalf("unsafe filter: %+v", repo.filter)
 			}
-			if query.Filter.AuthorID != 99 {
+			if query.AuthorID != 99 || query.Status != &status || status != domain.PostStatusHidden {
 				t.Fatal("mutated caller query")
 			}
 		})
