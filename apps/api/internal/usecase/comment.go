@@ -153,8 +153,12 @@ func (u *CommentUsecase) checkContent(content string) error {
 
 func (u *CommentUsecase) checkModifiable(actor Actor, subjectType int16, id int64) error {
 	comment, err := u.commentRepo.Find(subjectType, id)
-	if err != nil {
-		return commentError(err, "comment.find")
+	switch {
+	case err == nil:
+	case errors.Is(err, repository.ErrNotFound):
+		return NotFound(CodeCommentNotFound, "评论不存在")
+	default:
+		return fmt.Errorf("comment.find: %w", err)
 	}
 	if comment.AuthorID != actor.UserID && !actor.IsAdmin {
 		return Forbidden(CodeCommentNotOwner, "只能修改自己的评论")
@@ -165,25 +169,6 @@ func (u *CommentUsecase) checkModifiable(actor Actor, subjectType int16, id int6
 	return nil
 }
 
-func commentError(err error, operation string) error {
-	if err == nil {
-		return nil
-	}
-	if errors.Is(err, repository.ErrNotFound) {
-		return NotFound(CodeCommentNotFound, "评论不存在")
-	}
-	if errors.Is(err, repository.ErrCommentRootNotFound) {
-		return NotFound(CodeCommentRootNotFound, "根评论不存在")
-	}
-	if errors.Is(err, repository.ErrInvalidCommentRoot) {
-		return Invalid(CodeCommentRootInvalid, "根评论无效")
-	}
-	if errors.Is(err, repository.ErrConflict) {
-		return Conflict(CodeCommentConflict, "评论数据冲突")
-	}
-	return fmt.Errorf("%s: %w", operation, err)
-}
-
 func (u *CommentUsecase) Create(input repository.CreateCommentInput) (*repository.Comment, error) {
 	if err := u.checkContent(input.Content); err != nil {
 		return nil, err
@@ -191,16 +176,22 @@ func (u *CommentUsecase) Create(input repository.CreateCommentInput) (*repositor
 	input.SubjectType = repository.CommentSubjectPost
 	input.Attr = "{}"
 	comment, err := u.commentRepo.Create(input)
-	if errors.Is(err, repository.ErrNotFound) {
+	switch {
+	case err == nil:
+		return comment, nil
+	case errors.Is(err, repository.ErrNotFound):
 		return nil, NotFound(CodeCommentSubjectNotFound, "评论所属资源不存在")
-	}
-	if errors.Is(err, repository.ErrCommentsLocked) {
+	case errors.Is(err, repository.ErrCommentsLocked):
 		return nil, Conflict(CodeCommentLocked, "评论区已锁定")
+	case errors.Is(err, repository.ErrCommentRootNotFound):
+		return nil, NotFound(CodeCommentRootNotFound, "根评论不存在")
+	case errors.Is(err, repository.ErrInvalidCommentRoot):
+		return nil, Invalid(CodeCommentRootInvalid, "根评论无效")
+	case errors.Is(err, repository.ErrConflict):
+		return nil, Conflict(CodeCommentConflict, "评论数据冲突")
+	default:
+		return nil, fmt.Errorf("comment.create_post: %w", err)
 	}
-	if err != nil {
-		return nil, commentError(err, "comment.create_post")
-	}
-	return comment, nil
 }
 
 func (u *CommentUsecase) CreateExternal(
@@ -228,10 +219,18 @@ func (u *CommentUsecase) CreateExternal(
 	input.SubjectType = subjectType
 	input.Attr = "{}"
 	comment, err := u.commentRepo.Create(input)
-	if err != nil {
-		return nil, commentError(err, "comment.create_external")
+	switch {
+	case err == nil:
+		return comment, nil
+	case errors.Is(err, repository.ErrCommentRootNotFound):
+		return nil, NotFound(CodeCommentRootNotFound, "根评论不存在")
+	case errors.Is(err, repository.ErrInvalidCommentRoot):
+		return nil, Invalid(CodeCommentRootInvalid, "根评论无效")
+	case errors.Is(err, repository.ErrConflict):
+		return nil, Conflict(CodeCommentConflict, "评论数据冲突")
+	default:
+		return nil, fmt.Errorf("comment.create_external: %w", err)
 	}
-	return comment, nil
 }
 
 func (u *CommentUsecase) Update(
@@ -247,18 +246,41 @@ func (u *CommentUsecase) Update(
 		return nil, err
 	}
 	comment, err := u.commentRepo.Update(subjectType, id, content)
-	return comment, commentError(err, "comment.update")
+	switch {
+	case err == nil:
+		return comment, nil
+	case errors.Is(err, repository.ErrNotFound):
+		return nil, NotFound(CodeCommentNotFound, "评论不存在")
+	default:
+		return nil, fmt.Errorf("comment.update: %w", err)
+	}
 }
 
 func (u *CommentUsecase) Delete(actor Actor, subjectType int16, id int64) error {
 	if err := u.checkModifiable(actor, subjectType, id); err != nil {
 		return err
 	}
-	return commentError(u.commentRepo.SetStatus(subjectType, id, repository.StatusDeleted), "comment.delete")
+	err := u.commentRepo.SetStatus(subjectType, id, repository.StatusDeleted)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, repository.ErrNotFound):
+		return NotFound(CodeCommentNotFound, "评论不存在")
+	default:
+		return fmt.Errorf("comment.delete: %w", err)
+	}
 }
 
 func (u *CommentUsecase) SetStatus(subjectType int16, id int64, status int16) error {
-	return commentError(u.commentRepo.SetStatus(subjectType, id, status), "comment.set_status")
+	err := u.commentRepo.SetStatus(subjectType, id, status)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, repository.ErrNotFound):
+		return NotFound(CodeCommentNotFound, "评论不存在")
+	default:
+		return fmt.Errorf("comment.set_status: %w", err)
+	}
 }
 
 func (u *CommentUsecase) DeleteAllByAuthor(authorID int64) error {
