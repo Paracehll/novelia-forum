@@ -66,7 +66,7 @@ func TestDomainFilterRejectsWrites(t *testing.T) {
 			router := chi.NewRouter()
 			resolver := handlerSubjectResolver{valid: true, exists: true}
 			commentUsecase := usecase.NewCommentUsecase(comments, posts, domains, resolver)
-			postHandler := NewPostHandler(posts, noFavoriteRepository{}, commentUsecase, domains)
+			postHandler := NewPostHandler(usecase.NewPostUsecase(posts, noFavoriteRepository{}, domains), commentUsecase)
 			router.Route("/post", postHandler.RegisterRoutes)
 			router.Route("/comment", NewCommentHandler(commentUsecase).RegisterRoutes)
 			router.Route("/external/comment", NewExternalCommentHandler(commentUsecase).RegisterRoutes)
@@ -86,19 +86,23 @@ func TestDomainFilterRejectsWrites(t *testing.T) {
 }
 
 func TestDomainFilterErrorMapping(t *testing.T) {
-	if err := checkDomainText(nil, "content", strings.Repeat("a", domainfilter.MaxTextBytes+1)); err != nil {
-		t.Fatalf("disabled filter rejected content: %v", err)
-	}
 	domains, err := domainfilter.New([]domainfilter.Rule{{Domain: "evil.example", IncludeSubdomains: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, value := range []string{strings.Repeat("a", domainfilter.MaxTextBytes+1), strings.Repeat("a", 4097) + ".example"} {
+	value := strings.Repeat("a", 4097) + ".example"
+	for _, filter := range []*domainfilter.Filter{nil, domains} {
+		posts := usecase.NewPostUsecase(&writePostRepository{}, nil, filter)
 		response := httptest.NewRecorder()
 		httpx.EH(func(http.ResponseWriter, *http.Request) error {
-			return checkDomainText(domains, "content", value)
+			_, err := posts.Create(usecase.Actor{UserID: 1}, usecase.PostInput{CategoryID: 1, Title: "标题", Content: value})
+			return transportError(err)
 		})(response, httptest.NewRequest(http.MethodPost, "/", nil))
-		if response.Code != http.StatusBadRequest || response.Body.String() != "content 无法完成域名检查" {
+		if filter == nil {
+			if response.Code != http.StatusOK {
+				t.Fatalf("disabled filter rejected content: %s", response.Body.String())
+			}
+		} else if response.Code != http.StatusBadRequest || response.Body.String() != "content 无法完成域名检查" {
 			t.Fatalf("unexpected response: %d %q", response.Code, response.Body.String())
 		}
 	}

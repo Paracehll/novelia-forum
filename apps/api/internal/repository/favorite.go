@@ -1,9 +1,9 @@
 package repository
 
 import (
+	"database/sql"
 	"forum/.gen/main/public/model"
 	"forum/.gen/main/public/table"
-	"database/sql"
 
 	. "github.com/go-jet/jet/v2/postgres"
 	"github.com/go-jet/jet/v2/qrm"
@@ -19,7 +19,8 @@ type favoriteRepository struct{ db *sql.DB }
 
 func NewFavoriteRepository(db *sql.DB) FavoriteRepository { return &favoriteRepository{db: db} }
 
-func (r *favoriteRepository) Has(postID, userID int64) (bool, error) {
+func (r *favoriteRepository) Has(postID, userID int64) (exists bool, err error) {
+	defer func() { err = storageError(err, "favorite.Has") }()
 	var result struct{ Exists bool }
 	stmt := SELECT(EXISTS(SELECT(table.PostFavorite.PostID).
 		FROM(table.PostFavorite).
@@ -31,7 +32,8 @@ func (r *favoriteRepository) Has(postID, userID int64) (bool, error) {
 	return result.Exists, nil
 }
 
-func (r *favoriteRepository) ListPostIDs(userID int64, postIDs []int64) (map[int64]bool, error) {
+func (r *favoriteRepository) ListPostIDs(userID int64, postIDs []int64) (favorites map[int64]bool, err error) {
+	defer func() { err = storageError(err, "favorite.ListPostIDs") }()
 	result := make(map[int64]bool, len(postIDs))
 	if len(postIDs) == 0 {
 		return result, nil
@@ -50,7 +52,8 @@ func (r *favoriteRepository) ListPostIDs(userID int64, postIDs []int64) (map[int
 	return result, nil
 }
 
-func (r *favoriteRepository) Set(postID, userID int64, favorite bool) error {
+func (r *favoriteRepository) Set(postID, userID int64, favorite bool) (err error) {
+	defer func() { err = storageError(err, "favorite.Set") }()
 	if !favorite {
 		stmt := table.PostFavorite.DELETE().
 			WHERE(table.PostFavorite.PostID.EQ(Int64(postID)).AND(table.PostFavorite.UserID.EQ(Int64(userID))))
@@ -72,6 +75,6 @@ func (r *favoriteRepository) Set(postID, userID int64, favorite bool) error {
 		MODEL(record).
 		ON_CONFLICT(table.PostFavorite.PostID, table.PostFavorite.UserID).
 		DO_NOTHING()
-	_, err := stmt.Exec(r.db)
+	_, err = stmt.Exec(r.db)
 	return err
 }

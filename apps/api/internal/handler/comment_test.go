@@ -340,7 +340,7 @@ func TestInvalidCommentRequestsStopBeforeUsecase(t *testing.T) {
 	// Nil usecases make accidental calls past handler-only validation fail. The
 	// external routes use a real usecase because subject rules live there.
 	router := chi.NewRouter()
-	router.Route("/post", NewPostHandler(nil, nil, nil, nil).RegisterRoutes)
+	router.Route("/post", NewPostHandler(nil, nil).RegisterRoutes)
 	router.Route("/comment", NewCommentHandler(nil).RegisterRoutes)
 	router.Route("/admin/comment", NewCommentHandler(nil).RegisterAdminRoutes)
 	externalComments := usecase.NewCommentUsecase(
@@ -388,7 +388,7 @@ func TestInvalidCommentContentResponses(t *testing.T) {
 				resolver := handlerSubjectResolver{valid: true, exists: true}
 				comments := usecase.NewCommentUsecase(repo, nil, nil, resolver)
 				router := chi.NewRouter()
-				router.Route("/post", NewPostHandler(nil, nil, comments, nil).RegisterRoutes)
+				router.Route("/post", NewPostHandler(nil, comments).RegisterRoutes)
 				router.Route("/comment", NewCommentHandler(comments).RegisterRoutes)
 				router.Route("/external", NewExternalCommentHandler(comments).RegisterRoutes)
 				body, err := json.Marshal(map[string]string{"content": content})

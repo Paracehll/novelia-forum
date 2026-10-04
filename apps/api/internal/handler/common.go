@@ -8,7 +8,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"forum/internal/domainfilter"
 	"forum/internal/httpx"
 	"forum/internal/repository"
 )
@@ -75,20 +74,4 @@ func uniquePositiveIDs(ids []int64) bool {
 
 func validStatus(status int16) bool {
 	return status >= repository.StatusPublished && status <= repository.StatusDeleted
-}
-
-func checkDomainText(filter *domainfilter.Filter, field, value string) error {
-	if filter == nil {
-		return nil
-	}
-	switch err := filter.Check(value); {
-	case err == nil:
-		return nil
-	case errors.Is(err, domainfilter.ErrBlocked):
-		return httpx.BadRequest(field + " 包含禁止使用的域名")
-	case errors.Is(err, domainfilter.ErrText), errors.Is(err, domainfilter.ErrCandidate):
-		return httpx.BadRequest(field + " 无法完成域名检查")
-	default:
-		return httpx.InternalError(err, "域名检查失败")
-	}
 }

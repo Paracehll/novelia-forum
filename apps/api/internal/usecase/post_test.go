@@ -1,0 +1,197 @@
+package usecase
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+
+	forumcategory "forum/internal/category"
+	"forum/internal/repository"
+)
+
+type postUsecaseRepoStub struct {
+	repository.PostRepository
+	post           repository.PostDetails
+	filter         repository.PostFilter
+	input          repository.CreatePostInput
+	writes         int
+	incrementViews bool
+	err            error
+}
+
+func (r *postUsecaseRepoStub) List(filter repository.PostFilter, _, _ int64) (int64, []repository.PostDetails, error) {
+	r.filter = filter
+	return 1, []repository.PostDetails{r.post}, r.err
+}
+func (r *postUsecaseRepoStub) Find(_ int64, increment bool) (*repository.PostDetails, error) {
+	r.incrementViews = increment
+	return &r.post, r.err
+}
+func (r *postUsecaseRepoStub) Create(input repository.CreatePostInput) (*repository.PostDetails, error) {
+	r.input = input
+	r.writes++
+	return &r.post, r.err
+}
+func (r *postUsecaseRepoStub) Update(_ int64, input repository.UpdatePostInput) (*repository.PostDetails, error) {
+	r.input.Title, r.input.Content = input.Title, input.Content
+	r.writes++
+	return &r.post, r.err
+}
+func (r *postUsecaseRepoStub) SetStatus(_ int64, status int16) error {
+	r.writes++
+	r.post.Status = status
+	return r.err
+}
+
+type postUsecaseFavoriteStub struct {
+	repository.FavoriteRepository
+	userID int64
+}
+
+func (r *postUsecaseFavoriteStub) ListPostIDs(userID int64, ids []int64) (map[int64]bool, error) {
+	r.userID = userID
+	favorites := map[int64]bool{}
+	for _, id := range ids {
+		favorites[id] = true
+	}
+	return favorites, nil
+}
+func (r *postUsecaseFavoriteStub) Has(_ int64, userID int64) (bool, error) {
+	r.userID = userID
+	return true, nil
+}
+
+func TestPostListScopes(t *testing.T) {
+	for _, mode := range []string{"public", "mine", "favorites", "admin"} {
+		t.Run(mode, func(t *testing.T) {
+			repo := &postUsecaseRepoStub{post: repository.PostDetails{Post: repository.Post{ID: 5}}}
+			favorites := &postUsecaseFavoriteStub{}
+			u := NewPostUsecase(repo, favorites, nil)
+			actor := Actor{UserID: 7, IsAdmin: true}
+			query := ListPostsQuery{Limit: 20, Filter: repository.PostFilter{
+				Status: repository.PostStatusAll, AuthorName: "someone", AuthorID: 99, FavoriteUserID: 88,
+			}}
+			var total int64
+			var items []PostResult
+			var err error
+			switch mode {
+			case "public":
+				total, items, err = u.List(actor, query)
+			case "mine":
+				total, items, err = u.ListMine(actor, query)
+			case "favorites":
+				total, items, err = u.ListFavorites(actor, query)
+			case "admin":
+				total, items, err = u.ListAdmin(actor, query)
+			}
+			if err != nil || total != 1 || len(items) != 1 || !items[0].Favorited || favorites.userID != 7 {
+				t.Fatalf("total=%d items=%v err=%v", total, items, err)
+			}
+			wantAuthor, wantFavorite := int64(0), int64(0)
+			if mode == "mine" {
+				wantAuthor = 7
+			}
+			if mode == "favorites" {
+				wantFavorite = 7
+			}
+			if mode == "admin" {
+				if repo.filter.Status != repository.PostStatusAll || repo.filter.AuthorID != 99 || repo.filter.FavoriteUserID != 88 || repo.filter.AuthorName != "someone" {
+					t.Fatalf("admin filter lost: %+v", repo.filter)
+				}
+			} else if repo.filter.Status != repository.StatusPublished || repo.filter.AuthorName != "" || repo.filter.AuthorID != wantAuthor || repo.filter.FavoriteUserID != wantFavorite {
+				t.Fatalf("unsafe filter: %+v", repo.filter)
+			}
+			if query.Filter.AuthorID != 99 {
+				t.Fatal("mutated caller query")
+			}
+		})
+	}
+	u := NewPostUsecase(nil, nil, nil)
+	if _, _, err := u.ListMine(Actor{}, ListPostsQuery{}); !isAppErrorCode(err, CodePostAuthRequired) {
+		t.Fatal(err)
+	}
+	if _, _, err := u.ListFavorites(Actor{}, ListPostsQuery{}); !isAppErrorCode(err, CodePostAuthRequired) {
+		t.Fatal(err)
+	}
+	if _, _, err := u.ListAdmin(Actor{}, ListPostsQuery{}); !isAppErrorCode(err, CodePostAdminRequired) {
+		t.Fatal(err)
+	}
+	if err := u.SetStatus(Actor{}, 1, 0); !isAppErrorCode(err, CodePostAdminRequired) {
+		t.Fatal(err)
+	}
+	if err := u.SetCommentsLocked(Actor{}, 1, true); !isAppErrorCode(err, CodePostAdminRequired) {
+		t.Fatal(err)
+	}
+	if err := u.SetPinOrder(Actor{}, 1, nil); !isAppErrorCode(err, CodePostAdminRequired) {
+		t.Fatal(err)
+	}
+}
+
+func TestPostInputAndModificationRules(t *testing.T) {
+	repo := &postUsecaseRepoStub{post: repository.PostDetails{Post: repository.Post{ID: 1, AuthorID: 7, CreatedAt: time.Now().Add(-time.Hour)}}}
+	u := NewPostUsecase(repo, &postUsecaseFavoriteStub{}, nil)
+	actor := Actor{UserID: 7, Username: "author"}
+	input := PostInput{CategoryID: forumcategory.NovelID, Title: " 标题 ", Content: " 内容 \n"}
+	result, err := u.Create(actor, input)
+	if err != nil || result.Favorited || repo.input.Title != "标题" || repo.input.Content != input.Content || repo.input.AuthorID != 7 || repo.input.AuthorUsername != "author" || repo.input.Attr != "{}" {
+		t.Fatalf("input=%+v result=%v err=%v", repo.input, result, err)
+	}
+	if _, err := u.Update(actor, 1, input); err != nil {
+		t.Fatalf("old post must remain editable: %v", err)
+	}
+	if err := u.Delete(actor, 1); !isAppErrorCode(err, CodePostDeleteExpired) {
+		t.Fatal(err)
+	}
+	if _, err := u.Update(Actor{UserID: 8}, 1, input); !isAppErrorCode(err, CodePostNotOwner) {
+		t.Fatal(err)
+	}
+	if err := u.Delete(Actor{IsAdmin: true}, 1); err != nil || repo.post.Status != repository.StatusDeleted {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		input PostInput
+		code  string
+	}{
+		{PostInput{CategoryID: 0, Title: "标题", Content: "内容"}, CodePostCategoryInvalid},
+		{PostInput{CategoryID: forumcategory.NovelID, Title: "字", Content: "内容"}, CodePostTitleInvalid},
+		{PostInput{CategoryID: forumcategory.NovelID, Title: "标题", Content: " \n"}, CodePostContentInvalid},
+		{PostInput{CategoryID: forumcategory.NovelID, Title: "标题", Content: strings.Repeat("字", 20000) + " "}, CodePostContentInvalid},
+		{PostInput{CategoryID: forumcategory.NovelID, Title: "标题", Content: "内容", TagIDs: []int64{1, 1}}, CodePostTagInvalid},
+		{PostInput{CategoryID: forumcategory.NovelID, Title: "标题", Content: "内容", TagIDs: []int64{1, 2, 3, 4}}, CodePostTagInvalid},
+		{PostInput{CategoryID: forumcategory.AnnouncementsID, Title: "标题", Content: "内容"}, CodePostAnnouncementRestricted},
+	} {
+		writes := repo.writes
+		if _, err := u.Create(actor, tc.input); !isAppErrorCode(err, tc.code) || writes != repo.writes {
+			t.Fatalf("input=%+v err=%v", tc.input, err)
+		}
+	}
+	if _, err := u.Get(Actor{}, 1); err != nil || !repo.incrementViews {
+		t.Fatalf("get err=%v increment=%v", err, repo.incrementViews)
+	}
+}
+
+func TestPostRepositoryErrors(t *testing.T) {
+	for _, tc := range []struct {
+		cause error
+		kind  ErrorKind
+		code  string
+	}{
+		{repository.ErrNotFound, KindNotFound, CodePostNotFound},
+		{repository.ErrInvalidCategory, KindInvalid, CodePostCategoryInvalid},
+		{repository.ErrInvalidTag, KindInvalid, CodePostTagInvalid},
+		{repository.ErrConflict, KindConflict, CodePostConflict},
+	} {
+		err := postError(fmt.Errorf("repo: %w", tc.cause), "post.test")
+		var appErr *AppError
+		if !errors.As(err, &appErr) || appErr.Kind != tc.kind || appErr.Code != tc.code {
+			t.Fatalf("cause=%v err=%v", tc.cause, err)
+		}
+	}
+	cause := errors.New("storage unavailable")
+	if err := postError(cause, "post.test"); !errors.Is(err, cause) {
+		t.Fatalf("lost cause: %v", err)
+	}
+}

@@ -5,20 +5,17 @@ import (
 
 	"forum/internal/httpx"
 	"forum/internal/repository"
+	"forum/internal/usecase"
 
 	"github.com/go-chi/chi/v5"
 )
 
 type meHandler struct {
-	postRepo     repository.PostRepository
-	favoriteRepo repository.FavoriteRepository
+	postUsecase *usecase.PostUsecase
 }
 
-func NewMeHandler(
-	postRepo repository.PostRepository,
-	favoriteRepo repository.FavoriteRepository,
-) *meHandler {
-	return &meHandler{postRepo: postRepo, favoriteRepo: favoriteRepo}
+func NewMeHandler(posts *usecase.PostUsecase) *meHandler {
+	return &meHandler{postUsecase: posts}
 }
 
 func (h *meHandler) RegisterRoutes(router chi.Router) {
@@ -28,11 +25,9 @@ func (h *meHandler) RegisterRoutes(router chi.Router) {
 }
 
 func (h *meHandler) listPosts(w http.ResponseWriter, r *http.Request) error {
-	principal, _ := httpx.AuthenticatedPrincipal(r)
-	return respondPosts(w, r, h.postRepo, h.favoriteRepo, repository.PostFilter{AuthorID: principal.UserID})
+	return respondPosts(w, r, h.postUsecase.ListMine, repository.PostFilter{})
 }
 
 func (h *meHandler) listFavorites(w http.ResponseWriter, r *http.Request) error {
-	principal, _ := httpx.AuthenticatedPrincipal(r)
-	return respondPosts(w, r, h.postRepo, h.favoriteRepo, repository.PostFilter{FavoriteUserID: principal.UserID})
+	return respondPosts(w, r, h.postUsecase.ListFavorites, repository.PostFilter{})
 }

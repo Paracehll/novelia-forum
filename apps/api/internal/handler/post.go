@@ -5,11 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
-	forumcategory "forum/internal/category"
 	"forum/internal/domain"
-	"forum/internal/domainfilter"
 	"forum/internal/httpx"
 	"forum/internal/repository"
 	"forum/internal/usecase"
@@ -83,24 +80,12 @@ func newPostListItemResponse(value repository.PostDetails, favorited bool) postL
 }
 
 type postHandler struct {
-	postRepo       repository.PostRepository
-	favoriteRepo   repository.FavoriteRepository
+	postUsecase    *usecase.PostUsecase
 	commentUsecase *usecase.CommentUsecase
-	domains        *domainfilter.Filter
 }
 
-func NewPostHandler(
-	postRepo repository.PostRepository,
-	favoriteRepo repository.FavoriteRepository,
-	commentUsecase *usecase.CommentUsecase,
-	domains *domainfilter.Filter,
-) *postHandler {
-	return &postHandler{
-		postRepo:       postRepo,
-		favoriteRepo:   favoriteRepo,
-		commentUsecase: commentUsecase,
-		domains:        domains,
-	}
+func NewPostHandler(posts *usecase.PostUsecase, comments *usecase.CommentUsecase) *postHandler {
+	return &postHandler{postUsecase: posts, commentUsecase: comments}
 }
 
 func (h *postHandler) RegisterRoutes(router chi.Router) {
@@ -148,35 +133,23 @@ func postFilterFrom(r *http.Request) (repository.PostFilter, error) {
 	return filter, nil
 }
 
-func respondPosts(
-	w http.ResponseWriter,
-	r *http.Request,
-	repo repository.PostRepository,
-	favoriteRepo repository.FavoriteRepository,
-	filter repository.PostFilter,
-) error {
+type postListFunc func(usecase.Actor, usecase.ListPostsQuery) (int64, []usecase.PostResult, error)
+
+func respondPosts(w http.ResponseWriter, r *http.Request, list postListFunc, filter repository.PostFilter) error {
 	pagination, err := parsePagination(r.URL.Query(), 20, 100)
 	if err != nil {
 		return err
 	}
-	total, items, err := repo.List(filter, pagination.Limit, pagination.Offset)
+	principal, _ := httpx.AuthenticatedPrincipal(r)
+	total, items, err := list(commentActor(principal), usecase.ListPostsQuery{
+		Filter: filter, Limit: pagination.Limit, Offset: pagination.Offset,
+	})
 	if err != nil {
-		return repoError(err, "查询帖子失败")
-	}
-	favorites := map[int64]bool{}
-	if principal, principalErr := httpx.AuthenticatedPrincipal(r); principalErr == nil {
-		postIDs := make([]int64, len(items))
-		for i, item := range items {
-			postIDs[i] = item.ID
-		}
-		favorites, err = favoriteRepo.ListPostIDs(principal.UserID, postIDs)
-		if err != nil {
-			return repoError(err, "查询收藏状态失败")
-		}
+		return transportError(err)
 	}
 	response := make([]postListItemResponse, len(items))
 	for i, item := range items {
-		response[i] = newPostListItemResponse(item, favorites[item.ID])
+		response[i] = newPostListItemResponse(item.Post, item.Favorited)
 	}
 	render.JSON(w, r, page[postListItemResponse]{Total: total, Items: response})
 	return nil
@@ -187,7 +160,7 @@ func (h *postHandler) list(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return respondPosts(w, r, h.postRepo, h.favoriteRepo, filter)
+	return respondPosts(w, r, h.postUsecase.List, filter)
 }
 
 func (h *postHandler) get(w http.ResponseWriter, r *http.Request) error {
@@ -195,18 +168,12 @@ func (h *postHandler) get(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	post, err := h.postRepo.Find(id, true)
+	principal, _ := httpx.AuthenticatedPrincipal(r)
+	post, err := h.postUsecase.Get(commentActor(principal), id)
 	if err != nil {
-		return repoError(err, "查询帖子失败")
+		return transportError(err)
 	}
-	favorited := false
-	if principal, principalErr := httpx.AuthenticatedPrincipal(r); principalErr == nil {
-		favorited, err = h.favoriteRepo.Has(post.ID, principal.UserID)
-		if err != nil {
-			return repoError(err, "查询收藏状态失败")
-		}
-	}
-	render.JSON(w, r, newPostResponse(*post, favorited))
+	render.JSON(w, r, newPostResponse(post.Post, post.Favorited))
 	return nil
 }
 
@@ -217,26 +184,8 @@ type postInput struct {
 	TagIDs     []int64 `json:"tagIds"`
 }
 
-func (h *postHandler) validatePost(input postInput) error {
-	if input.CategoryID <= 0 {
-		return httpx.BadRequest("categoryId 必须为正整数")
-	}
-	if !validText(input.Title, 2, 100) {
-		return httpx.BadRequest("title 长度必须为 2 到 100 字")
-	}
-	if !validText(input.Content, 1, 20000) || utf8.RuneCountInString(input.Content) > 20000 {
-		return httpx.BadRequest("content 不能为空且不能超过 20000 字")
-	}
-	if !uniquePositiveIDs(input.TagIDs) {
-		return httpx.BadRequest("tagIds 必须为不重复的正整数")
-	}
-	if len(input.TagIDs) > 3 {
-		return httpx.BadRequest("一个帖子最多只能添加 3 个标签")
-	}
-	if err := checkDomainText(h.domains, "title", input.Title); err != nil {
-		return err
-	}
-	return checkDomainText(h.domains, "content", input.Content)
+func (input postInput) command() usecase.PostInput {
+	return usecase.PostInput{CategoryID: input.CategoryID, Title: input.Title, Content: input.Content, TagIDs: input.TagIDs}
 }
 
 func (h *postHandler) create(w http.ResponseWriter, r *http.Request) error {
@@ -244,48 +193,18 @@ func (h *postHandler) create(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if err := h.validatePost(input); err != nil {
-		return err
-	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if input.CategoryID == forumcategory.AnnouncementsID && !principal.IsAdmin() {
-		return httpx.Forbidden("站务公告仅管理员可以发帖")
-	}
-	post, err := h.postRepo.Create(repository.CreatePostInput{
-		CategoryID:     input.CategoryID,
-		Title:          strings.TrimSpace(input.Title),
-		Content:        input.Content,
-		TagIDs:         input.TagIDs,
-		AuthorID:       principal.UserID,
-		AuthorUsername: principal.Username,
-		Attr:           "{}",
-	})
+	post, err := h.postUsecase.Create(commentActor(principal), input.command())
 	if err != nil {
-		return repoError(err, "创建帖子失败")
+		return transportError(err)
 	}
 	render.Status(r, http.StatusCreated)
-	render.JSON(w, r, newPostResponse(*post, false))
+	render.JSON(w, r, newPostResponse(post.Post, post.Favorited))
 	return nil
 }
 
-func (h *postHandler) ownedPost(r *http.Request) (*repository.PostDetails, error) {
-	id, err := httpx.ParseParamPositiveInt(r, "id")
-	if err != nil {
-		return nil, err
-	}
-	post, err := h.postRepo.Find(id, false)
-	if err != nil {
-		return nil, repoError(err, "查询帖子失败")
-	}
-	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if post.AuthorID != principal.UserID && !principal.IsAdmin() {
-		return nil, httpx.Forbidden("只能修改自己的帖子")
-	}
-	return post, nil
-}
-
 func (h *postHandler) update(w http.ResponseWriter, r *http.Request) error {
-	ownedPost, err := h.ownedPost(r)
+	id, err := httpx.ParseParamPositiveInt(r, "id")
 	if err != nil {
 		return err
 	}
@@ -293,54 +212,36 @@ func (h *postHandler) update(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if err := h.validatePost(input); err != nil {
-		return err
-	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if input.CategoryID == forumcategory.AnnouncementsID && !principal.IsAdmin() {
-		return httpx.Forbidden("站务公告仅管理员可以发帖")
-	}
-	post, err := h.postRepo.Update(ownedPost.ID, repository.UpdatePostInput{
-		CategoryID: input.CategoryID,
-		Title:      strings.TrimSpace(input.Title),
-		Content:    input.Content,
-		TagIDs:     input.TagIDs,
-	})
+	post, err := h.postUsecase.Update(commentActor(principal), id, input.command())
 	if err != nil {
-		return repoError(err, "更新帖子失败")
+		return transportError(err)
 	}
-	favorited, favoriteErr := h.favoriteRepo.Has(post.ID, principal.UserID)
-	if favoriteErr != nil {
-		return repoError(favoriteErr, "查询收藏状态失败")
-	}
-	render.JSON(w, r, newPostResponse(*post, favorited))
+	render.JSON(w, r, newPostResponse(post.Post, post.Favorited))
 	return nil
 }
 
 func (h *postHandler) delete(w http.ResponseWriter, r *http.Request) error {
-	post, err := h.ownedPost(r)
+	id, err := httpx.ParseParamPositiveInt(r, "id")
 	if err != nil {
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if !principal.IsAdmin() && time.Now().After(post.CreatedAt.Add(20*time.Minute)) {
-		return httpx.Forbidden("帖子只能在发布后 20 分钟内删除")
-	}
-	if err := h.postRepo.SetStatus(post.ID, repository.StatusDeleted); err != nil {
-		return repoError(err, "删除帖子失败")
+	if err := h.postUsecase.Delete(commentActor(principal), id); err != nil {
+		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil
 }
 
 func (h *postHandler) setFavorite(w http.ResponseWriter, r *http.Request, favorite bool) error {
-	postID, err := httpx.ParseParamPositiveInt(r, "id")
+	id, err := httpx.ParseParamPositiveInt(r, "id")
 	if err != nil {
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.favoriteRepo.Set(postID, principal.UserID, favorite); err != nil {
-		return repoError(err, "更新收藏失败")
+	if err := h.postUsecase.SetFavorite(commentActor(principal), id, favorite); err != nil {
+		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil

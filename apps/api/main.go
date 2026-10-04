@@ -73,14 +73,15 @@ func main() {
 	commentRepo := repository.NewCommentRepository(db)
 	favoriteRepo := repository.NewFavoriteRepository(db)
 
+	postUsecase := usecase.NewPostUsecase(postRepo, favoriteRepo, domains)
 	commentUsecase := usecase.NewCommentUsecase(commentRepo, postRepo, domains, subjects)
 
 	// handler
 	categoryHandler := handler.NewCategoryHandler(tagRepo)
-	postHandler := handler.NewPostHandler(postRepo, favoriteRepo, commentUsecase, domains)
+	postHandler := handler.NewPostHandler(postUsecase, commentUsecase)
 	commentHandler := handler.NewCommentHandler(commentUsecase)
 	externalCommentHandler := handler.NewExternalCommentHandler(commentUsecase)
-	meHandler := handler.NewMeHandler(postRepo, favoriteRepo)
+	meHandler := handler.NewMeHandler(postUsecase)
 
 	// router
 	router := chi.NewRouter()

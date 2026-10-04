@@ -141,7 +141,8 @@ func postOrderBy(sort string) []OrderByClause {
 	}
 }
 
-func (r *postRepository) List(filter PostFilter, limit, offset int64) (int64, []PostDetails, error) {
+func (r *postRepository) List(filter PostFilter, limit, offset int64) (total int64, items []PostDetails, err error) {
+	defer func() { err = storageError(err, "post.List") }()
 	condition := filter.condition()
 	from := postFrom(filter)
 	countStmt := SELECT(COUNT(STAR)).FROM(from).WHERE(condition)
@@ -217,7 +218,8 @@ func (r *postRepository) Find(id int64, incrementViews bool) (result *PostDetail
 	return &PostDetails{Post: dest, Tags: tags}, nil
 }
 
-func (r *postRepository) Create(input CreatePostInput) (*PostDetails, error) {
+func (r *postRepository) Create(input CreatePostInput) (result *PostDetails, err error) {
+	defer func() { err = storageError(err, "post.Create") }()
 	if _, ok := forumcategory.FindByID(input.CategoryID); !ok {
 		return nil, ErrInvalidCategory
 	}
@@ -290,7 +292,8 @@ func replacePostTags(db qrm.DB, postID, categoryID int64, tagIDs []int64) error 
 	return err
 }
 
-func (r *postRepository) Update(id int64, input UpdatePostInput) (*PostDetails, error) {
+func (r *postRepository) Update(id int64, input UpdatePostInput) (result *PostDetails, err error) {
+	defer func() { err = storageError(err, "post.Update") }()
 	if _, ok := forumcategory.FindByID(input.CategoryID); !ok {
 		return nil, ErrInvalidCategory
 	}
@@ -320,21 +323,24 @@ func (r *postRepository) Update(id int64, input UpdatePostInput) (*PostDetails, 
 	return &PostDetails{Post: record, Tags: tags}, nil
 }
 
-func (r *postRepository) SetStatus(id int64, status int16) error {
+func (r *postRepository) SetStatus(id int64, status int16) (err error) {
+	defer func() { err = storageError(err, "post.SetStatus") }()
 	stmt := table.Post.UPDATE(table.Post.Status, table.Post.UpdatedAt).
 		SET(Int16(status), TimestampzT(time.Now())).
 		WHERE(table.Post.ID.EQ(Int64(id)))
 	return execPostUpdate(r.db, stmt)
 }
 
-func (r *postRepository) SetCommentsLocked(id int64, locked bool) error {
+func (r *postRepository) SetCommentsLocked(id int64, locked bool) (err error) {
+	defer func() { err = storageError(err, "post.SetCommentsLocked") }()
 	stmt := table.Post.UPDATE(table.Post.CommentsLocked, table.Post.UpdatedAt).
 		SET(Bool(locked), TimestampzT(time.Now())).
 		WHERE(table.Post.ID.EQ(Int64(id)))
 	return execPostUpdate(r.db, stmt)
 }
 
-func (r *postRepository) SetPinOrder(id int64, pinOrder *int32) error {
+func (r *postRepository) SetPinOrder(id int64, pinOrder *int32) (err error) {
+	defer func() { err = storageError(err, "post.SetPinOrder") }()
 	stmt := table.Post.UPDATE(table.Post.PinOrder, table.Post.UpdatedAt).
 		SET(pinOrder, TimestampzT(time.Now())).
 		WHERE(table.Post.ID.EQ(Int64(id)))

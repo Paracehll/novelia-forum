@@ -49,7 +49,7 @@ func (h *postHandler) listAdminPosts(w http.ResponseWriter, r *http.Request) err
 			filter.Status = int16(status)
 		}
 	}
-	return respondPosts(w, r, h.postRepo, h.favoriteRepo, filter)
+	return respondPosts(w, r, h.postUsecase.ListAdmin, filter)
 }
 
 type postStatusInput struct {
@@ -65,11 +65,9 @@ func (h *postHandler) setPostStatus(w http.ResponseWriter, r *http.Request) erro
 	if err != nil {
 		return err
 	}
-	if !validStatus(input.Status) {
-		return httpx.BadRequest("status 必须为 0、1 或 2")
-	}
-	if err := h.postRepo.SetStatus(id, input.Status); err != nil {
-		return repoError(err, "设置帖子状态失败")
+	principal, _ := httpx.AuthenticatedPrincipal(r)
+	if err := h.postUsecase.SetStatus(commentActor(principal), id, input.Status); err != nil {
+		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil
@@ -88,8 +86,9 @@ func (h *postHandler) setPostCommentsLocked(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		return err
 	}
-	if err := h.postRepo.SetCommentsLocked(id, locked); err != nil {
-		return repoError(err, "设置帖子评论锁定状态失败")
+	principal, _ := httpx.AuthenticatedPrincipal(r)
+	if err := h.postUsecase.SetCommentsLocked(commentActor(principal), id, locked); err != nil {
+		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil
@@ -108,8 +107,9 @@ func (h *postHandler) pinPost(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if err := h.postRepo.SetPinOrder(id, input.PinOrder); err != nil {
-		return repoError(err, "置顶帖子失败")
+	principal, _ := httpx.AuthenticatedPrincipal(r)
+	if err := h.postUsecase.SetPinOrder(commentActor(principal), id, input.PinOrder); err != nil {
+		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil
@@ -120,8 +120,9 @@ func (h *postHandler) unpinPost(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	if err := h.postRepo.SetPinOrder(id, nil); err != nil {
-		return repoError(err, "取消置顶帖子失败")
+	principal, _ := httpx.AuthenticatedPrincipal(r)
+	if err := h.postUsecase.SetPinOrder(commentActor(principal), id, nil); err != nil {
+		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil

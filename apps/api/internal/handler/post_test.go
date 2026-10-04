@@ -1,9 +1,9 @@
 package handler
 
 import (
-	"forum/internal/httpx"
 	"encoding/json"
 	"fmt"
+	"forum/internal/httpx"
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
 	"net/http"
@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"forum/internal/repository"
+	"forum/internal/usecase"
 )
 
 type listPostRepository struct {
@@ -46,8 +47,8 @@ func TestAdminPostListStatusFilter(t *testing.T) {
 		{"?status=1&status=2", 0, true},
 	} {
 		repo := &capturingPostRepository{}
-		h := NewPostHandler(repo, nil, nil, nil)
-		err := h.listAdminPosts(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/admin/post/"+tc.query, nil))
+		h := NewPostHandler(usecase.NewPostUsecase(repo, noFavoriteRepository{}, nil), nil)
+		err := h.listAdminPosts(httptest.NewRecorder(), adminPostRequest(t, "/admin/post/"+tc.query))
 		if (err != nil) != tc.wantError {
 			t.Fatalf("query %q: error=%v, wantError=%v", tc.query, err, tc.wantError)
 		}
@@ -75,8 +76,8 @@ func TestAdminPostListAuthorFilter(t *testing.T) {
 		{"?author_id=1&author_id=2", 0, true},
 	} {
 		repo := &capturingPostRepository{}
-		h := NewPostHandler(repo, nil, nil, nil)
-		err := h.listAdminPosts(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/admin/post/"+tc.query, nil))
+		h := NewPostHandler(usecase.NewPostUsecase(repo, noFavoriteRepository{}, nil), nil)
+		err := h.listAdminPosts(httptest.NewRecorder(), adminPostRequest(t, "/admin/post/"+tc.query))
 		if (err != nil) != tc.wantError {
 			t.Fatalf("query %q: error=%v, wantError=%v", tc.query, err, tc.wantError)
 		}
@@ -99,8 +100,8 @@ func TestAdminPostListAuthorNameFilter(t *testing.T) {
 		{"?author_name=alice&author_id=42&status=1", "alice"},
 	} {
 		repo := &capturingPostRepository{}
-		h := NewPostHandler(repo, nil, nil, nil)
-		err := h.listAdminPosts(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/admin/post/"+tc.query, nil))
+		h := NewPostHandler(usecase.NewPostUsecase(repo, noFavoriteRepository{}, nil), nil)
+		err := h.listAdminPosts(httptest.NewRecorder(), adminPostRequest(t, "/admin/post/"+tc.query))
 		if err != nil {
 			t.Fatalf("query %q: %v", tc.query, err)
 		}
@@ -114,7 +115,7 @@ func TestAdminPostListAuthorNameFilter(t *testing.T) {
 }
 
 func TestValidatePostTextLimits(t *testing.T) {
-	handler := &postHandler{}
+	posts := usecase.NewPostUsecase(&writePostRepository{}, nil, nil)
 	for _, tc := range []struct {
 		name    string
 		title   string
@@ -132,7 +133,7 @@ func TestValidatePostTextLimits(t *testing.T) {
 		{"long content with padding", "标题", strings.Repeat("文", 20000) + " ", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := handler.validatePost(postInput{CategoryID: 1, Title: tc.title, Content: tc.content})
+			_, err := posts.Create(usecase.Actor{UserID: 1}, usecase.PostInput{CategoryID: 1, Title: tc.title, Content: tc.content})
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("validatePost() error = %v, want error %v", err, tc.wantErr)
 			}
@@ -141,7 +142,7 @@ func TestValidatePostTextLimits(t *testing.T) {
 }
 
 func TestValidatePostTagLimit(t *testing.T) {
-	handler := &postHandler{}
+	posts := usecase.NewPostUsecase(&writePostRepository{}, nil, nil)
 	for _, tc := range []struct {
 		name    string
 		tagIDs  []int64
@@ -152,7 +153,7 @@ func TestValidatePostTagLimit(t *testing.T) {
 		{"four tags", []int64{1, 2, 3, 4}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := handler.validatePost(postInput{CategoryID: 1, Title: "标题", Content: "正文", TagIDs: tc.tagIDs})
+			_, err := posts.Create(usecase.Actor{UserID: 1}, usecase.PostInput{CategoryID: 1, Title: "标题", Content: "正文", TagIDs: tc.tagIDs})
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("validatePost() error = %v, want error %v", err, tc.wantErr)
 			}
@@ -170,7 +171,7 @@ func TestPostListOmitsContentAndDetailPreservesIt(t *testing.T) {
 	}}
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/post/", nil)
-	if err := respondPosts(recorder, request, listPostRepository{items: []repository.PostDetails{post}}, nil, repository.PostFilter{}); err != nil {
+	if err := respondPosts(recorder, request, usecase.NewPostUsecase(listPostRepository{items: []repository.PostDetails{post}}, nil, nil).List, repository.PostFilter{}); err != nil {
 		t.Fatal(err)
 	}
 	var response page[map[string]json.RawMessage]
@@ -232,6 +233,29 @@ func (r *writePostRepository) Update(id int64, input repository.UpdatePostInput)
 type noFavoriteRepository struct{ repository.FavoriteRepository }
 
 func (noFavoriteRepository) Has(int64, int64) (bool, error) { return false, nil }
+func (noFavoriteRepository) ListPostIDs(int64, []int64) (map[int64]bool, error) {
+	return map[int64]bool{}, nil
+}
+
+func adminPostRequest(t *testing.T, path string) *http.Request {
+	t.Helper()
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": "tester", "uid": 1, "role": "admin",
+	}).SignedString([]byte(httpx.AccessTokenSecret))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, path, nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	var authenticated *http.Request
+	httpx.OptionalAccessToken(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		authenticated = r
+	})).ServeHTTP(httptest.NewRecorder(), request)
+	if authenticated == nil {
+		t.Fatal("admin authentication failed")
+	}
+	return authenticated
+}
 
 func TestAnnouncementsPublishingRequiresAdmin(t *testing.T) {
 	for _, method := range []string{http.MethodPost, http.MethodPatch} {
@@ -240,7 +264,7 @@ func TestAnnouncementsPublishingRequiresAdmin(t *testing.T) {
 				t.Run(fmt.Sprintf("%s/%s/%d", method, role, categoryID), func(t *testing.T) {
 					repo := &writePostRepository{}
 					router := chi.NewRouter()
-					NewPostHandler(repo, noFavoriteRepository{}, nil, nil).RegisterRoutes(router)
+					NewPostHandler(usecase.NewPostUsecase(repo, noFavoriteRepository{}, nil), nil).RegisterRoutes(router)
 					path := "/"
 					wantStatus := http.StatusCreated
 					if method == http.MethodPatch {
@@ -308,7 +332,7 @@ func TestPostDeletionWindow(t *testing.T) {
 				ID: 42, AuthorID: 1, CreatedAt: time.Now().Add(-tc.age),
 			}}}
 			router := chi.NewRouter()
-			NewPostHandler(repo, nil, nil, nil).RegisterRoutes(router)
+			NewPostHandler(usecase.NewPostUsecase(repo, noFavoriteRepository{}, nil), nil).RegisterRoutes(router)
 			token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 				"sub": "tester", "uid": tc.userID, "role": tc.role,
 			}).SignedString([]byte(httpx.AccessTokenSecret))
