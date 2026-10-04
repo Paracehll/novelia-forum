@@ -48,3 +48,23 @@ func (p Post) IsOwnedBy(userID int64) bool {
 func (p Post) WithinDeletionWindow(now time.Time) bool {
 	return !now.After(p.CreatedAt.Add(20 * time.Minute))
 }
+
+// PostListItem contains only the metadata needed by post lists. It deliberately
+// does not embed Post, so a list can never expose the post content.
+type PostListItem struct {
+	ID             int64
+	CategoryID     int64
+	Title          string
+	AuthorID       int64
+	AuthorUsername string
+	Status         PostStatus
+	ViewsCount     int32
+	CommentsCount  int32
+	CommentsLocked bool
+	PinOrder       *int32
+	Favorited      bool
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	ActiveAt       time.Time
+	Tags           []PostTag
+}

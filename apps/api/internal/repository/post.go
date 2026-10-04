@@ -45,7 +45,7 @@ type UpdatePostInput struct {
 }
 
 type PostRepository interface {
-	List(filter PostFilter, limit, offset int64) (int64, []domain.Post, error)
+	List(filter PostFilter, limit, offset int64) (int64, []domain.PostListItem, error)
 	Find(id int64, incrementViews bool) (*domain.Post, error)
 	ExistsPublished(id int64) (bool, error)
 	Create(input CreatePostInput) (*domain.Post, error)
@@ -66,10 +66,6 @@ func NewPostRepository(db *sql.DB, tagRepo TagRepository) PostRepository {
 
 // postFromModel keeps generated database models behind the repository boundary.
 func postFromModel(record model.Post, tags []Tag) domain.Post {
-	postTags := make([]domain.PostTag, len(tags))
-	for i, tag := range tags {
-		postTags[i] = domain.PostTag{ID: tag.ID, Name: tag.Name, Color: tag.Color}
-	}
 	return domain.Post{
 		ID: record.ID, CategoryID: record.CategoryID, Title: record.Title,
 		AuthorID: record.AuthorID, AuthorUsername: record.AuthorUsername,
@@ -77,8 +73,28 @@ func postFromModel(record model.Post, tags []Tag) domain.Post {
 		ViewsCount: record.ViewsCount, CommentsCount: record.CommentsCount,
 		CommentsLocked: record.CommentsLocked, PinOrder: record.PinOrder,
 		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, ActiveAt: record.ActiveAt,
-		Tags: postTags,
+		Tags: postTagsFromModels(tags),
 	}
+}
+
+func postListItemFromModel(record model.Post, tags []Tag) domain.PostListItem {
+	return domain.PostListItem{
+		ID: record.ID, CategoryID: record.CategoryID, Title: record.Title,
+		AuthorID: record.AuthorID, AuthorUsername: record.AuthorUsername,
+		Status:     domain.PostStatus(record.Status),
+		ViewsCount: record.ViewsCount, CommentsCount: record.CommentsCount,
+		CommentsLocked: record.CommentsLocked, PinOrder: record.PinOrder,
+		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, ActiveAt: record.ActiveAt,
+		Tags: postTagsFromModels(tags),
+	}
+}
+
+func postTagsFromModels(tags []Tag) []domain.PostTag {
+	postTags := make([]domain.PostTag, len(tags))
+	for i, tag := range tags {
+		postTags[i] = domain.PostTag{ID: tag.ID, Name: tag.Name, Color: tag.Color}
+	}
+	return postTags
 }
 
 func integerExpressions(ids []int64) []Expression {
@@ -152,7 +168,7 @@ func postOrderBy(sort string) []OrderByClause {
 	}
 }
 
-func (r *postRepository) List(filter PostFilter, limit, offset int64) (total int64, items []domain.Post, err error) {
+func (r *postRepository) List(filter PostFilter, limit, offset int64) (total int64, items []domain.PostListItem, err error) {
 	defer func() { err = storageError(err, "post.List") }()
 	condition := filter.condition()
 	from := postFrom(filter)
@@ -185,9 +201,9 @@ func (r *postRepository) List(filter PostFilter, limit, offset int64) (total int
 	if err != nil {
 		return 0, nil, err
 	}
-	dest := make([]domain.Post, len(records))
+	dest := make([]domain.PostListItem, len(records))
 	for i, record := range records {
-		dest[i] = postFromModel(record, tagsByPostID[record.ID])
+		dest[i] = postListItemFromModel(record, tagsByPostID[record.ID])
 	}
 	return count.Count, dest, nil
 }

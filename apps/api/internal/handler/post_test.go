@@ -19,7 +19,7 @@ import (
 
 type listPostRepository struct {
 	repository.PostRepository
-	items []domain.Post
+	items []domain.PostListItem
 }
 
 type capturingPostRepository struct {
@@ -27,7 +27,7 @@ type capturingPostRepository struct {
 	filter repository.PostFilter
 }
 
-func (r *capturingPostRepository) List(filter repository.PostFilter, _, _ int64) (int64, []domain.Post, error) {
+func (r *capturingPostRepository) List(filter repository.PostFilter, _, _ int64) (int64, []domain.PostListItem, error) {
 	r.filter = filter
 	return 0, nil, nil
 }
@@ -162,17 +162,31 @@ func TestValidatePostTagLimit(t *testing.T) {
 	}
 }
 
-func (r listPostRepository) List(repository.PostFilter, int64, int64) (int64, []domain.Post, error) {
+func (r listPostRepository) List(repository.PostFilter, int64, int64) (int64, []domain.PostListItem, error) {
 	return int64(len(r.items)), r.items, nil
 }
 
 func TestPostListOmitsContentAndDetailPreservesIt(t *testing.T) {
+	pinOrder := int32(1)
+	createdAt := time.Date(2026, time.January, 1, 12, 0, 0, 0, time.UTC)
 	post := domain.Post{
-		ID: 42, Title: "标题", Content: "完整正文", AuthorUsername: "alice", CommentsCount: 3,
+		ID: 42, CategoryID: 1, Title: "标题", Content: "完整正文",
+		AuthorID: 7, AuthorUsername: "alice", Status: domain.PostStatusPublished,
+		ViewsCount: 10, CommentsCount: 3, CommentsLocked: true, PinOrder: &pinOrder,
+		CreatedAt: createdAt, UpdatedAt: createdAt.Add(time.Hour), ActiveAt: createdAt.Add(2 * time.Hour),
+		Tags: []domain.PostTag{{ID: 2, Name: "标签", Color: 3}},
+	}
+	listItem := domain.PostListItem{
+		ID: post.ID, CategoryID: post.CategoryID, Title: post.Title,
+		AuthorID: post.AuthorID, AuthorUsername: post.AuthorUsername, Status: post.Status,
+		ViewsCount: post.ViewsCount, CommentsCount: post.CommentsCount,
+		CommentsLocked: post.CommentsLocked, PinOrder: post.PinOrder,
+		CreatedAt: post.CreatedAt, UpdatedAt: post.UpdatedAt, ActiveAt: post.ActiveAt,
+		Tags: post.Tags,
 	}
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/post/", nil)
-	if err := respondPosts(recorder, request, usecase.NewPostUsecase(listPostRepository{items: []domain.Post{post}}, nil, nil).List, repository.PostFilter{}); err != nil {
+	if err := respondPosts(recorder, request, usecase.NewPostUsecase(listPostRepository{items: []domain.PostListItem{listItem}}, nil, nil).List, repository.PostFilter{}); err != nil {
 		t.Fatal(err)
 	}
 	var response page[map[string]json.RawMessage]

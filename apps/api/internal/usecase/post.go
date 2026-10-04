@@ -40,8 +40,16 @@ type PostUsecase struct {
 	domains      *domainfilter.Filter
 }
 
-func NewPostUsecase(postRepo repository.PostRepository, favoriteRepo repository.FavoriteRepository, domains *domainfilter.Filter) *PostUsecase {
-	return &PostUsecase{postRepo: postRepo, favoriteRepo: favoriteRepo, domains: domains}
+func NewPostUsecase(
+	postRepo repository.PostRepository,
+	favoriteRepo repository.FavoriteRepository,
+	domains *domainfilter.Filter,
+) *PostUsecase {
+	return &PostUsecase{
+		postRepo:     postRepo,
+		favoriteRepo: favoriteRepo,
+		domains:      domains,
+	}
 }
 
 type PostResult struct {
@@ -63,11 +71,11 @@ func publicPostQuery(query ListPostsQuery) ListPostsQuery {
 	return query
 }
 
-func (u *PostUsecase) List(actor Actor, query ListPostsQuery) (int64, []PostResult, error) {
+func (u *PostUsecase) List(actor Actor, query ListPostsQuery) (int64, []domain.PostListItem, error) {
 	return u.list(actor, publicPostQuery(query))
 }
 
-func (u *PostUsecase) ListAdmin(actor Actor, query ListPostsQuery) (int64, []PostResult, error) {
+func (u *PostUsecase) ListAdmin(actor Actor, query ListPostsQuery) (int64, []domain.PostListItem, error) {
 	if err := checkPostAdmin(actor); err != nil {
 		return 0, nil, err
 	}
@@ -81,7 +89,7 @@ func (u *PostUsecase) ListAdmin(actor Actor, query ListPostsQuery) (int64, []Pos
 	return u.list(actor, query)
 }
 
-func (u *PostUsecase) ListMine(actor Actor, query ListPostsQuery) (int64, []PostResult, error) {
+func (u *PostUsecase) ListMine(actor Actor, query ListPostsQuery) (int64, []domain.PostListItem, error) {
 	if actor.UserID <= 0 {
 		return 0, nil, PermissionDenied(CodePostAuthRequired, "需要登录")
 	}
@@ -90,7 +98,7 @@ func (u *PostUsecase) ListMine(actor Actor, query ListPostsQuery) (int64, []Post
 	return u.list(actor, query)
 }
 
-func (u *PostUsecase) ListFavorites(actor Actor, query ListPostsQuery) (int64, []PostResult, error) {
+func (u *PostUsecase) ListFavorites(actor Actor, query ListPostsQuery) (int64, []domain.PostListItem, error) {
 	if actor.UserID <= 0 {
 		return 0, nil, PermissionDenied(CodePostAuthRequired, "需要登录")
 	}
@@ -99,7 +107,7 @@ func (u *PostUsecase) ListFavorites(actor Actor, query ListPostsQuery) (int64, [
 	return u.list(actor, query)
 }
 
-func (u *PostUsecase) list(actor Actor, query ListPostsQuery) (int64, []PostResult, error) {
+func (u *PostUsecase) list(actor Actor, query ListPostsQuery) (int64, []domain.PostListItem, error) {
 	if query.Limit <= 0 || query.Limit > 100 || query.Offset < 0 {
 		return 0, nil, Invalid(CodePostPaginationInvalid, "limit 必须为 1 到 100，offset 不能为负数")
 	}
@@ -130,11 +138,10 @@ func (u *PostUsecase) list(actor Actor, query ListPostsQuery) (int64, []PostResu
 			return 0, nil, postError(err, "post.list_favorites")
 		}
 	}
-	results := make([]PostResult, len(posts))
-	for i, post := range posts {
-		results[i] = PostResult{Post: post, Favorited: favorites[post.ID]}
+	for i := range posts {
+		posts[i].Favorited = favorites[posts[i].ID]
 	}
-	return total, results, nil
+	return total, posts, nil
 }
 
 func (u *PostUsecase) Get(actor Actor, id int64) (*PostResult, error) {

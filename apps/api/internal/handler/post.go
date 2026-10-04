@@ -45,13 +45,21 @@ type postResponse struct {
 }
 
 func newPostResponse(value domain.Post, favorited bool) postResponse {
+	metadata := domain.PostListItem{
+		ID: value.ID, CategoryID: value.CategoryID, Title: value.Title,
+		AuthorID: value.AuthorID, AuthorUsername: value.AuthorUsername, Status: value.Status,
+		ViewsCount: value.ViewsCount, CommentsCount: value.CommentsCount,
+		CommentsLocked: value.CommentsLocked, PinOrder: value.PinOrder,
+		CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt, ActiveAt: value.ActiveAt,
+		Tags: value.Tags, Favorited: favorited,
+	}
 	return postResponse{
-		postListItemResponse: newPostListItemResponse(value, favorited),
+		postListItemResponse: newPostListItemResponse(metadata),
 		Content:              value.Content,
 	}
 }
 
-func newPostListItemResponse(value domain.Post, favorited bool) postListItemResponse {
+func newPostListItemResponse(value domain.PostListItem) postListItemResponse {
 	tags := make([]postTagResponse, len(value.Tags))
 	for i, tag := range value.Tags {
 		tags[i] = postTagResponse{
@@ -71,7 +79,7 @@ func newPostListItemResponse(value domain.Post, favorited bool) postListItemResp
 		CommentsCount:  value.CommentsCount,
 		CommentsLocked: value.CommentsLocked,
 		PinOrder:       value.PinOrder,
-		Favorited:      favorited,
+		Favorited:      value.Favorited,
 		CreatedAt:      value.CreatedAt,
 		UpdatedAt:      value.UpdatedAt,
 		ActiveAt:       value.ActiveAt,
@@ -133,7 +141,7 @@ func postFilterFrom(r *http.Request) (repository.PostFilter, error) {
 	return filter, nil
 }
 
-type postListFunc func(usecase.Actor, usecase.ListPostsQuery) (int64, []usecase.PostResult, error)
+type postListFunc func(usecase.Actor, usecase.ListPostsQuery) (int64, []domain.PostListItem, error)
 
 func respondPosts(w http.ResponseWriter, r *http.Request, list postListFunc, filter repository.PostFilter) error {
 	pagination, err := parsePagination(r.URL.Query(), 20, 100)
@@ -149,7 +157,7 @@ func respondPosts(w http.ResponseWriter, r *http.Request, list postListFunc, fil
 	}
 	response := make([]postListItemResponse, len(items))
 	for i, item := range items {
-		response[i] = newPostListItemResponse(item.Post, item.Favorited)
+		response[i] = newPostListItemResponse(item)
 	}
 	render.JSON(w, r, page[postListItemResponse]{Total: total, Items: response})
 	return nil

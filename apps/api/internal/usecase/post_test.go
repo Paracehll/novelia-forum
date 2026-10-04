@@ -15,6 +15,7 @@ import (
 type postUsecaseRepoStub struct {
 	repository.PostRepository
 	post           domain.Post
+	listItem       domain.PostListItem
 	filter         repository.PostFilter
 	input          repository.CreatePostInput
 	writes         int
@@ -22,9 +23,9 @@ type postUsecaseRepoStub struct {
 	err            error
 }
 
-func (r *postUsecaseRepoStub) List(filter repository.PostFilter, _, _ int64) (int64, []domain.Post, error) {
+func (r *postUsecaseRepoStub) List(filter repository.PostFilter, _, _ int64) (int64, []domain.PostListItem, error) {
 	r.filter = filter
-	return 1, []domain.Post{r.post}, r.err
+	return 1, []domain.PostListItem{r.listItem}, r.err
 }
 func (r *postUsecaseRepoStub) Find(_ int64, increment bool) (*domain.Post, error) {
 	r.incrementViews = increment
@@ -67,7 +68,7 @@ func (r *postUsecaseFavoriteStub) Has(_ int64, userID int64) (bool, error) {
 func TestPostListScopes(t *testing.T) {
 	for _, mode := range []string{"public", "mine", "favorites", "admin"} {
 		t.Run(mode, func(t *testing.T) {
-			repo := &postUsecaseRepoStub{post: domain.Post{ID: 5}}
+			repo := &postUsecaseRepoStub{listItem: domain.PostListItem{ID: 5}}
 			favorites := &postUsecaseFavoriteStub{}
 			u := NewPostUsecase(repo, favorites, nil)
 			actor := Actor{UserID: 7, IsAdmin: true}
@@ -75,7 +76,7 @@ func TestPostListScopes(t *testing.T) {
 				Status: repository.PostStatusAll, AuthorName: "someone", AuthorID: 99, FavoriteUserID: 88,
 			}}
 			var total int64
-			var items []PostResult
+			var items []domain.PostListItem
 			var err error
 			switch mode {
 			case "public":

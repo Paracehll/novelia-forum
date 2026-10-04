@@ -132,10 +132,6 @@ func TestJetRepositories(t *testing.T) {
 		t.Fatalf("unexpected posts: total=%d items=%d", total, len(posts))
 	}
 
-	if posts[0].Content != "" {
-		t.Fatal("list loaded content")
-	}
-
 	viewed, err := postRepo.Find(post.ID, true)
 	if err != nil {
 		t.Fatal(err)
