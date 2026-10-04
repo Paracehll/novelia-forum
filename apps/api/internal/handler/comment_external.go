@@ -227,7 +227,8 @@ func (h *externalCommentHandler) setStatus(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		return err
 	}
-	if err := h.commentUsecase.SetExternalStatus(usecase.SetExternalCommentStatusCommand{
+	principal, _ := httpx.AuthenticatedPrincipal(r)
+	if err := h.commentUsecase.SetExternalStatus(commentActor(principal), usecase.SetExternalCommentStatusCommand{
 		Kind:      chi.URLParam(r, "type"),
 		CommentID: id,
 		Status:    status,

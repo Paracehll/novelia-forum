@@ -36,7 +36,8 @@ func (h *commentHandler) setStatus(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
-	if err := h.commentUsecase.SetStatus(usecase.SetCommentStatusCommand{
+	principal, _ := httpx.AuthenticatedPrincipal(r)
+	if err := h.commentUsecase.SetStatus(commentActor(principal), usecase.SetCommentStatusCommand{
 		SubjectType: domain.CommentSubjectPost,
 		CommentID:   id,
 		Status:      status,
@@ -52,7 +53,8 @@ func (h *commentHandler) deleteAllByAuthor(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		return err
 	}
-	if err := h.commentUsecase.DeleteAllByAuthor(usecase.DeleteCommentsByAuthorCommand{AuthorID: authorID}); err != nil {
+	principal, _ := httpx.AuthenticatedPrincipal(r)
+	if err := h.commentUsecase.DeleteAllByAuthor(commentActor(principal), usecase.DeleteCommentsByAuthorCommand{AuthorID: authorID}); err != nil {
 		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -94,7 +96,8 @@ func (h *commentHandler) listAdmin(w http.ResponseWriter, r *http.Request) error
 			filter.Status = &value
 		}
 	}
-	total, items, err := h.commentUsecase.ListAdmin(filter)
+	principal, _ := httpx.AuthenticatedPrincipal(r)
+	total, items, err := h.commentUsecase.ListAdmin(commentActor(principal), filter)
 	if err != nil {
 		return transportError(err)
 	}

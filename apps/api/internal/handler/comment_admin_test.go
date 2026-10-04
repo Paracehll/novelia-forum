@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"forum/internal/domain"
@@ -28,7 +29,59 @@ func (r *adminCommentRepository) ListAdmin(filter repository.CommentFilter, limi
 	return 1, []domain.Comment{{ID: 5, SubjectKey: "42", SubjectType: domain.CommentSubjectPost, Content: "隐藏评论原文", Status: domain.CommentStatusHidden}}, nil
 }
 
+func (r *adminCommentRepository) SetStatus(domain.CommentSubjectType, int64, domain.CommentStatus) error {
+	r.called = true
+	return nil
+}
+
+func (r *adminCommentRepository) DeleteAllByAuthor(int64) error {
+	r.called = true
+	return nil
+}
+
 func commentStatus(value domain.CommentStatus) *domain.CommentStatus { return &value }
+
+func TestCommentAdminHandlersPassActor(t *testing.T) {
+	for _, route := range []struct {
+		name, method, path, body string
+		wantStatus               int
+	}{
+		{"list", http.MethodGet, "/admin/comment/", "", http.StatusOK},
+		{"set status", http.MethodPut, "/admin/comment/7/status", `{"status":"hidden"}`, http.StatusNoContent},
+		{"delete by author", http.MethodDelete, "/admin/comment/author/1", "", http.StatusNoContent},
+		{"set external status", http.MethodPut, "/external/comment/novel/7/status", `{"status":"hidden"}`, http.StatusNoContent},
+	} {
+		for _, role := range []string{"member", "admin"} {
+			t.Run(route.name+"/"+role, func(t *testing.T) {
+				repo := &adminCommentRepository{}
+				u := usecase.NewCommentUsecase(repo, nil, nil, handlerSubjectResolver{valid: true, exists: true})
+				router := chi.NewRouter()
+				router.Use(httpx.OptionalAccessToken)
+				// Deliberately omit the admin group's middleware to exercise usecase authorization.
+				router.Route("/admin/comment", NewCommentHandler(u).RegisterAdminRoutes)
+				router.Route("/external/comment", NewExternalCommentHandler(u).RegisterRoutes)
+				token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": "tester", "uid": 1, "role": role}).SignedString([]byte(httpx.AccessTokenSecret))
+				if err != nil {
+					t.Fatal(err)
+				}
+				request := httptest.NewRequest(route.method, route.path, strings.NewReader(route.body))
+				request.Header.Set("Authorization", "Bearer "+token)
+				if route.body != "" {
+					request.Header.Set("Content-Type", "application/json")
+				}
+				recorder := httptest.NewRecorder()
+				router.ServeHTTP(recorder, request)
+				wantStatus := http.StatusForbidden
+				if role == "admin" {
+					wantStatus = route.wantStatus
+				}
+				if recorder.Code != wantStatus || repo.called != (role == "admin") {
+					t.Fatalf("status=%d want=%d called=%t body=%s", recorder.Code, wantStatus, repo.called, recorder.Body.String())
+				}
+			})
+		}
+	}
+}
 
 func TestAdminCommentList(t *testing.T) {
 	for _, tc := range []struct {

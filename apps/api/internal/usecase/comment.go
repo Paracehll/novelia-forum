@@ -16,6 +16,7 @@ import (
 const (
 	CodeCommentContentInvalid     = "comment.content_invalid"
 	CodeCommentNotOwner           = "comment.not_owner"
+	CodeCommentAdminRequired      = "comment.admin_required"
 	CodeCommentEditExpired        = "comment.edit_expired"
 	CodeCommentNotFound           = "comment.not_found"
 	CodeCommentLocked             = "comment.locked"
@@ -67,7 +68,17 @@ type ListAdminCommentsQuery struct {
 	Offset     int64
 }
 
-func (u *CommentUsecase) ListAdmin(query ListAdminCommentsQuery) (int64, []domain.Comment, error) {
+func checkCommentAdmin(actor Actor) error {
+	if !actor.IsAdmin {
+		return Forbidden(CodeCommentAdminRequired, "需要管理员权限")
+	}
+	return nil
+}
+
+func (u *CommentUsecase) ListAdmin(actor Actor, query ListAdminCommentsQuery) (int64, []domain.Comment, error) {
+	if err := checkCommentAdmin(actor); err != nil {
+		return 0, nil, err
+	}
 	filter := repository.CommentFilter{
 		Search:     query.Search,
 		AuthorName: query.AuthorName,
@@ -347,7 +358,10 @@ type SetCommentStatusCommand struct {
 	Status      domain.CommentStatus
 }
 
-func (u *CommentUsecase) SetStatus(command SetCommentStatusCommand) error {
+func (u *CommentUsecase) SetStatus(actor Actor, command SetCommentStatusCommand) error {
+	if err := checkCommentAdmin(actor); err != nil {
+		return err
+	}
 	err := u.commentRepo.SetStatus(command.SubjectType, command.CommentID, command.Status)
 	switch {
 	case err == nil:
@@ -363,7 +377,10 @@ type DeleteCommentsByAuthorCommand struct {
 	AuthorID int64
 }
 
-func (u *CommentUsecase) DeleteAllByAuthor(command DeleteCommentsByAuthorCommand) error {
+func (u *CommentUsecase) DeleteAllByAuthor(actor Actor, command DeleteCommentsByAuthorCommand) error {
+	if err := checkCommentAdmin(actor); err != nil {
+		return err
+	}
 	if err := u.commentRepo.DeleteAllByAuthor(command.AuthorID); err != nil {
 		return fmt.Errorf("comment.delete_by_author: %w", err)
 	}
@@ -472,12 +489,15 @@ type SetExternalCommentStatusCommand struct {
 	Status    domain.CommentStatus
 }
 
-func (u *CommentUsecase) SetExternalStatus(command SetExternalCommentStatusCommand) error {
+func (u *CommentUsecase) SetExternalStatus(actor Actor, command SetExternalCommentStatusCommand) error {
+	if err := checkCommentAdmin(actor); err != nil {
+		return err
+	}
 	subjectType, err := u.externalSubjectType(command.Kind)
 	if err != nil {
 		return err
 	}
-	return u.SetStatus(SetCommentStatusCommand{
+	return u.SetStatus(actor, SetCommentStatusCommand{
 		SubjectType: subjectType,
 		CommentID:   command.CommentID,
 		Status:      command.Status,
