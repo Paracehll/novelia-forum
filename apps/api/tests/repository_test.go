@@ -3,9 +3,10 @@
 package tests
 
 import (
-	forumcategory "forum/internal/category"
-	"forum/internal/repository"
 	"errors"
+	forumcategory "forum/internal/category"
+	"forum/internal/domain"
+	"forum/internal/repository"
 	"testing"
 )
 
@@ -81,14 +82,13 @@ func TestJetRepositories(t *testing.T) {
 	if len(post.Tags) != 1 || post.Tags[0].ID != tag.ID {
 		t.Fatalf("unexpected tags: %#v", post.Tags)
 	}
-	const otherSubjectType int16 = 1
-	otherSubjectComment, err := commentRepo.Create(repository.CreateCommentInput{
+	const otherSubjectType = domain.CommentSubjectNovel
+	otherSubjectComment, err := commentRepo.Create(domain.Comment{
 		SubjectType:    otherSubjectType,
 		SubjectKey:     "novel:chapter-1",
 		Content:        "其他主体评论",
 		AuthorID:       8,
 		AuthorUsername: "bob",
-		Attr:           `{}`,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +97,7 @@ func TestJetRepositories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if otherTotal != 1 || len(otherComments) != 1 || otherComments[0].SubjectKey != "novel:chapter-1" {
+	if otherTotal != 1 || len(otherComments) != 1 || otherComments[0].Root.SubjectKey != "novel:chapter-1" {
 		t.Fatalf("unexpected external comments: total=%d items=%#v", otherTotal, otherComments)
 	}
 	var commentsCount int32
@@ -107,14 +107,14 @@ func TestJetRepositories(t *testing.T) {
 	if commentsCount != 0 {
 		t.Fatalf("post comments count changed after creating a non-post comment: %d", commentsCount)
 	}
-	if err := commentRepo.SetStatus(otherSubjectType, otherSubjectComment.ID, repository.StatusDeleted); err != nil {
+	if err := commentRepo.SetStatus(otherSubjectType, otherSubjectComment.ID, domain.CommentStatusDeleted); err != nil {
 		t.Fatal(err)
 	}
 	otherTotal, otherComments, err = commentRepo.ListRoots(otherSubjectType, "novel:chapter-1", 20, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if otherTotal != 1 || len(otherComments) != 1 || otherComments[0].Status != repository.StatusDeleted {
+	if otherTotal != 1 || len(otherComments) != 1 || otherComments[0].Root.Status != domain.CommentStatusDeleted {
 		t.Fatalf("deleted external comment missing: total=%d items=%#v", otherTotal, otherComments)
 	}
 	if err := testDB.QueryRow("SELECT comments_count FROM post WHERE id = $1", post.ID).Scan(&commentsCount); err != nil {
@@ -147,40 +147,45 @@ func TestJetRepositories(t *testing.T) {
 		t.Fatalf("views count = %d", viewed.ViewsCount)
 	}
 
-	root, err := commentRepo.Create(repository.CreateCommentInput{
-		SubjectType:    repository.CommentSubjectPost,
-		SubjectKey:     repository.PostSubjectKey(post.ID),
+	root, err := commentRepo.Create(domain.Comment{
+		SubjectType:    domain.CommentSubjectPost,
+		SubjectKey:     domain.PostCommentSubjectKey(post.ID),
 		Content:        "评论",
 		AuthorID:       8,
 		AuthorUsername: "bob",
-		Attr:           `{}`,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if root.SubjectType != repository.CommentSubjectPost || root.SubjectKey != repository.PostSubjectKey(post.ID) {
+	if root.SubjectType != domain.CommentSubjectPost || root.SubjectKey != domain.PostCommentSubjectKey(post.ID) {
 		t.Fatalf("unexpected comment subject: type=%d key=%s", root.SubjectType, root.SubjectKey)
 	}
-	_, err = commentRepo.Create(repository.CreateCommentInput{
-		SubjectType:    repository.CommentSubjectPost,
-		SubjectKey:     repository.PostSubjectKey(post.ID),
+	var commentAttr string
+	if err := testDB.QueryRow("SELECT attr FROM comment WHERE id = $1", root.ID).Scan(&commentAttr); err != nil {
+		t.Fatal(err)
+	}
+	if commentAttr != "{}" {
+		t.Fatalf("comment attr = %q, want repository default", commentAttr)
+	}
+	_, err = commentRepo.Create(domain.Comment{
+		SubjectType:    domain.CommentSubjectPost,
+		SubjectKey:     domain.PostCommentSubjectKey(post.ID),
 		RootID:         &root.ID,
 		Content:        "回复",
 		AuthorID:       7,
 		AuthorUsername: "alice",
-		Attr:           `{}`,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	commentTotal, comments, err := commentRepo.ListRoots(repository.CommentSubjectPost, repository.PostSubjectKey(post.ID), 20, 0)
+	commentTotal, comments, err := commentRepo.ListRoots(domain.CommentSubjectPost, domain.PostCommentSubjectKey(post.ID), 20, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if commentTotal != 1 || len(comments) != 1 || comments[0].ReplyCount != 1 {
 		t.Fatalf("unexpected comments: total=%d items=%d", commentTotal, len(comments))
 	}
-	replyTotal, replies, err := commentRepo.ListReplies(repository.CommentSubjectPost, repository.PostSubjectKey(post.ID), root.ID, 20, 0)
+	replyTotal, replies, err := commentRepo.ListReplies(domain.CommentSubjectPost, domain.PostCommentSubjectKey(post.ID), root.ID, 20, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,33 +221,32 @@ func TestJetRepositories(t *testing.T) {
 	if err := postRepo.SetCommentsLocked(post.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	_, err = commentRepo.Create(repository.CreateCommentInput{
-		SubjectType:    repository.CommentSubjectPost,
-		SubjectKey:     repository.PostSubjectKey(post.ID),
+	_, err = commentRepo.Create(domain.Comment{
+		SubjectType:    domain.CommentSubjectPost,
+		SubjectKey:     domain.PostCommentSubjectKey(post.ID),
 		Content:        "blocked",
 		AuthorID:       9,
 		AuthorUsername: "carol",
-		Attr:           `{}`,
 	})
 	if !errors.Is(err, repository.ErrCommentsLocked) {
 		t.Fatalf("got %v, want ErrCommentsLocked", err)
 	}
-	for _, status := range []int16{repository.StatusHidden, repository.StatusDeleted} {
-		if err := commentRepo.SetStatus(repository.CommentSubjectPost, root.ID, status); err != nil {
+	for _, status := range []domain.CommentStatus{domain.CommentStatusHidden, domain.CommentStatusDeleted} {
+		if err := commentRepo.SetStatus(domain.CommentSubjectPost, root.ID, status); err != nil {
 			t.Fatal(err)
 		}
-		total, items, err := commentRepo.ListRoots(repository.CommentSubjectPost, repository.PostSubjectKey(post.ID), 1, 0)
+		total, items, err := commentRepo.ListRoots(domain.CommentSubjectPost, domain.PostCommentSubjectKey(post.ID), 1, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if total != 1 || len(items) != 1 || items[0].ID != root.ID || items[0].Status != status || items[0].ReplyCount != 1 {
+		if total != 1 || len(items) != 1 || items[0].Root.ID != root.ID || items[0].Root.Status != status || items[0].ReplyCount != 1 {
 			t.Fatalf("moderation changed root pagination: total=%d items=%#v", total, items)
 		}
-		replyTotal, replies, err := commentRepo.ListReplies(repository.CommentSubjectPost, repository.PostSubjectKey(post.ID), root.ID, 1, 0)
+		replyTotal, replies, err := commentRepo.ListReplies(domain.CommentSubjectPost, domain.PostCommentSubjectKey(post.ID), root.ID, 1, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if replyTotal != 1 || len(replies) != 1 || replies[0].Status != repository.StatusPublished {
+		if replyTotal != 1 || len(replies) != 1 || replies[0].Status != domain.CommentStatusPublished {
 			t.Fatalf("moderation changed reply pagination: total=%d items=%#v", replyTotal, replies)
 		}
 	}

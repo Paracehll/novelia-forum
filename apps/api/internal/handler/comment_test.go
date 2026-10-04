@@ -23,15 +23,15 @@ type listingCommentRepository struct {
 	rootID int64
 }
 
-func (r *listingCommentRepository) ListRoots(_ int16, subjectKey string, limit, offset int64) (int64, []repository.CommentThread, error) {
-	return 1, []repository.CommentThread{{
-		Comment:    repository.Comment{ID: r.rootID, SubjectKey: subjectKey, Content: "一级评论"},
+func (r *listingCommentRepository) ListRoots(_ domain.CommentSubjectType, subjectKey string, limit, offset int64) (int64, []domain.CommentThreadPreview, error) {
+	return 1, []domain.CommentThreadPreview{{
+		Root:       domain.Comment{ID: r.rootID, SubjectKey: subjectKey, Content: "一级评论"},
 		ReplyCount: 2,
 	}}, nil
 }
 
-func (r *listingCommentRepository) ListReplies(_ int16, subjectKey string, rootID, limit, offset int64) (int64, []repository.Comment, error) {
-	return 2, []repository.Comment{{
+func (r *listingCommentRepository) ListReplies(_ domain.CommentSubjectType, subjectKey string, rootID, limit, offset int64) (int64, []domain.Comment, error) {
+	return 2, []domain.Comment{{
 		ID: 9, SubjectKey: subjectKey, RootID: &rootID, Content: "二级评论",
 	}}, nil
 }
@@ -74,23 +74,23 @@ func TestExternalCommentRepliesArePaginatedSeparately(t *testing.T) {
 
 type editableCommentRepository struct {
 	repository.CommentRepository
-	comment repository.Comment
+	comment domain.Comment
 	updated bool
 	deleted bool
 }
 
-func (r *editableCommentRepository) Find(int16, int64) (*repository.Comment, error) {
+func (r *editableCommentRepository) Find(domain.CommentSubjectType, int64) (*domain.Comment, error) {
 	return &r.comment, nil
 }
 
-func (r *editableCommentRepository) Update(_ int16, _ int64, content string) (*repository.Comment, error) {
+func (r *editableCommentRepository) Update(_ domain.CommentSubjectType, _ int64, content string) (*domain.Comment, error) {
 	r.updated = true
 	r.comment.Content = content
 	return &r.comment, nil
 }
 
-func (r *editableCommentRepository) SetStatus(_ int16, _ int64, status int16) error {
-	r.deleted = status == repository.StatusDeleted
+func (r *editableCommentRepository) SetStatus(_ domain.CommentSubjectType, _ int64, status domain.CommentStatus) error {
+	r.deleted = status == domain.CommentStatusDeleted
 	return nil
 }
 
@@ -109,7 +109,7 @@ func TestAdminCanEditCommentAfterWindow(t *testing.T) {
 		{"other member within window", "member", 2, 19 * time.Minute, http.StatusForbidden},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			repo := &editableCommentRepository{comment: repository.Comment{
+			repo := &editableCommentRepository{comment: domain.Comment{
 				ID: 7, SubjectKey: "42", AuthorID: 1, CreatedAt: time.Now().Add(-tc.age),
 			}}
 			router := chi.NewRouter()
@@ -145,8 +145,8 @@ func TestAdminCanModifyExternalCommentAfterWindow(t *testing.T) {
 		{"admin can delete", http.MethodDelete, "admin", http.StatusNoContent},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			repo := &editableCommentRepository{comment: repository.Comment{
-				ID: 7, SubjectType: repository.CommentSubjectNovel, SubjectKey: "chapter-1",
+			repo := &editableCommentRepository{comment: domain.Comment{
+				ID: 7, SubjectType: domain.CommentSubjectNovel, SubjectKey: "chapter-1",
 				AuthorID: 1, CreatedAt: time.Now().Add(-21 * time.Minute),
 			}}
 			router := chi.NewRouter()

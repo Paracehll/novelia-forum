@@ -65,16 +65,13 @@ func (u *CommentUsecase) ListAdmin(query ListAdminCommentsQuery) (int64, []domai
 		Search:     query.Search,
 		AuthorName: query.AuthorName,
 		PostID:     query.PostID,
-		Status:     repository.CommentStatusAll,
-	}
-	if query.Status != nil {
-		filter.Status = int16(*query.Status)
+		Status:     query.Status,
 	}
 	total, items, err := u.commentRepo.ListAdmin(filter, query.Limit, query.Offset)
 	if err != nil {
 		return 0, nil, fmt.Errorf("comment.list_admin: %w", err)
 	}
-	return total, commentsFromRepository(items), nil
+	return total, items, nil
 }
 
 func (u *CommentUsecase) checkSubjectExist(subjectType domain.CommentSubjectType, key string) error {
@@ -108,13 +105,12 @@ func (u *CommentUsecase) List(
 	if err := u.checkSubjectExist(query.SubjectType, query.SubjectKey); err != nil {
 		return 0, nil, err
 	}
-	total, rows, err := u.commentRepo.ListRoots(
-		int16(query.SubjectType), query.SubjectKey, query.Limit, query.Offset,
+	total, items, err := u.commentRepo.ListRoots(
+		query.SubjectType, query.SubjectKey, query.Limit, query.Offset,
 	)
 	if err != nil {
 		return 0, nil, fmt.Errorf("comment.list_roots: %w", err)
 	}
-	items := commentThreadsFromRepository(rows)
 	if !actor.IsAdmin {
 		for i := range items {
 			if items[i].Root.Status != domain.CommentStatusPublished {
@@ -145,8 +141,8 @@ func (u *CommentUsecase) ListReplies(
 	if err := u.checkSubjectExist(query.SubjectType, query.SubjectKey); err != nil {
 		return 0, nil, err
 	}
-	total, rows, err := u.commentRepo.ListReplies(
-		int16(query.SubjectType), query.SubjectKey, query.RootID, query.Limit, query.Offset,
+	total, items, err := u.commentRepo.ListReplies(
+		query.SubjectType, query.SubjectKey, query.RootID, query.Limit, query.Offset,
 	)
 	if errors.Is(err, repository.ErrNotFound) {
 		return 0, nil, NotFound(CodeCommentRootNotFound, "根评论不存在")
@@ -154,7 +150,6 @@ func (u *CommentUsecase) ListReplies(
 	if err != nil {
 		return 0, nil, fmt.Errorf("comment.list_replies: %w", err)
 	}
-	items := commentsFromRepository(rows)
 	if !actor.IsAdmin {
 		for i := range items {
 			if items[i].Status != domain.CommentStatusPublished {
@@ -185,7 +180,7 @@ func (u *CommentUsecase) checkContent(content string) error {
 }
 
 func (u *CommentUsecase) checkModifiable(actor Actor, subjectType domain.CommentSubjectType, id int64) error {
-	comment, err := u.commentRepo.Find(int16(subjectType), id)
+	comment, err := u.commentRepo.Find(subjectType, id)
 	switch {
 	case err == nil:
 	case errors.Is(err, repository.ErrNotFound):
@@ -212,20 +207,18 @@ func (u *CommentUsecase) Create(actor Actor, command CreatePostCommentCommand) (
 	if err := u.checkContent(command.Content); err != nil {
 		return nil, err
 	}
-	input := repository.CreateCommentInput{
-		SubjectType:    int16(domain.CommentSubjectPost),
+	input := domain.Comment{
+		SubjectType:    domain.CommentSubjectPost,
 		SubjectKey:     domain.PostCommentSubjectKey(command.PostID),
 		RootID:         command.RootID,
 		Content:        command.Content,
 		AuthorID:       actor.UserID,
 		AuthorUsername: actor.Username,
-		Attr:           "{}",
 	}
 	comment, err := u.commentRepo.Create(input)
 	switch {
 	case err == nil:
-		result := commentFromRepository(*comment)
-		return &result, nil
+		return comment, nil
 	case errors.Is(err, repository.ErrNotFound):
 		return nil, NotFound(CodeCommentSubjectNotFound, "评论所属资源不存在")
 	case errors.Is(err, repository.ErrCommentsLocked):
@@ -270,20 +263,18 @@ func (u *CommentUsecase) CreateExternal(
 		}
 	}
 
-	input := repository.CreateCommentInput{
-		SubjectType:    int16(subjectType),
+	input := domain.Comment{
+		SubjectType:    subjectType,
 		SubjectKey:     command.SubjectKey,
 		RootID:         command.RootID,
 		Content:        command.Content,
 		AuthorID:       actor.UserID,
 		AuthorUsername: actor.Username,
-		Attr:           "{}",
 	}
 	comment, err := u.commentRepo.Create(input)
 	switch {
 	case err == nil:
-		result := commentFromRepository(*comment)
-		return &result, nil
+		return comment, nil
 	case errors.Is(err, repository.ErrCommentRootNotFound):
 		return nil, NotFound(CodeCommentRootNotFound, "根评论不存在")
 	case errors.Is(err, repository.ErrInvalidCommentRoot):
@@ -311,11 +302,10 @@ func (u *CommentUsecase) Update(
 	if err := u.checkContent(command.Content); err != nil {
 		return nil, err
 	}
-	comment, err := u.commentRepo.Update(int16(command.SubjectType), command.CommentID, command.Content)
+	comment, err := u.commentRepo.Update(command.SubjectType, command.CommentID, command.Content)
 	switch {
 	case err == nil:
-		result := commentFromRepository(*comment)
-		return &result, nil
+		return comment, nil
 	case errors.Is(err, repository.ErrNotFound):
 		return nil, NotFound(CodeCommentNotFound, "评论不存在")
 	default:
@@ -332,9 +322,7 @@ func (u *CommentUsecase) Delete(actor Actor, command DeleteCommentCommand) error
 	if err := u.checkModifiable(actor, command.SubjectType, command.CommentID); err != nil {
 		return err
 	}
-	err := u.commentRepo.SetStatus(
-		int16(command.SubjectType), command.CommentID, int16(domain.CommentStatusDeleted),
-	)
+	err := u.commentRepo.SetStatus(command.SubjectType, command.CommentID, domain.CommentStatusDeleted)
 	switch {
 	case err == nil:
 		return nil
@@ -352,9 +340,7 @@ type SetCommentStatusCommand struct {
 }
 
 func (u *CommentUsecase) SetStatus(command SetCommentStatusCommand) error {
-	err := u.commentRepo.SetStatus(
-		int16(command.SubjectType), command.CommentID, int16(command.Status),
-	)
+	err := u.commentRepo.SetStatus(command.SubjectType, command.CommentID, command.Status)
 	switch {
 	case err == nil:
 		return nil
@@ -374,39 +360,4 @@ func (u *CommentUsecase) DeleteAllByAuthor(command DeleteCommentsByAuthorCommand
 		return fmt.Errorf("comment.delete_by_author: %w", err)
 	}
 	return nil
-}
-
-func commentFromRepository(value repository.Comment) domain.Comment {
-	return domain.Comment{
-		ID:             value.ID,
-		SubjectType:    domain.CommentSubjectType(value.SubjectType),
-		SubjectKey:     value.SubjectKey,
-		RootID:         value.RootID,
-		Content:        value.Content,
-		AuthorID:       value.AuthorID,
-		AuthorUsername: value.AuthorUsername,
-		Status:         domain.CommentStatus(value.Status),
-		CreatedAt:      value.CreatedAt,
-		UpdatedAt:      value.UpdatedAt,
-	}
-}
-
-func commentsFromRepository(values []repository.Comment) []domain.Comment {
-	result := make([]domain.Comment, len(values))
-	for i, value := range values {
-		result[i] = commentFromRepository(value)
-	}
-	return result
-}
-
-func commentThreadsFromRepository(values []repository.CommentThread) []domain.CommentThreadPreview {
-	result := make([]domain.CommentThreadPreview, len(values))
-	for i, value := range values {
-		result[i] = domain.CommentThreadPreview{
-			Root:       commentFromRepository(value.Comment),
-			ReplyCount: value.ReplyCount,
-			Replies:    commentsFromRepository(value.Replies),
-		}
-	}
-	return result
 }

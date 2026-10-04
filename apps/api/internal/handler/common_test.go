@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"forum/internal/domain"
 	"forum/internal/domainfilter"
 	"forum/internal/httpx"
 	"forum/internal/repository"
@@ -21,18 +22,18 @@ type domainCommentRepository struct {
 	written bool
 }
 
-func (r *domainCommentRepository) Find(subjectType int16, id int64) (*repository.Comment, error) {
-	return &repository.Comment{ID: id, AuthorID: 1, SubjectType: subjectType, CreatedAt: time.Now()}, nil
+func (r *domainCommentRepository) Find(subjectType domain.CommentSubjectType, id int64) (*domain.Comment, error) {
+	return &domain.Comment{ID: id, AuthorID: 1, SubjectType: subjectType, CreatedAt: time.Now()}, nil
 }
 
-func (r *domainCommentRepository) Create(repository.CreateCommentInput) (*repository.Comment, error) {
+func (r *domainCommentRepository) Create(domain.Comment) (*domain.Comment, error) {
 	r.written = true
-	return &repository.Comment{}, nil
+	return &domain.Comment{}, nil
 }
 
-func (r *domainCommentRepository) Update(int16, int64, string) (*repository.Comment, error) {
+func (r *domainCommentRepository) Update(domain.CommentSubjectType, int64, string) (*domain.Comment, error) {
 	r.written = true
-	return &repository.Comment{}, nil
+	return &domain.Comment{}, nil
 }
 
 func TestDomainFilterRejectsWrites(t *testing.T) {

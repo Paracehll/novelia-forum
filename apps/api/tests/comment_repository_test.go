@@ -3,10 +3,11 @@
 package tests
 
 import (
-	forumcategory "forum/internal/category"
-	"forum/internal/repository"
 	"errors"
 	"fmt"
+	forumcategory "forum/internal/category"
+	"forum/internal/domain"
+	"forum/internal/repository"
 	"testing"
 )
 
@@ -28,11 +29,11 @@ func TestCommentRepositoryDeleteAllByAuthor(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	createComment := func(subjectType int16, subjectKey string, authorID int64) *repository.Comment {
+	createComment := func(subjectType domain.CommentSubjectType, subjectKey string, authorID int64) *domain.Comment {
 		t.Helper()
-		comment, err := commentRepo.Create(repository.CreateCommentInput{
+		comment, err := commentRepo.Create(domain.Comment{
 			SubjectType: subjectType, SubjectKey: subjectKey, Content: "评论",
-			AuthorID: authorID, AuthorUsername: "commenter", Attr: `{}`,
+			AuthorID: authorID, AuthorUsername: "commenter",
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -40,14 +41,14 @@ func TestCommentRepositoryDeleteAllByAuthor(t *testing.T) {
 		return comment
 	}
 
-	firstPublished := createComment(repository.CommentSubjectPost, repository.PostSubjectKey(firstPost.ID), 7)
-	firstHidden := createComment(repository.CommentSubjectPost, repository.PostSubjectKey(firstPost.ID), 7)
-	if err := commentRepo.SetStatus(repository.CommentSubjectPost, firstHidden.ID, repository.StatusHidden); err != nil {
+	firstPublished := createComment(domain.CommentSubjectPost, domain.PostCommentSubjectKey(firstPost.ID), 7)
+	firstHidden := createComment(domain.CommentSubjectPost, domain.PostCommentSubjectKey(firstPost.ID), 7)
+	if err := commentRepo.SetStatus(domain.CommentSubjectPost, firstHidden.ID, domain.CommentStatusHidden); err != nil {
 		t.Fatal(err)
 	}
-	secondPublished := createComment(repository.CommentSubjectPost, repository.PostSubjectKey(secondPost.ID), 7)
-	external := createComment(repository.CommentSubjectNovel, "novel:chapter-1", 7)
-	otherAuthor := createComment(repository.CommentSubjectPost, repository.PostSubjectKey(firstPost.ID), 8)
+	secondPublished := createComment(domain.CommentSubjectPost, domain.PostCommentSubjectKey(secondPost.ID), 7)
+	external := createComment(domain.CommentSubjectNovel, "novel:chapter-1", 7)
+	otherAuthor := createComment(domain.CommentSubjectPost, domain.PostCommentSubjectKey(firstPost.ID), 8)
 
 	if err := commentRepo.DeleteAllByAuthor(7); err != nil {
 		t.Fatal(err)
@@ -57,26 +58,26 @@ func TestCommentRepositoryDeleteAllByAuthor(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for subjectType, commentIDs := range map[int16][]int64{
-		repository.CommentSubjectPost:  {firstPublished.ID, firstHidden.ID, secondPublished.ID},
-		repository.CommentSubjectNovel: {external.ID},
+	for subjectType, commentIDs := range map[domain.CommentSubjectType][]int64{
+		domain.CommentSubjectPost:  {firstPublished.ID, firstHidden.ID, secondPublished.ID},
+		domain.CommentSubjectNovel: {external.ID},
 	} {
 		for _, commentID := range commentIDs {
 			comment, err := commentRepo.Find(subjectType, commentID)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if comment.Status != repository.StatusDeleted {
+			if comment.Status != domain.CommentStatusDeleted {
 				t.Fatalf("comment %d status = %d", comment.ID, comment.Status)
 			}
 		}
 	}
 
-	remaining, err := commentRepo.Find(repository.CommentSubjectPost, otherAuthor.ID)
+	remaining, err := commentRepo.Find(domain.CommentSubjectPost, otherAuthor.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if remaining.Status != repository.StatusPublished {
+	if remaining.Status != domain.CommentStatusPublished {
 		t.Fatalf("other author's comment status = %d", remaining.Status)
 	}
 
@@ -95,18 +96,18 @@ func TestCommentRepositoryDeleteAllByAuthor(t *testing.T) {
 
 func TestCommentRootReplyPreviews(t *testing.T) {
 	resetDatabase()
-	create := func(key string, rootID *int64) *repository.Comment {
+	create := func(key string, rootID *int64) *domain.Comment {
 		t.Helper()
-		c, err := commentRepo.Create(repository.CreateCommentInput{
-			SubjectType: repository.CommentSubjectNovel, SubjectKey: key, RootID: rootID,
-			Content: "reply", AuthorID: 1, AuthorUsername: "reader", Attr: "{}",
+		c, err := commentRepo.Create(domain.Comment{
+			SubjectType: domain.CommentSubjectNovel, SubjectKey: key, RootID: rootID,
+			Content: "reply", AuthorID: 1, AuthorUsername: "reader",
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
 		return c
 	}
-	roots := []*repository.Comment{create("preview", nil), create("preview", nil), create("preview", nil)}
+	roots := []*domain.Comment{create("preview", nil), create("preview", nil), create("preview", nil)}
 	for _, root := range roots[:2] {
 		for i := 0; i < 23; i++ {
 			create("preview", &root.ID)
@@ -114,7 +115,7 @@ func TestCommentRootReplyPreviews(t *testing.T) {
 	}
 	other := create("other", nil)
 	create("other", &other.ID)
-	total, threads, err := commentRepo.ListRoots(repository.CommentSubjectNovel, "preview", 3, 0)
+	total, threads, err := commentRepo.ListRoots(domain.CommentSubjectNovel, "preview", 3, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +129,7 @@ func TestCommentRootReplyPreviews(t *testing.T) {
 			}
 			continue
 		}
-		count, replies, err := commentRepo.ListReplies(repository.CommentSubjectNovel, "preview", thread.ID, 20, 0)
+		count, replies, err := commentRepo.ListReplies(domain.CommentSubjectNovel, "preview", thread.Root.ID, 20, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -136,16 +137,16 @@ func TestCommentRootReplyPreviews(t *testing.T) {
 			t.Fatalf("bad preview size/count: %#v", thread)
 		}
 		for j, reply := range thread.Replies {
-			if reply.ID != replies[j].ID || reply.RootID == nil || *reply.RootID != thread.ID {
+			if reply.ID != replies[j].ID || reply.RootID == nil || *reply.RootID != thread.Root.ID {
 				t.Fatalf("preview order/group mismatch: %#v", reply)
 			}
 		}
 	}
-	_, page, err := commentRepo.ListRoots(repository.CommentSubjectNovel, "preview", 1, 1)
-	if err != nil || len(page) != 1 || page[0].ID != roots[1].ID || len(page[0].Replies) != 20 {
+	_, page, err := commentRepo.ListRoots(domain.CommentSubjectNovel, "preview", 1, 1)
+	if err != nil || len(page) != 1 || page[0].Root.ID != roots[1].ID || len(page[0].Replies) != 20 {
 		t.Fatalf("root pagination: %#v %v", page, err)
 	}
-	_, empty, err := commentRepo.ListRoots(repository.CommentSubjectNovel, "preview", 3, 3)
+	_, empty, err := commentRepo.ListRoots(domain.CommentSubjectNovel, "preview", 3, 3)
 	if err != nil || len(empty) != 0 {
 		t.Fatalf("empty page: %#v %v", empty, err)
 	}
@@ -167,14 +168,14 @@ func TestCommentCreationRootErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, subjectType := range []int16{repository.CommentSubjectPost, repository.CommentSubjectNovel} {
+	for _, subjectType := range []domain.CommentSubjectType{domain.CommentSubjectPost, domain.CommentSubjectNovel} {
 		t.Run(fmt.Sprintf("subject=%d", subjectType), func(t *testing.T) {
-			key := repository.PostSubjectKey(post.ID)
-			create := func(kind int16, subjectKey string, rootID *int64) *repository.Comment {
+			key := domain.PostCommentSubjectKey(post.ID)
+			create := func(kind domain.CommentSubjectType, subjectKey string, rootID *int64) *domain.Comment {
 				t.Helper()
-				comment, err := commentRepo.Create(repository.CreateCommentInput{
+				comment, err := commentRepo.Create(domain.Comment{
 					SubjectType: kind, SubjectKey: subjectKey, RootID: rootID,
-					Content: "评论", AuthorID: 1, AuthorUsername: "author", Attr: "{}",
+					Content: "评论", AuthorID: 1, AuthorUsername: "author",
 				})
 				if err != nil {
 					t.Fatal(err)
@@ -183,14 +184,14 @@ func TestCommentCreationRootErrors(t *testing.T) {
 			}
 			root := create(subjectType, key, nil)
 			reply := create(subjectType, key, &root.ID)
-			otherSubject := create(subjectType, repository.PostSubjectKey(otherPost.ID), nil)
+			otherSubject := create(subjectType, domain.PostCommentSubjectKey(otherPost.ID), nil)
 			otherType := create(1-subjectType, key, nil)
 			hidden := create(subjectType, key, nil)
 			deleted := create(subjectType, key, nil)
-			if err := commentRepo.SetStatus(subjectType, hidden.ID, repository.StatusHidden); err != nil {
+			if err := commentRepo.SetStatus(subjectType, hidden.ID, domain.CommentStatusHidden); err != nil {
 				t.Fatal(err)
 			}
-			if err := commentRepo.SetStatus(subjectType, deleted.ID, repository.StatusDeleted); err != nil {
+			if err := commentRepo.SetStatus(subjectType, deleted.ID, domain.CommentStatusDeleted); err != nil {
 				t.Fatal(err)
 			}
 			before, err := postRepo.Find(post.ID, false)
@@ -214,9 +215,9 @@ func TestCommentCreationRootErrors(t *testing.T) {
 				{"other subject", otherSubject.ID, repository.ErrInvalidCommentRoot},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
-					_, err := commentRepo.Create(repository.CreateCommentInput{
+					_, err := commentRepo.Create(domain.Comment{
 						SubjectType: subjectType, SubjectKey: key, RootID: &tc.rootID,
-						Content: "reply", AuthorID: 1, AuthorUsername: "author", Attr: "{}",
+						Content: "reply", AuthorID: 1, AuthorUsername: "author",
 					})
 					if !errors.Is(err, tc.want) {
 						t.Fatalf("got %v, want %v", err, tc.want)

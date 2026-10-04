@@ -15,32 +15,34 @@ import (
 
 type commentRepoStub struct {
 	repository.CommentRepository
-	comment repository.Comment
+	comment domain.Comment
 	writes  int
-	input   repository.CreateCommentInput
+	input   domain.Comment
 }
 
-func (r *commentRepoStub) Find(int16, int64) (*repository.Comment, error) { return &r.comment, nil }
-func (r *commentRepoStub) Update(_ int16, _ int64, content string) (*repository.Comment, error) {
+func (r *commentRepoStub) Find(domain.CommentSubjectType, int64) (*domain.Comment, error) {
+	return &r.comment, nil
+}
+func (r *commentRepoStub) Update(_ domain.CommentSubjectType, _ int64, content string) (*domain.Comment, error) {
 	r.writes++
 	r.comment.Content = content
 	return &r.comment, nil
 }
-func (r *commentRepoStub) SetStatus(_ int16, _ int64, status int16) error {
+func (r *commentRepoStub) SetStatus(_ domain.CommentSubjectType, _ int64, status domain.CommentStatus) error {
 	r.writes++
 	r.comment.Status = status
 	return nil
 }
-func (r *commentRepoStub) Create(input repository.CreateCommentInput) (*repository.Comment, error) {
+func (r *commentRepoStub) Create(input domain.Comment) (*domain.Comment, error) {
 	r.writes++
 	r.input = input
 	return &r.comment, nil
 }
-func (r *commentRepoStub) ListRoots(int16, string, int64, int64) (int64, []repository.CommentThread, error) {
-	return 1, []repository.CommentThread{{Comment: r.comment, ReplyCount: 1, Replies: []repository.Comment{r.comment}}}, nil
+func (r *commentRepoStub) ListRoots(domain.CommentSubjectType, string, int64, int64) (int64, []domain.CommentThreadPreview, error) {
+	return 1, []domain.CommentThreadPreview{{Root: r.comment, ReplyCount: 1, Replies: []domain.Comment{r.comment}}}, nil
 }
-func (r *commentRepoStub) ListReplies(int16, string, int64, int64, int64) (int64, []repository.Comment, error) {
-	return 1, []repository.Comment{r.comment}, nil
+func (r *commentRepoStub) ListReplies(domain.CommentSubjectType, string, int64, int64, int64) (int64, []domain.Comment, error) {
+	return 1, []domain.Comment{r.comment}, nil
 }
 
 type subjectCheckFunc func(context.Context, string, string) (domain.CommentSubjectType, error)
@@ -69,7 +71,7 @@ func TestCommentContentValidation(t *testing.T) {
 			{"preserve whitespace", " 评论 \n", true},
 		} {
 			t.Run(operation+"/"+tc.name, func(t *testing.T) {
-				repo := &commentRepoStub{comment: repository.Comment{AuthorID: 1, CreatedAt: time.Now()}}
+				repo := &commentRepoStub{comment: domain.Comment{AuthorID: 1, CreatedAt: time.Now()}}
 				checks := 0
 				checker := subjectCheckFunc(func(context.Context, string, string) (domain.CommentSubjectType, error) {
 					checks++
@@ -131,7 +133,7 @@ func TestCommentModificationPermissions(t *testing.T) {
 			} {
 				t.Run(operation+"/"+tc.name+"/"+domain.PostCommentSubjectKey(int64(subjectType)), func(t *testing.T) {
 					repo := &commentRepoStub{
-						comment: repository.Comment{
+						comment: domain.Comment{
 							ID:        7,
 							AuthorID:  1,
 							CreatedAt: time.Now().Add(-tc.age),
@@ -214,8 +216,8 @@ func TestExternalCommentChecksBeforeWrite(t *testing.T) {
 			}
 			if tc.wantCode == "" && tc.wantCause == nil {
 				if err != nil || repo.writes != 1 ||
-					repo.input.SubjectType != repository.CommentSubjectNovel ||
-					repo.input.Attr != "{}" || repo.input.AuthorID != actor.UserID ||
+					repo.input.SubjectType != domain.CommentSubjectNovel ||
+					repo.input.AuthorID != actor.UserID ||
 					repo.input.AuthorUsername != actor.Username {
 					t.Fatalf("err=%v writes=%d input=%+v", err, repo.writes, repo.input)
 				}
@@ -239,11 +241,11 @@ type failingCommentRepository struct {
 	err error
 }
 
-func (r failingCommentRepository) Create(repository.CreateCommentInput) (*repository.Comment, error) {
+func (r failingCommentRepository) Create(domain.Comment) (*domain.Comment, error) {
 	return nil, r.err
 }
 
-func (r failingCommentRepository) ListReplies(int16, string, int64, int64, int64) (int64, []repository.Comment, error) {
+func (r failingCommentRepository) ListReplies(domain.CommentSubjectType, string, int64, int64, int64) (int64, []domain.Comment, error) {
 	return 0, nil, r.err
 }
 
@@ -372,12 +374,14 @@ func TestCommentCreationStorageFailures(t *testing.T) {
 
 func TestCommentListContentVisibility(t *testing.T) {
 	for _, actor := range []Actor{{}, {UserID: 1}, {UserID: 2, IsAdmin: true}} {
-		for _, status := range []int16{repository.StatusPublished, repository.StatusHidden, repository.StatusDeleted, 99} {
+		for _, status := range []domain.CommentStatus{
+			domain.CommentStatusPublished, domain.CommentStatusHidden, domain.CommentStatusDeleted, 99,
+		} {
 			t.Run(fmt.Sprintf("actor=%+v/status=%d", actor, status), func(t *testing.T) {
-				repo := &commentRepoStub{comment: repository.Comment{ID: 7, AuthorID: 1, Content: "body", Status: status}}
+				repo := &commentRepoStub{comment: domain.Comment{ID: 7, AuthorID: 1, Content: "body", Status: status}}
 				u := NewCommentUsecase(repo, nil, nil, nil)
 				want := repo.comment
-				if !actor.IsAdmin && status != repository.StatusPublished {
+				if !actor.IsAdmin && status != domain.CommentStatusPublished {
 					want.Content = ""
 				}
 				total, roots, err := u.List(actor, ListCommentsQuery{
@@ -386,14 +390,13 @@ func TestCommentListContentVisibility(t *testing.T) {
 				if err != nil || total != 1 || len(roots) != 1 {
 					t.Fatalf("roots=%+v total=%d err=%v", roots, total, err)
 				}
-				wantDomain := commentFromRepository(want)
-				if roots[0].Root != wantDomain || roots[0].ReplyCount != 1 || len(roots[0].Replies) != 1 || roots[0].Replies[0] != wantDomain {
+				if roots[0].Root != want || roots[0].ReplyCount != 1 || len(roots[0].Replies) != 1 || roots[0].Replies[0] != want {
 					t.Fatalf("unexpected thread: %+v", roots[0])
 				}
 				total, replies, err := u.ListReplies(actor, ListCommentRepliesQuery{
 					SubjectType: domain.CommentSubjectNovel, SubjectKey: "book", RootID: 7, Limit: 20,
 				})
-				if err != nil || total != 1 || len(replies) != 1 || replies[0] != wantDomain {
+				if err != nil || total != 1 || len(replies) != 1 || replies[0] != want {
 					t.Fatalf("replies=%+v total=%d err=%v", replies, total, err)
 				}
 			})

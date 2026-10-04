@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
+	"forum/internal/domain"
 	"forum/internal/httpx"
 	"forum/internal/repository"
 	"forum/internal/usecase"
@@ -20,11 +22,13 @@ type adminCommentRepository struct {
 	called        bool
 }
 
-func (r *adminCommentRepository) ListAdmin(filter repository.CommentFilter, limit, offset int64) (int64, []repository.Comment, error) {
+func (r *adminCommentRepository) ListAdmin(filter repository.CommentFilter, limit, offset int64) (int64, []domain.Comment, error) {
 	r.called = true
 	r.filter, r.limit, r.offset = filter, limit, offset
-	return 1, []repository.Comment{{ID: 5, SubjectKey: "42", SubjectType: repository.CommentSubjectPost, Content: "隐藏评论原文", Status: repository.StatusHidden}}, nil
+	return 1, []domain.Comment{{ID: 5, SubjectKey: "42", SubjectType: domain.CommentSubjectPost, Content: "隐藏评论原文", Status: domain.CommentStatusHidden}}, nil
 }
+
+func commentStatus(value domain.CommentStatus) *domain.CommentStatus { return &value }
 
 func TestAdminCommentList(t *testing.T) {
 	for _, tc := range []struct {
@@ -35,11 +39,11 @@ func TestAdminCommentList(t *testing.T) {
 	}{
 		{name: "anonymous", wantStatus: http.StatusUnauthorized},
 		{name: "member", role: "member", wantStatus: http.StatusForbidden},
-		{name: "all posts", role: "admin", wantStatus: http.StatusOK, wantFilter: repository.CommentFilter{Status: repository.CommentStatusAll}, limit: 20},
-		{name: "combined filters", role: "admin", query: "?q=%20内容%20&author_name=%20小明%20&post_id=42&status=1&page=2&page_size=10", wantStatus: http.StatusOK, wantFilter: repository.CommentFilter{Search: "内容", AuthorName: "小明", PostID: 42, Status: repository.StatusHidden}, limit: 10, offset: 10},
-		{name: "published", role: "admin", query: "?status=0", wantStatus: http.StatusOK, wantFilter: repository.CommentFilter{Status: repository.StatusPublished}, limit: 20},
-		{name: "deleted", role: "admin", query: "?status=2", wantStatus: http.StatusOK, wantFilter: repository.CommentFilter{Status: repository.StatusDeleted}, limit: 20},
-		{name: "explicit all", role: "admin", query: "?status=all", wantStatus: http.StatusOK, wantFilter: repository.CommentFilter{Status: repository.CommentStatusAll}, limit: 20},
+		{name: "all posts", role: "admin", wantStatus: http.StatusOK, wantFilter: repository.CommentFilter{}, limit: 20},
+		{name: "combined filters", role: "admin", query: "?q=%20内容%20&author_name=%20小明%20&post_id=42&status=1&page=2&page_size=10", wantStatus: http.StatusOK, wantFilter: repository.CommentFilter{Search: "内容", AuthorName: "小明", PostID: 42, Status: commentStatus(domain.CommentStatusHidden)}, limit: 10, offset: 10},
+		{name: "published", role: "admin", query: "?status=0", wantStatus: http.StatusOK, wantFilter: repository.CommentFilter{Status: commentStatus(domain.CommentStatusPublished)}, limit: 20},
+		{name: "deleted", role: "admin", query: "?status=2", wantStatus: http.StatusOK, wantFilter: repository.CommentFilter{Status: commentStatus(domain.CommentStatusDeleted)}, limit: 20},
+		{name: "explicit all", role: "admin", query: "?status=all", wantStatus: http.StatusOK, wantFilter: repository.CommentFilter{}, limit: 20},
 		{name: "bad post", role: "admin", query: "?post_id=0", wantStatus: http.StatusBadRequest},
 		{name: "empty post", role: "admin", query: "?post_id=", wantStatus: http.StatusBadRequest},
 		{name: "multiple posts", role: "admin", query: "?post_id=1&post_id=2", wantStatus: http.StatusBadRequest},
@@ -71,7 +75,7 @@ func TestAdminCommentList(t *testing.T) {
 				}
 				return
 			}
-			if repo.filter != tc.wantFilter || repo.limit != tc.limit || repo.offset != tc.offset {
+			if !reflect.DeepEqual(repo.filter, tc.wantFilter) || repo.limit != tc.limit || repo.offset != tc.offset {
 				t.Fatalf("unexpected query: %#v limit=%d offset=%d", repo.filter, repo.limit, repo.offset)
 			}
 			var response page[commentResponse]
