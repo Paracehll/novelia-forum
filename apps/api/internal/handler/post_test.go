@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"auth/internal/httpx"
+	"forum/internal/httpx"
 	"encoding/json"
 	"fmt"
 	"github.com/go-chi/chi/v5"
@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"auth/internal/repository"
+	"forum/internal/repository"
 )
 
 type listPostRepository struct {

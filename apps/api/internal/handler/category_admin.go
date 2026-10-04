@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	forumcategory "auth/internal/category"
-	"auth/internal/httpx"
-	"auth/internal/repository"
+	forumcategory "forum/internal/category"
+	"forum/internal/httpx"
+	"forum/internal/repository"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"

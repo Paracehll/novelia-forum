@@ -1,13 +1,13 @@
 package main
 
 import (
-	"auth/internal/domainfilter"
-	"auth/internal/handler"
-	"auth/internal/httpx"
-	"auth/internal/infra"
-	"auth/internal/repository"
-	"auth/internal/subject"
-	"auth/internal/usecase"
+	"forum/internal/domainfilter"
+	"forum/internal/handler"
+	"forum/internal/httpx"
+	"forum/internal/infra"
+	"forum/internal/repository"
+	"forum/internal/subject"
+	"forum/internal/usecase"
 	"log/slog"
 	"net/http"
 	"os"

@@ -5,7 +5,7 @@
 .env
 
 # Api
-/apps/api/auth
+/apps/api/forum
 
 # Admin
 dist/

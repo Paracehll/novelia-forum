@@ -3,8 +3,8 @@
 package tests
 
 import (
-	forumcategory "auth/internal/category"
-	"auth/internal/repository"
+	forumcategory "forum/internal/category"
+	"forum/internal/repository"
 	"errors"
 	"fmt"
 	"testing"

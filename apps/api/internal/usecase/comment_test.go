@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"auth/internal/repository"
-	"auth/internal/subject"
+	"forum/internal/repository"
+	"forum/internal/subject"
 )
 
 type commentRepoStub struct {

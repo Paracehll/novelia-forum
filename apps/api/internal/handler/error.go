@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
-	"auth/internal/httpx"
-	"auth/internal/usecase"
+	"forum/internal/httpx"
+	"forum/internal/usecase"
 )
 
 func transportError(err error) error {

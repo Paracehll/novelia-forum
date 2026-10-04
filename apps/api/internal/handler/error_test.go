@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"auth/internal/httpx"
-	"auth/internal/usecase"
+	"forum/internal/httpx"
+	"forum/internal/usecase"
 )
 
 func TestCommentErrorResponses(t *testing.T) {

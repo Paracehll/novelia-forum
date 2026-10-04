@@ -8,9 +8,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"auth/internal/domainfilter"
-	"auth/internal/httpx"
-	"auth/internal/repository"
+	"forum/internal/domainfilter"
+	"forum/internal/httpx"
+	"forum/internal/repository"
 )
 
 type page[T any] struct {

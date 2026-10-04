@@ -1,9 +1,9 @@
 package repository
 
 import (
-	"auth/.gen/main/public/model"
-	"auth/.gen/main/public/table"
-	forumcategory "auth/internal/category"
+	"forum/.gen/main/public/model"
+	"forum/.gen/main/public/table"
+	forumcategory "forum/internal/category"
 	"database/sql"
 	"time"
 

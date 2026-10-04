@@ -7,11 +7,11 @@ import (
 	"time"
 	"unicode/utf8"
 
-	forumcategory "auth/internal/category"
-	"auth/internal/domainfilter"
-	"auth/internal/httpx"
-	"auth/internal/repository"
-	"auth/internal/usecase"
+	forumcategory "forum/internal/category"
+	"forum/internal/domainfilter"
+	"forum/internal/httpx"
+	"forum/internal/repository"
+	"forum/internal/usecase"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"

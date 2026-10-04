@@ -6,9 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"auth/internal/httpx"
-	"auth/internal/repository"
-	"auth/internal/usecase"
+	"forum/internal/httpx"
+	"forum/internal/repository"
+	"forum/internal/usecase"
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
 )

@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"auth/internal/httpx"
-	"auth/internal/repository"
+	"forum/internal/httpx"
+	"forum/internal/repository"
 
 	"github.com/go-chi/chi/v5"
 )

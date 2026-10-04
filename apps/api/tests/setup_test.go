@@ -3,8 +3,8 @@
 package tests
 
 import (
-	"auth/internal/infra"
-	"auth/internal/repository"
+	"forum/internal/infra"
+	"forum/internal/repository"
 	"context"
 	"database/sql"
 	"fmt"

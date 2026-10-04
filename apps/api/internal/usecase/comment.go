@@ -8,9 +8,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"auth/internal/domainfilter"
-	"auth/internal/repository"
-	"auth/internal/subject"
+	"forum/internal/domainfilter"
+	"forum/internal/repository"
+	"forum/internal/subject"
 )
 
 const (

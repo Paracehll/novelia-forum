@@ -2,7 +2,7 @@
 package subject
 
 import (
-	"auth/internal/repository"
+	"forum/internal/repository"
 	"context"
 	"errors"
 	"fmt"

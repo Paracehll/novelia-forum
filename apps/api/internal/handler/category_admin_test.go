@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"auth/internal/repository"
+	"forum/internal/repository"
 
 	"github.com/go-chi/chi/v5"
 )
