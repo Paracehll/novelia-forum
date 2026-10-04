@@ -179,9 +179,9 @@ func (r *postRepository) List(filter PostFilter, limit, offset int64) (int64, []
 	return count.Count, dest, nil
 }
 
-func (r *postRepository) Find(id int64, incrementViews bool) (*PostDetails, error) {
+func (r *postRepository) Find(id int64, incrementViews bool) (result *PostDetails, err error) {
+	defer func() { err = storageError(err, "post.Find") }()
 	var dest Post
-	var err error
 	if incrementViews {
 		stmt := table.Post.UPDATE(table.Post.ViewsCount).
 			SET(table.Post.ViewsCount.ADD(Int32(1))).

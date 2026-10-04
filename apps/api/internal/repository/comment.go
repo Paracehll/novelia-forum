@@ -4,6 +4,7 @@ import (
 	"auth/.gen/main/public/model"
 	"auth/.gen/main/public/table"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -59,7 +60,8 @@ type commentRepository struct{ db *sql.DB }
 
 func NewCommentRepository(db *sql.DB) CommentRepository { return &commentRepository{db: db} }
 
-func (r *commentRepository) ListRoots(subjectType int16, subjectKey string, limit, offset int64) (int64, []CommentThread, error) {
+func (r *commentRepository) ListRoots(subjectType int16, subjectKey string, limit, offset int64) (total int64, items []CommentThread, err error) {
+	defer func() { err = storageError(err, "comment.ListRoots") }()
 	condition := table.Comment.SubjectType.EQ(Int16(subjectType)).
 		AND(table.Comment.SubjectKey.EQ(String(subjectKey))).
 		AND(table.Comment.RootID.IS_NULL())
@@ -137,7 +139,8 @@ func (r *commentRepository) ListRoots(subjectType int16, subjectKey string, limi
 	return count.Count, threads, nil
 }
 
-func (r *commentRepository) ListReplies(subjectType int16, subjectKey string, rootID, limit, offset int64) (int64, []Comment, error) {
+func (r *commentRepository) ListReplies(subjectType int16, subjectKey string, rootID, limit, offset int64) (total int64, items []Comment, err error) {
+	defer func() { err = storageError(err, "comment.ListReplies") }()
 	rootStmt := SELECT(table.Comment.ID).FROM(table.Comment).WHERE(
 		table.Comment.ID.EQ(Int64(rootID)).
 			AND(table.Comment.SubjectType.EQ(Int16(subjectType))).
@@ -156,7 +159,7 @@ func (r *commentRepository) ListReplies(subjectType int16, subjectKey string, ro
 		return 0, nil, err
 	}
 	var dest []Comment
-	if err := SELECT(table.Comment.AllColumns).FROM(table.Comment).WHERE(condition).
+	if err = SELECT(table.Comment.AllColumns).FROM(table.Comment).WHERE(condition).
 		ORDER_BY(table.Comment.CreatedAt.ASC(), table.Comment.ID.ASC()).
 		LIMIT(limit).OFFSET(offset).Query(r.db, &dest); err != nil {
 		return 0, nil, err
@@ -164,7 +167,8 @@ func (r *commentRepository) ListReplies(subjectType int16, subjectKey string, ro
 	return count.Count, dest, nil
 }
 
-func (r *commentRepository) ListAdmin(filter CommentFilter, limit, offset int64) (int64, []Comment, error) {
+func (r *commentRepository) ListAdmin(filter CommentFilter, limit, offset int64) (total int64, items []Comment, err error) {
+	defer func() { err = storageError(err, "comment.ListAdmin") }()
 	condition := table.Comment.SubjectType.EQ(Int16(CommentSubjectPost))
 	if filter.PostID > 0 {
 		condition = condition.AND(table.Comment.SubjectKey.EQ(String(PostSubjectKey(filter.PostID))))
@@ -183,12 +187,13 @@ func (r *commentRepository) ListAdmin(filter CommentFilter, limit, offset int64)
 		return 0, nil, err
 	}
 	var dest []Comment
-	err := SELECT(table.Comment.AllColumns).FROM(table.Comment).WHERE(condition).
+	err = SELECT(table.Comment.AllColumns).FROM(table.Comment).WHERE(condition).
 		ORDER_BY(table.Comment.CreatedAt.DESC(), table.Comment.ID.DESC()).LIMIT(limit).OFFSET(offset).Query(r.db, &dest)
 	return count.Count, dest, err
 }
 
-func (r *commentRepository) Find(subjectType int16, id int64) (*Comment, error) {
+func (r *commentRepository) Find(subjectType int16, id int64) (result *Comment, err error) {
+	defer func() { err = storageError(err, "comment.Find") }()
 	stmt := SELECT(table.Comment.AllColumns).
 		FROM(table.Comment).
 		WHERE(table.Comment.ID.EQ(Int64(id)).
@@ -200,7 +205,8 @@ func (r *commentRepository) Find(subjectType int16, id int64) (*Comment, error) 
 	return &dest, nil
 }
 
-func (r *commentRepository) Create(input CreateCommentInput) (*Comment, error) {
+func (r *commentRepository) Create(input CreateCommentInput) (result *Comment, err error) {
+	defer func() { err = storageError(err, "comment.Create") }()
 	tx, err := r.db.Begin()
 	if err != nil {
 		return nil, err
@@ -232,10 +238,13 @@ func (r *commentRepository) Create(input CreateCommentInput) (*Comment, error) {
 				AND(table.Comment.Status.EQ(Int16(StatusPublished))))
 		var root Comment
 		if err := rootStmt.Query(tx, &root); err != nil {
+			if errors.Is(storageError(err, "find root"), ErrNotFound) {
+				return nil, ErrCommentRootNotFound
+			}
 			return nil, err
 		}
 		if root.SubjectKey != input.SubjectKey || root.RootID != nil {
-			return nil, fmt.Errorf("comment %d is not a root comment of subject %q", *input.RootID, input.SubjectKey)
+			return nil, ErrInvalidCommentRoot
 		}
 	}
 	record := Comment{
@@ -275,7 +284,8 @@ func (r *commentRepository) Create(input CreateCommentInput) (*Comment, error) {
 	return &record, nil
 }
 
-func (r *commentRepository) Update(subjectType int16, id int64, content string) (*Comment, error) {
+func (r *commentRepository) Update(subjectType int16, id int64, content string) (result *Comment, err error) {
+	defer func() { err = storageError(err, "comment.Update") }()
 	stmt := table.Comment.UPDATE(table.Comment.Content, table.Comment.UpdatedAt).
 		SET(String(content), TimestampzT(time.Now())).
 		WHERE(table.Comment.ID.EQ(Int64(id)).
@@ -289,7 +299,8 @@ func (r *commentRepository) Update(subjectType int16, id int64, content string) 
 	return &dest, nil
 }
 
-func (r *commentRepository) SetStatus(subjectType int16, id int64, status int16) error {
+func (r *commentRepository) SetStatus(subjectType int16, id int64, status int16) (err error) {
+	defer func() { err = storageError(err, "comment.SetStatus") }()
 	tx, err := r.db.Begin()
 	if err != nil {
 		return err
@@ -338,8 +349,9 @@ func (r *commentRepository) SetStatus(subjectType int16, id int64, status int16)
 	return tx.Commit()
 }
 
-func (r *commentRepository) DeleteAllByAuthor(authorID int64) error {
-	_, err := r.db.Exec(`
+func (r *commentRepository) DeleteAllByAuthor(authorID int64) (err error) {
+	defer func() { err = storageError(err, "comment.DeleteAllByAuthor") }()
+	_, err = r.db.Exec(`
 		WITH published_comments AS (
 			UPDATE comment
 			SET status = $2, updated_at = CURRENT_TIMESTAMP

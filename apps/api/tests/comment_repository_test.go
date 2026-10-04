@@ -5,6 +5,8 @@ package tests
 import (
 	forumcategory "auth/internal/category"
 	"auth/internal/repository"
+	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -146,5 +148,92 @@ func TestCommentRootReplyPreviews(t *testing.T) {
 	_, empty, err := commentRepo.ListRoots(repository.CommentSubjectNovel, "preview", 3, 3)
 	if err != nil || len(empty) != 0 {
 		t.Fatalf("empty page: %#v %v", empty, err)
+	}
+}
+
+func TestCommentCreationRootErrors(t *testing.T) {
+	resetDatabase()
+	post, err := postRepo.Create(repository.CreatePostInput{
+		CategoryID: forumcategory.NovelID, Title: "帖子", Content: "正文",
+		AuthorID: 1, AuthorUsername: "author", Attr: "{}",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherPost, err := postRepo.Create(repository.CreatePostInput{
+		CategoryID: forumcategory.NovelID, Title: "另一帖子", Content: "正文",
+		AuthorID: 1, AuthorUsername: "author", Attr: "{}",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, subjectType := range []int16{repository.CommentSubjectPost, repository.CommentSubjectNovel} {
+		t.Run(fmt.Sprintf("subject=%d", subjectType), func(t *testing.T) {
+			key := repository.PostSubjectKey(post.ID)
+			create := func(kind int16, subjectKey string, rootID *int64) *repository.Comment {
+				t.Helper()
+				comment, err := commentRepo.Create(repository.CreateCommentInput{
+					SubjectType: kind, SubjectKey: subjectKey, RootID: rootID,
+					Content: "评论", AuthorID: 1, AuthorUsername: "author", Attr: "{}",
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return comment
+			}
+			root := create(subjectType, key, nil)
+			reply := create(subjectType, key, &root.ID)
+			otherSubject := create(subjectType, repository.PostSubjectKey(otherPost.ID), nil)
+			otherType := create(1-subjectType, key, nil)
+			hidden := create(subjectType, key, nil)
+			deleted := create(subjectType, key, nil)
+			if err := commentRepo.SetStatus(subjectType, hidden.ID, repository.StatusHidden); err != nil {
+				t.Fatal(err)
+			}
+			if err := commentRepo.SetStatus(subjectType, deleted.ID, repository.StatusDeleted); err != nil {
+				t.Fatal(err)
+			}
+			before, err := postRepo.Find(post.ID, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var countBefore int
+			if err := testDB.QueryRow("SELECT COUNT(*) FROM comment").Scan(&countBefore); err != nil {
+				t.Fatal(err)
+			}
+			for _, tc := range []struct {
+				name   string
+				rootID int64
+				want   error
+			}{
+				{"missing", 999999, repository.ErrCommentRootNotFound},
+				{"hidden", hidden.ID, repository.ErrCommentRootNotFound},
+				{"deleted", deleted.ID, repository.ErrCommentRootNotFound},
+				{"reply as root", reply.ID, repository.ErrInvalidCommentRoot},
+				{"other type", otherType.ID, repository.ErrCommentRootNotFound},
+				{"other subject", otherSubject.ID, repository.ErrInvalidCommentRoot},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					_, err := commentRepo.Create(repository.CreateCommentInput{
+						SubjectType: subjectType, SubjectKey: key, RootID: &tc.rootID,
+						Content: "reply", AuthorID: 1, AuthorUsername: "author", Attr: "{}",
+					})
+					if !errors.Is(err, tc.want) {
+						t.Fatalf("got %v, want %v", err, tc.want)
+					}
+				})
+			}
+			var countAfter int
+			if err := testDB.QueryRow("SELECT COUNT(*) FROM comment").Scan(&countAfter); err != nil {
+				t.Fatal(err)
+			}
+			after, err := postRepo.Find(post.ID, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if countBefore != countAfter || before.CommentsCount != after.CommentsCount {
+				t.Fatal("failed creation changed comments or post count")
+			}
+		})
 	}
 }

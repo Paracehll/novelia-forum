@@ -10,8 +10,6 @@ import (
 
 	"auth/internal/repository"
 	"auth/internal/subject"
-
-	"github.com/go-jet/jet/v2/qrm"
 )
 
 type commentRepoStub struct {
@@ -156,6 +154,7 @@ func TestCommentModificationPermissions(t *testing.T) {
 }
 
 func TestExternalCommentChecksBeforeWrite(t *testing.T) {
+	upstreamErr := errors.New("upstream unavailable")
 	for _, tc := range []struct {
 		name    string
 		err     error
@@ -165,7 +164,7 @@ func TestExternalCommentChecksBeforeWrite(t *testing.T) {
 		{"missing", subject.ErrNotFound, ErrCommentSubjectNotFound},
 		{"invalid", subject.ErrInvalid, subject.ErrInvalid},
 		{"unsupported", subject.ErrUnsupported, subject.ErrUnsupported},
-		{"unavailable", errors.New("upstream unavailable"), ErrCommentSubjectUnavailable},
+		{"unavailable", upstreamErr, upstreamErr},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &commentRepoStub{}
@@ -220,22 +219,23 @@ func TestCommentRepositoryErrors(t *testing.T) {
 		return repository.CommentSubjectNovel, nil
 	})
 	for _, tc := range []struct {
-		name    string
-		call    func(*CommentUsecase) error
-		missing error
+		name         string
+		call         func(*CommentUsecase) error
+		missing      error
+		storageError error
 	}{
 		{"comment.create_post", func(u *CommentUsecase) error {
 			_, err := u.CreatePost(repository.CreateCommentInput{SubjectKey: "42", Content: "body"})
 			return err
-		}, ErrCommentSubjectNotFound},
+		}, ErrCommentSubjectNotFound, repository.ErrNotFound},
 		{"comment.create_external", func(u *CommentUsecase) error {
 			_, err := u.CreateExternal(context.Background(), "novel", repository.CreateCommentInput{SubjectKey: "wenku-book", Content: "body"})
 			return err
-		}, ErrCommentRootNotFound},
+		}, ErrCommentRootNotFound, repository.ErrCommentRootNotFound},
 		{"comment.list_replies", func(u *CommentUsecase) error {
 			_, _, err := u.ListReplies(repository.CommentSubjectNovel, "wenku-book", 7, 20, 0)
 			return err
-		}, ErrCommentRootNotFound},
+		}, ErrCommentRootNotFound, repository.ErrNotFound},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cause := errors.New("private database details")
@@ -244,7 +244,7 @@ func TestCommentRepositoryErrors(t *testing.T) {
 			if !errors.Is(err, cause) || !strings.Contains(err.Error(), tc.name) {
 				t.Fatalf("expected operation and original cause, got %v", err)
 			}
-			u = NewCommentUsecase(failingCommentRepository{err: fmt.Errorf("query: %w", qrm.ErrNoRows)}, nil, nil, checker)
+			u = NewCommentUsecase(failingCommentRepository{err: fmt.Errorf("query: %w", tc.storageError)}, nil, nil, checker)
 			if err := tc.call(u); !errors.Is(err, tc.missing) {
 				t.Fatalf("expected %v, got %v", tc.missing, err)
 			}
@@ -255,7 +255,7 @@ func TestCommentRepositoryErrors(t *testing.T) {
 type missingPostRepository struct{ repository.PostRepository }
 
 func (missingPostRepository) Find(int64, bool) (*repository.PostDetails, error) {
-	return nil, qrm.ErrNoRows
+	return nil, repository.ErrNotFound
 }
 
 func TestCommentReadSubjectChecks(t *testing.T) {
@@ -288,6 +288,38 @@ func TestCommentReadSubjectChecks(t *testing.T) {
 		}
 		if err != nil {
 			t.Fatal(err)
+		}
+	}
+}
+
+func TestCommentCreationStorageFailures(t *testing.T) {
+	checker := subjectCheckFunc(func(context.Context, string, string) (int16, error) {
+		return repository.CommentSubjectNovel, nil
+	})
+	for _, external := range []bool{false, true} {
+		for _, tc := range []struct {
+			name    string
+			storage error
+			want    error
+		}{
+			{"missing root", repository.ErrCommentRootNotFound, ErrCommentRootNotFound},
+			{"invalid root", repository.ErrInvalidCommentRoot, ErrCommentRootInvalid},
+			{"conflict", repository.ErrConflict, ErrCommentConflict},
+		} {
+			t.Run(fmt.Sprintf("external=%t/%s", external, tc.name), func(t *testing.T) {
+				u := NewCommentUsecase(failingCommentRepository{err: fmt.Errorf("create: %w", tc.storage)}, nil, nil, checker)
+				rootID := int64(7)
+				input := repository.CreateCommentInput{SubjectKey: "42", RootID: &rootID, Content: "reply"}
+				var err error
+				if external {
+					_, err = u.CreateExternal(context.Background(), "novel", input)
+				} else {
+					_, err = u.CreatePost(input)
+				}
+				if !errors.Is(err, tc.want) {
+					t.Fatalf("got %v, want %v", err, tc.want)
+				}
+			})
 		}
 	}
 }

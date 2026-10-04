@@ -29,7 +29,9 @@ func TestCommentErrorResponses(t *testing.T) {
 		{usecase.ErrCommentRootNotFound, http.StatusNotFound, "根评论不存在"},
 		{usecase.ErrCommentDomainInvalid, http.StatusBadRequest, "内容无法完成域名检查"},
 		{usecase.ErrCommentsLocked, http.StatusConflict, "评论区已锁定"},
-		{usecase.ErrCommentSubjectUnavailable, http.StatusServiceUnavailable, "暂时无法校验资源，请稍后重试"},
+		{usecase.ErrCommentRootInvalid, http.StatusBadRequest, "根评论无效"},
+		{usecase.ErrCommentConflict, http.StatusConflict, "评论数据冲突"},
+		{fmt.Errorf("comment.check_subject: %w", errors.New("upstream unavailable")), http.StatusInternalServerError, "服务器内部错误"},
 		{fmt.Errorf("comment.list_roots: %w", errors.New("database unavailable")), http.StatusInternalServerError, "服务器内部错误"},
 		{errors.New("评论不存在"), http.StatusInternalServerError, "服务器内部错误"},
 	} {

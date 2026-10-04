@@ -38,7 +38,7 @@ func TestExternalCommentCreationChecksSubject(t *testing.T) {
 		{"missing", subject.ErrNotFound, http.StatusNotFound},
 		{"invalid", subject.ErrInvalid, http.StatusBadRequest},
 		{"unsupported", subject.ErrUnsupported, http.StatusBadRequest},
-		{"unavailable", errors.New("upstream failed"), http.StatusServiceUnavailable},
+		{"unavailable", errors.New("upstream failed"), http.StatusInternalServerError},
 	} {
 		for _, body := range []string{`{"content":"评论"}`, `{"content":"回复","rootId":7}`} {
 			t.Run(tc.name+body, func(t *testing.T) {
@@ -59,6 +59,9 @@ func TestExternalCommentCreationChecksSubject(t *testing.T) {
 				req.Header.Set("Content-Type", "application/json")
 				res := httptest.NewRecorder()
 				router.ServeHTTP(res, req)
+				if tc.status == http.StatusInternalServerError && res.Body.String() != "服务器内部错误" {
+					t.Fatalf("unexpected infrastructure error body: %q", res.Body.String())
+				}
 				if res.Code != tc.status || checks != 1 || repo.written != (tc.status == http.StatusCreated) {
 					t.Fatalf("status=%d checks=%d written=%v body=%s", res.Code, checks, repo.written, res.Body.String())
 				}

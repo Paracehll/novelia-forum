@@ -13,17 +13,23 @@ import (
 	"auth/internal/subject"
 )
 
-var (
-	ErrCommentContentInvalid     = errors.New("content 不能为空且不能超过 1000 字")
-	ErrCommentNotOwner           = errors.New("只能修改自己的评论")
-	ErrCommentEditExpired        = errors.New("评论只能在发布后 20 分钟内编辑或删除")
-	ErrCommentNotFound           = errors.New("评论不存在")
-	ErrCommentsLocked            = errors.New("评论区已锁定")
-	ErrCommentSubjectNotFound    = errors.New("评论所属资源不存在")
-	ErrCommentSubjectUnavailable = errors.New("暂时无法校验资源，请稍后重试")
-	ErrCommentRootNotFound       = errors.New("根评论不存在")
-	ErrCommentDomainBlocked      = errors.New("内容包含禁止使用的域名")
-	ErrCommentDomainInvalid      = errors.New("内容无法完成域名检查")
+// CommentErrorCode is a stable business failure, independent of transport messages.
+type CommentErrorCode string
+
+func (code CommentErrorCode) Error() string { return string(code) }
+
+const (
+	ErrCommentContentInvalid  CommentErrorCode = "comment.content_invalid"
+	ErrCommentNotOwner        CommentErrorCode = "comment.not_owner"
+	ErrCommentEditExpired     CommentErrorCode = "comment.edit_expired"
+	ErrCommentNotFound        CommentErrorCode = "comment.not_found"
+	ErrCommentsLocked         CommentErrorCode = "comment.locked"
+	ErrCommentSubjectNotFound CommentErrorCode = "comment.subject_not_found"
+	ErrCommentRootNotFound    CommentErrorCode = "comment.root_not_found"
+	ErrCommentRootInvalid     CommentErrorCode = "comment.root_invalid"
+	ErrCommentConflict        CommentErrorCode = "comment.conflict"
+	ErrCommentDomainBlocked   CommentErrorCode = "comment.domain_blocked"
+	ErrCommentDomainInvalid   CommentErrorCode = "comment.domain_invalid"
 )
 
 // CommentUsecase shares comment rules across forum posts and external resources.
@@ -94,8 +100,17 @@ func commentError(err error, operation string) error {
 	if err == nil {
 		return nil
 	}
-	if repository.IsNotFound(err) {
+	if errors.Is(err, repository.ErrNotFound) {
 		return ErrCommentNotFound
+	}
+	if errors.Is(err, repository.ErrCommentRootNotFound) {
+		return ErrCommentRootNotFound
+	}
+	if errors.Is(err, repository.ErrInvalidCommentRoot) {
+		return ErrCommentRootInvalid
+	}
+	if errors.Is(err, repository.ErrConflict) {
+		return ErrCommentConflict
 	}
 	return fmt.Errorf("%s: %w", operation, err)
 }
@@ -154,7 +169,7 @@ func (u *CommentUsecase) checkPost(subjectType int16, key string) error {
 		return fmt.Errorf("comment.check_post: %w", err)
 	}
 	if _, err := u.postRepo.Find(id, false); err != nil {
-		if repository.IsNotFound(err) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return ErrCommentSubjectNotFound
 		}
 		return fmt.Errorf("comment.check_post: %w", err)
@@ -186,7 +201,7 @@ func (u *CommentUsecase) ListReplies(
 		return 0, nil, err
 	}
 	total, items, err := u.commentRepo.ListReplies(subjectType, key, rootID, limit, offset)
-	if repository.IsNotFound(err) {
+	if errors.Is(err, repository.ErrNotFound) {
 		return 0, nil, ErrCommentRootNotFound
 	}
 	if err != nil {
@@ -202,14 +217,14 @@ func (u *CommentUsecase) CreatePost(input repository.CreateCommentInput) (*repos
 	input.SubjectType = repository.CommentSubjectPost
 	input.Attr = "{}"
 	comment, err := u.commentRepo.Create(input)
-	if repository.IsNotFound(err) {
+	if errors.Is(err, repository.ErrNotFound) {
 		return nil, ErrCommentSubjectNotFound
 	}
 	if errors.Is(err, repository.ErrCommentsLocked) {
 		return nil, ErrCommentsLocked
 	}
 	if err != nil {
-		return nil, fmt.Errorf("comment.create_post: %w", err)
+		return nil, commentError(err, "comment.create_post")
 	}
 	return comment, nil
 }
@@ -232,18 +247,15 @@ func (u *CommentUsecase) CreateExternal(
 		case errors.Is(err, subject.ErrInvalid):
 			return nil, err
 		default:
-			return nil, fmt.Errorf("%w: %w", ErrCommentSubjectUnavailable, err)
+			return nil, fmt.Errorf("comment.check_subject: %w", err)
 		}
 	}
 
 	input.SubjectType = subjectType
 	input.Attr = "{}"
 	comment, err := u.commentRepo.Create(input)
-	if repository.IsNotFound(err) {
-		return nil, ErrCommentRootNotFound
-	}
 	if err != nil {
-		return nil, fmt.Errorf("comment.create_external: %w", err)
+		return nil, commentError(err, "comment.create_external")
 	}
 	return comment, nil
 }
