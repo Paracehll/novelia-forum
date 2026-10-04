@@ -59,7 +59,7 @@ type tagInput struct {
 	SortOrder int32  `json:"sortOrder"`
 }
 
-func (input tagInput) command(categoryID int64) usecase.TagInput {
+func (input tagInput) toUsecaseInput(categoryID int64) usecase.TagInput {
 	return usecase.TagInput{CategoryID: categoryID, Name: input.Name, Color: input.Color, SortOrder: input.SortOrder}
 }
 
@@ -73,7 +73,7 @@ func (h *categoryHandler) createTag(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	tag, err := h.tagUsecase.Create(actorFromPrincipal(principal), input.command(categoryID))
+	tag, err := h.tagUsecase.Create(actorFromPrincipal(principal), input.toUsecaseInput(categoryID))
 	if err != nil {
 		return transportError(err)
 	}
@@ -96,7 +96,7 @@ func (h *categoryHandler) updateTag(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	tag, err := h.tagUsecase.Update(actorFromPrincipal(principal), id, input.command(categoryID))
+	tag, err := h.tagUsecase.Update(actorFromPrincipal(principal), id, input.toUsecaseInput(categoryID))
 	if err != nil {
 		return transportError(err)
 	}

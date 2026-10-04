@@ -191,7 +191,7 @@ type postInput struct {
 	TagIDs     []int64 `json:"tagIds"`
 }
 
-func (input postInput) command() usecase.PostInput {
+func (input postInput) toUsecaseInput() usecase.PostInput {
 	return usecase.PostInput{CategoryID: input.CategoryID, Title: input.Title, Content: input.Content, TagIDs: input.TagIDs}
 }
 
@@ -201,7 +201,7 @@ func (h *postHandler) create(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	post, err := h.postUsecase.Create(actorFromPrincipal(principal), input.command())
+	post, err := h.postUsecase.Create(actorFromPrincipal(principal), input.toUsecaseInput())
 	if err != nil {
 		return transportError(err)
 	}
@@ -220,7 +220,7 @@ func (h *postHandler) update(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	post, err := h.postUsecase.Update(actorFromPrincipal(principal), id, input.command())
+	post, err := h.postUsecase.Update(actorFromPrincipal(principal), id, input.toUsecaseInput())
 	if err != nil {
 		return transportError(err)
 	}

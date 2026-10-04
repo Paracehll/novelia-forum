@@ -67,7 +67,7 @@ func (h *commentHandler) listAdmin(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
-	filter := usecase.ListAdminCommentsQuery{
+	listQuery := usecase.ListAdminCommentsQuery{
 		Search:     strings.TrimSpace(query.Get("q")),
 		AuthorName: strings.TrimSpace(query.Get("author_name")),
 		Limit:      pagination.Limit,
@@ -81,7 +81,7 @@ func (h *commentHandler) listAdmin(w http.ResponseWriter, r *http.Request) error
 		if err != nil || id <= 0 {
 			return httpx.BadRequest("post_id 必须为正整数")
 		}
-		filter.PostID = id
+		listQuery.PostID = id
 	}
 	if values, ok := query["status"]; ok {
 		if len(values) != 1 {
@@ -92,12 +92,12 @@ func (h *commentHandler) listAdmin(w http.ResponseWriter, r *http.Request) error
 			if err != nil || !domain.CommentStatus(status).Valid() {
 				return httpx.BadRequest("status 必须为 all、0、1 或 2")
 			}
-			value := domain.CommentStatus(status)
-			filter.Status = &value
+			commentStatus := domain.CommentStatus(status)
+			listQuery.Status = &commentStatus
 		}
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	total, items, err := h.commentUsecase.ListAdmin(actorFromPrincipal(principal), filter)
+	total, items, err := h.commentUsecase.ListAdmin(actorFromPrincipal(principal), listQuery)
 	if err != nil {
 		return transportError(err)
 	}
