@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,9 +16,10 @@ import (
 )
 
 type handlerSubjectResolver struct {
-	valid  bool
-	exists bool
-	check  func(context.Context, string, string) bool
+	valid    bool
+	exists   bool
+	checkErr error
+	check    func(context.Context, string, string) bool
 }
 
 func (s handlerSubjectResolver) Type(kind string) (domain.CommentSubjectType, bool) {
@@ -26,11 +28,11 @@ func (s handlerSubjectResolver) Type(kind string) (domain.CommentSubjectType, bo
 func (s handlerSubjectResolver) Valid(kind, key string) bool {
 	return kind == "novel" && key != "invalid" && s.valid
 }
-func (s handlerSubjectResolver) Check(ctx context.Context, kind, key string) bool {
+func (s handlerSubjectResolver) Check(ctx context.Context, kind, key string) (bool, error) {
 	if s.check != nil {
-		return s.check(ctx, kind, key)
+		return s.check(ctx, kind, key), s.checkErr
 	}
-	return s.exists
+	return s.exists, s.checkErr
 }
 
 func TestExternalCommentCreationChecksSubject(t *testing.T) {
@@ -47,18 +49,19 @@ func TestExternalCommentCreationChecksSubject(t *testing.T) {
 		exists     bool
 		status     int
 		wantChecks int
+		checkErr   error
 	}{
-		{"exists", "novel", true, true, http.StatusCreated, 1},
-		{"missing", "novel", true, false, http.StatusNotFound, 1},
-		{"invalid", "novel", false, false, http.StatusBadRequest, 0},
-		{"unsupported", "unknown", false, false, http.StatusBadRequest, 0},
-		{"check failed", "novel", true, false, http.StatusNotFound, 1},
+		{"exists", "novel", true, true, http.StatusCreated, 1, nil},
+		{"missing", "novel", true, false, http.StatusNotFound, 1, nil},
+		{"invalid", "novel", false, false, http.StatusBadRequest, 0, nil},
+		{"unsupported", "unknown", false, false, http.StatusBadRequest, 0, nil},
+		{"check failed", "novel", true, false, http.StatusInternalServerError, 1, errors.New("private upstream failure")},
 	} {
 		for _, body := range []string{`{"content":"评论"}`, `{"content":"回复","rootId":7}`} {
 			t.Run(tc.name+body, func(t *testing.T) {
 				repo := &domainCommentRepository{}
 				checks := 0
-				checker := handlerSubjectResolver{valid: tc.valid, exists: tc.exists}
+				checker := handlerSubjectResolver{valid: tc.valid, exists: tc.exists, checkErr: tc.checkErr}
 				checker.check = func(ctx context.Context, kind, key string) bool {
 					checks++
 					if kind != tc.kind || key != "web-syosetu-n1234" {
@@ -76,6 +79,9 @@ func TestExternalCommentCreationChecksSubject(t *testing.T) {
 				router.ServeHTTP(res, req)
 				if res.Code != tc.status || checks != tc.wantChecks || repo.written != (tc.status == http.StatusCreated) {
 					t.Fatalf("status=%d checks=%d written=%v body=%s", res.Code, checks, repo.written, res.Body.String())
+				}
+				if tc.checkErr != nil && res.Body.String() != "服务器内部错误" {
+					t.Fatalf("check failure response exposed details: %q", res.Body.String())
 				}
 			})
 		}

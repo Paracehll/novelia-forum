@@ -27,21 +27,28 @@ func novelPlugin(client *http.Client, baseURL string) Plugin {
 			_, ok := novelResolver(baseURL, key)
 			return ok
 		},
-		Check: func(ctx context.Context, key string) bool {
+		Check: func(ctx context.Context, key string) (bool, error) {
 			endpoint, ok := novelResolver(baseURL, key)
 			if !ok {
-				return false
+				return false, ErrCheckFailed
 			}
 			req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 			if err != nil {
-				return false
+				return false, ErrCheckFailed
 			}
 			response, err := client.Do(req)
 			if err != nil {
-				return false
+				return false, ErrCheckFailed
 			}
 			defer response.Body.Close()
-			return response.StatusCode == http.StatusNoContent
+			switch response.StatusCode {
+			case http.StatusNoContent:
+				return true, nil
+			case http.StatusNotFound:
+				return false, nil
+			default:
+				return false, ErrCheckFailed
+			}
 		},
 	}
 }

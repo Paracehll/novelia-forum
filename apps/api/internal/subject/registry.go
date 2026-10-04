@@ -9,7 +9,12 @@ import (
 	"forum/internal/domain"
 )
 
-type CheckFunc func(context.Context, string) bool
+// ErrCheckFailed represents a failed availability check without exposing its cause.
+var ErrCheckFailed = errors.New("subject check failed")
+
+// CheckFunc returns true for an existing subject, false for a missing subject,
+// and ErrCheckFailed when the check cannot be completed.
+type CheckFunc func(context.Context, string) (bool, error)
 
 type Plugin struct {
 	Kind        string
@@ -57,10 +62,13 @@ func (r *Registry) Valid(kind, key string) bool {
 	return ok && plugin.Validate(key)
 }
 
-func (r *Registry) Check(ctx context.Context, kind, key string) bool {
+func (r *Registry) Check(ctx context.Context, kind, key string) (bool, error) {
 	if r == nil {
-		return false
+		return false, ErrCheckFailed
 	}
 	plugin, ok := r.plugins[kind]
-	return ok && plugin.Check(ctx, key)
+	if !ok {
+		return false, ErrCheckFailed
+	}
+	return plugin.Check(ctx, key)
 }

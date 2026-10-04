@@ -34,7 +34,7 @@ const (
 type SubjectResolver interface {
 	Type(kind string) (domain.CommentSubjectType, bool)
 	Valid(kind, key string) bool
-	Check(ctx context.Context, kind, key string) bool
+	Check(ctx context.Context, kind, key string) (bool, error)
 }
 
 type CommentUsecase struct {
@@ -263,7 +263,11 @@ func (u *CommentUsecase) CreateExternal(
 	if !u.subjectResolver.Valid(command.Kind, command.SubjectKey) {
 		return nil, Invalid(CodeCommentSubjectKeyInvalid, "subjectKey 格式无效")
 	}
-	if !u.subjectResolver.Check(ctx, command.Kind, command.SubjectKey) {
+	exists, err := u.subjectResolver.Check(ctx, command.Kind, command.SubjectKey)
+	if err != nil {
+		return nil, errors.New("comment.check_subject: 检查评论所属资源失败")
+	}
+	if !exists {
 		return nil, NotFound(CodeCommentSubjectNotFound, "评论所属资源不存在")
 	}
 

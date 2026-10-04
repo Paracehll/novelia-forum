@@ -50,14 +50,15 @@ func (f subjectCheckFunc) Type(kind string) (domain.CommentSubjectType, bool) {
 	return domain.CommentSubjectNovel, kind == "novel"
 }
 func (f subjectCheckFunc) Valid(kind, _ string) bool { return kind == "novel" }
-func (f subjectCheckFunc) Check(ctx context.Context, kind, key string) bool {
-	return f(ctx, kind, key)
+func (f subjectCheckFunc) Check(ctx context.Context, kind, key string) (bool, error) {
+	return f(ctx, kind, key), nil
 }
 
 type subjectResolverStub struct {
 	supported bool
 	valid     bool
 	exists    bool
+	checkErr  error
 	checks    *int
 }
 
@@ -65,11 +66,11 @@ func (s subjectResolverStub) Type(string) (domain.CommentSubjectType, bool) {
 	return domain.CommentSubjectNovel, s.supported
 }
 func (s subjectResolverStub) Valid(string, string) bool { return s.valid }
-func (s subjectResolverStub) Check(context.Context, string, string) bool {
+func (s subjectResolverStub) Check(context.Context, string, string) (bool, error) {
 	if s.checks != nil {
 		*s.checks++
 	}
-	return s.exists
+	return s.exists, s.checkErr
 }
 
 func isAppErrorCode(err error, code string) bool {
@@ -199,6 +200,29 @@ func TestPostCommentCreationUsesActor(t *testing.T) {
 	if repo.input.AuthorID != actor.UserID || repo.input.AuthorUsername != actor.Username {
 		t.Fatalf("persisted author = %d/%q, want %d/%q",
 			repo.input.AuthorID, repo.input.AuthorUsername, actor.UserID, actor.Username)
+	}
+}
+
+func TestExternalCommentCheckFailureStopsWrite(t *testing.T) {
+	for _, exists := range []bool{false, true} {
+		t.Run(fmt.Sprintf("exists=%t", exists), func(t *testing.T) {
+			repo := &commentRepoStub{}
+			checks := 0
+			cause := errors.New("private upstream failure")
+			u := NewCommentUsecase(repo, nil, nil, subjectResolverStub{
+				supported: true, valid: true, exists: exists, checkErr: cause, checks: &checks,
+			})
+			comment, err := u.CreateExternal(context.Background(), Actor{UserID: 1}, CreateExternalCommentCommand{
+				Kind: "novel", SubjectKey: "web-syosetu-n1234", Content: "body",
+			})
+			var appErr *AppError
+			if err == nil || errors.As(err, &appErr) || comment != nil || repo.writes != 0 || checks != 1 {
+				t.Fatalf("comment=%v err=%v writes=%d checks=%d", comment, err, repo.writes, checks)
+			}
+			if errors.Is(err, cause) || strings.Contains(err.Error(), cause.Error()) {
+				t.Fatalf("check failure exposed its cause: %v", err)
+			}
+		})
 	}
 }
 

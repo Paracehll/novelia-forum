@@ -29,9 +29,13 @@ func TestNovelCheckStatus(t *testing.T) {
 				w.WriteHeader(status)
 			}))
 			defer server.Close()
-			got := registryFor(t, server.URL).Check(context.Background(), "novel", "web-syosetu-n1234")
-			if got != (status == http.StatusNoContent) {
-				t.Fatalf("Check=%t for HTTP %d", got, status)
+			got, err := registryFor(t, server.URL).Check(context.Background(), "novel", "web-syosetu-n1234")
+			var wantErr error
+			if status != http.StatusNoContent && status != http.StatusNotFound {
+				wantErr = ErrCheckFailed
+			}
+			if got != (status == http.StatusNoContent) || err != wantErr {
+				t.Fatalf("Check=(%t, %v) for HTTP %d, want error %v", got, err, status, wantErr)
 			}
 		})
 	}
@@ -51,8 +55,8 @@ func TestNovelRoutesAndEscapesKey(t *testing.T) {
 				w.WriteHeader(http.StatusNoContent)
 			}))
 			defer server.Close()
-			if !registryFor(t, server.URL).Check(context.Background(), "novel", tc.key) {
-				t.Fatal("subject rejected")
+			if exists, err := registryFor(t, server.URL).Check(context.Background(), "novel", tc.key); !exists || err != nil {
+				t.Fatalf("subject rejected: exists=%t err=%v", exists, err)
 			}
 		})
 	}
@@ -77,8 +81,8 @@ func TestNovelCheckDoesNotFollowRedirect(t *testing.T) {
 		http.Redirect(w, r, "/elsewhere", http.StatusFound)
 	}))
 	defer server.Close()
-	if registryFor(t, server.URL).Check(context.Background(), "novel", "web-syosetu-n1234") {
-		t.Fatal("redirect accepted")
+	if exists, err := registryFor(t, server.URL).Check(context.Background(), "novel", "web-syosetu-n1234"); exists || err != ErrCheckFailed {
+		t.Fatalf("redirect result: exists=%t err=%v", exists, err)
 	}
 	if calls != 1 {
 		t.Fatalf("followed redirect: %d requests", calls)
@@ -94,13 +98,32 @@ func TestNovelCheckTimeoutAndCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if registry.Check(context.Background(), "novel", "web-syosetu-n1234") {
-		t.Fatal("timeout accepted")
+	if exists, err := registry.Check(context.Background(), "novel", "web-syosetu-n1234"); exists || err != ErrCheckFailed {
+		t.Fatalf("timeout result: exists=%t err=%v", exists, err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if registry.Check(ctx, "novel", "web-syosetu-n1234") {
-		t.Fatal("cancellation accepted")
+	if exists, err := registry.Check(ctx, "novel", "web-syosetu-n1234"); exists || err != ErrCheckFailed {
+		t.Fatalf("cancellation result: exists=%t err=%v", exists, err)
+	}
+}
+
+func TestNovelCheckFailures(t *testing.T) {
+	for _, tc := range []struct{ name, base, key string }{
+		{"invalid key", "http://invalid.invalid", "invalid"},
+		{"invalid URL", "://invalid", "wenku-book"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			exists, err := registryFor(t, tc.base).Check(context.Background(), "novel", tc.key)
+			if exists || err != ErrCheckFailed {
+				t.Fatalf("Check=(%t, %v), want (false, ErrCheckFailed)", exists, err)
+			}
+		})
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	server.Close()
+	if exists, err := registryFor(t, server.URL).Check(context.Background(), "novel", "wenku-book"); exists || err != ErrCheckFailed {
+		t.Fatalf("network failure result: exists=%t err=%v", exists, err)
 	}
 }
 
@@ -112,8 +135,11 @@ func TestRegistry(t *testing.T) {
 	if id, ok := registry.Type("novel"); !ok || id != domain.CommentSubjectNovel {
 		t.Fatalf("id=%d ok=%v", id, ok)
 	}
-	if _, ok := registry.Type("unknown"); ok || registry.Valid("unknown", "key") || registry.Check(context.Background(), "unknown", "key") {
+	if _, ok := registry.Type("unknown"); ok || registry.Valid("unknown", "key") {
 		t.Fatal("unknown kind accepted")
+	}
+	if exists, err := registry.Check(context.Background(), "unknown", "key"); exists || err != ErrCheckFailed {
+		t.Fatalf("unknown kind result: exists=%t err=%v", exists, err)
 	}
 	if _, err := NewRegistry(Novel(), Novel()); err == nil {
 		t.Fatal("duplicate kind accepted")
