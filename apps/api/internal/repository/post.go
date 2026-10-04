@@ -5,18 +5,12 @@ import (
 	"forum/.gen/main/public/model"
 	"forum/.gen/main/public/table"
 	forumcategory "forum/internal/category"
+	"forum/internal/domain"
 	"time"
 
 	. "github.com/go-jet/jet/v2/postgres"
 	"github.com/go-jet/jet/v2/qrm"
 )
-
-type Post = model.Post
-
-type PostDetails struct {
-	model.Post
-	Tags []Tag
-}
 
 const (
 	PostSortActive   = "active"
@@ -32,7 +26,7 @@ type PostFilter struct {
 	Sort                     string
 	TagIDs                   []int64
 	AuthorID, FavoriteUserID int64
-	Status                   int16
+	Status                   domain.PostStatus
 }
 
 type CreatePostInput struct {
@@ -51,12 +45,12 @@ type UpdatePostInput struct {
 }
 
 type PostRepository interface {
-	List(filter PostFilter, limit, offset int64) (int64, []PostDetails, error)
-	Find(id int64, incrementViews bool) (*PostDetails, error)
+	List(filter PostFilter, limit, offset int64) (int64, []domain.Post, error)
+	Find(id int64, incrementViews bool) (*domain.Post, error)
 	ExistsPublished(id int64) (bool, error)
-	Create(input CreatePostInput) (*PostDetails, error)
-	Update(id int64, input UpdatePostInput) (*PostDetails, error)
-	SetStatus(id int64, status int16) error
+	Create(input CreatePostInput) (*domain.Post, error)
+	Update(id int64, input UpdatePostInput) (*domain.Post, error)
+	SetStatus(id int64, status domain.PostStatus) error
 	SetCommentsLocked(id int64, locked bool) error
 	SetPinOrder(id int64, pinOrder *int32) error
 }
@@ -70,6 +64,23 @@ func NewPostRepository(db *sql.DB, tagRepo TagRepository) PostRepository {
 	return &postRepository{db: db, tagRepo: tagRepo}
 }
 
+// postFromModel keeps generated database models behind the repository boundary.
+func postFromModel(record model.Post, tags []Tag) domain.Post {
+	postTags := make([]domain.PostTag, len(tags))
+	for i, tag := range tags {
+		postTags[i] = domain.PostTag{ID: tag.ID, Name: tag.Name, Color: tag.Color}
+	}
+	return domain.Post{
+		ID: record.ID, CategoryID: record.CategoryID, Title: record.Title,
+		AuthorID: record.AuthorID, AuthorUsername: record.AuthorUsername,
+		Content: record.Content, Status: domain.PostStatus(record.Status),
+		ViewsCount: record.ViewsCount, CommentsCount: record.CommentsCount,
+		CommentsLocked: record.CommentsLocked, PinOrder: record.PinOrder,
+		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, ActiveAt: record.ActiveAt,
+		Tags: postTags,
+	}
+}
+
 func integerExpressions(ids []int64) []Expression {
 	expressions := make([]Expression, len(ids))
 	for i, id := range ids {
@@ -81,7 +92,7 @@ func integerExpressions(ids []int64) []Expression {
 func (filter PostFilter) condition() BoolExpression {
 	expressions := []BoolExpression{RawBool("TRUE")}
 	if filter.Status != PostStatusAll {
-		expressions = append(expressions, table.Post.Status.EQ(Int16(filter.Status)))
+		expressions = append(expressions, table.Post.Status.EQ(Int16(int16(filter.Status))))
 	}
 	if filter.CategorySlug != "" {
 		category, ok := forumcategory.FindBySlug(filter.CategorySlug)
@@ -141,7 +152,7 @@ func postOrderBy(sort string) []OrderByClause {
 	}
 }
 
-func (r *postRepository) List(filter PostFilter, limit, offset int64) (total int64, items []PostDetails, err error) {
+func (r *postRepository) List(filter PostFilter, limit, offset int64) (total int64, items []domain.Post, err error) {
 	defer func() { err = storageError(err, "post.List") }()
 	condition := filter.condition()
 	from := postFrom(filter)
@@ -162,7 +173,7 @@ func (r *postRepository) List(filter PostFilter, limit, offset int64) (total int
 		ORDER_BY(postOrderBy(filter.Sort)...).
 		LIMIT(limit).
 		OFFSET(offset)
-	var records []Post
+	var records []model.Post
 	if err := stmt.Query(r.db, &records); err != nil {
 		return 0, nil, err
 	}
@@ -174,9 +185,9 @@ func (r *postRepository) List(filter PostFilter, limit, offset int64) (total int
 	if err != nil {
 		return 0, nil, err
 	}
-	dest := make([]PostDetails, len(records))
+	dest := make([]domain.Post, len(records))
 	for i, record := range records {
-		dest[i] = PostDetails{Post: record, Tags: tagsByPostID[record.ID]}
+		dest[i] = postFromModel(record, tagsByPostID[record.ID])
 	}
 	return count.Count, dest, nil
 }
@@ -186,26 +197,26 @@ func (r *postRepository) ExistsPublished(id int64) (exists bool, err error) {
 	var result struct{ Exists bool }
 	stmt := SELECT(EXISTS(SELECT(table.Post.ID).
 		FROM(table.Post).
-		WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(StatusPublished))))).AS("Exists"))
+		WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(int16(domain.PostStatusPublished)))))).AS("Exists"))
 	if err := stmt.Query(r.db, &result); err != nil {
 		return false, err
 	}
 	return result.Exists, nil
 }
 
-func (r *postRepository) Find(id int64, incrementViews bool) (result *PostDetails, err error) {
+func (r *postRepository) Find(id int64, incrementViews bool) (result *domain.Post, err error) {
 	defer func() { err = storageError(err, "post.Find") }()
-	var dest Post
+	var dest model.Post
 	if incrementViews {
 		stmt := table.Post.UPDATE(table.Post.ViewsCount).
 			SET(table.Post.ViewsCount.ADD(Int32(1))).
-			WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(StatusPublished)))).
+			WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(int16(domain.PostStatusPublished))))).
 			RETURNING(table.Post.AllColumns)
 		err = stmt.Query(r.db, &dest)
 	} else {
 		stmt := SELECT(table.Post.AllColumns).
 			FROM(table.Post).
-			WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(StatusPublished))))
+			WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(int16(domain.PostStatusPublished)))))
 		err = stmt.Query(r.db, &dest)
 	}
 	if err != nil {
@@ -215,10 +226,11 @@ func (r *postRepository) Find(id int64, incrementViews bool) (result *PostDetail
 	if err != nil {
 		return nil, err
 	}
-	return &PostDetails{Post: dest, Tags: tags}, nil
+	post := postFromModel(dest, tags)
+	return &post, nil
 }
 
-func (r *postRepository) Create(input CreatePostInput) (result *PostDetails, err error) {
+func (r *postRepository) Create(input CreatePostInput) (result *domain.Post, err error) {
 	defer func() { err = storageError(err, "post.Create") }()
 	if _, ok := forumcategory.FindByID(input.CategoryID); !ok {
 		return nil, ErrInvalidCategory
@@ -229,7 +241,7 @@ func (r *postRepository) Create(input CreatePostInput) (result *PostDetails, err
 	}
 	defer tx.Rollback()
 
-	record := Post{
+	record := model.Post{
 		CategoryID:     input.CategoryID,
 		Title:          input.Title,
 		AuthorID:       input.AuthorID,
@@ -260,7 +272,8 @@ func (r *postRepository) Create(input CreatePostInput) (result *PostDetails, err
 	if err != nil {
 		return nil, err
 	}
-	return &PostDetails{Post: record, Tags: tags}, nil
+	post := postFromModel(record, tags)
+	return &post, nil
 }
 
 func replacePostTags(db qrm.DB, postID, categoryID int64, tagIDs []int64) error {
@@ -292,7 +305,7 @@ func replacePostTags(db qrm.DB, postID, categoryID int64, tagIDs []int64) error 
 	return err
 }
 
-func (r *postRepository) Update(id int64, input UpdatePostInput) (result *PostDetails, err error) {
+func (r *postRepository) Update(id int64, input UpdatePostInput) (result *domain.Post, err error) {
 	defer func() { err = storageError(err, "post.Update") }()
 	if _, ok := forumcategory.FindByID(input.CategoryID); !ok {
 		return nil, ErrInvalidCategory
@@ -304,9 +317,9 @@ func (r *postRepository) Update(id int64, input UpdatePostInput) (result *PostDe
 	defer tx.Rollback()
 	stmt := table.Post.UPDATE(table.Post.CategoryID, table.Post.Title, table.Post.Content, table.Post.UpdatedAt).
 		SET(Int64(input.CategoryID), String(input.Title), String(input.Content), TimestampzT(time.Now())).
-		WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(StatusPublished)))).
+		WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(int16(domain.PostStatusPublished))))).
 		RETURNING(table.Post.AllColumns)
-	var record Post
+	var record model.Post
 	if err := stmt.Query(tx, &record); err != nil {
 		return nil, err
 	}
@@ -320,13 +333,14 @@ func (r *postRepository) Update(id int64, input UpdatePostInput) (result *PostDe
 	if err != nil {
 		return nil, err
 	}
-	return &PostDetails{Post: record, Tags: tags}, nil
+	post := postFromModel(record, tags)
+	return &post, nil
 }
 
-func (r *postRepository) SetStatus(id int64, status int16) (err error) {
+func (r *postRepository) SetStatus(id int64, status domain.PostStatus) (err error) {
 	defer func() { err = storageError(err, "post.SetStatus") }()
 	stmt := table.Post.UPDATE(table.Post.Status, table.Post.UpdatedAt).
-		SET(Int16(status), TimestampzT(time.Now())).
+		SET(Int16(int16(status)), TimestampzT(time.Now())).
 		WHERE(table.Post.ID.EQ(Int64(id)))
 	return execPostUpdate(r.db, stmt)
 }

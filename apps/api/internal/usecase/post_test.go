@@ -8,12 +8,13 @@ import (
 	"time"
 
 	forumcategory "forum/internal/category"
+	"forum/internal/domain"
 	"forum/internal/repository"
 )
 
 type postUsecaseRepoStub struct {
 	repository.PostRepository
-	post           repository.PostDetails
+	post           domain.Post
 	filter         repository.PostFilter
 	input          repository.CreatePostInput
 	writes         int
@@ -21,25 +22,25 @@ type postUsecaseRepoStub struct {
 	err            error
 }
 
-func (r *postUsecaseRepoStub) List(filter repository.PostFilter, _, _ int64) (int64, []repository.PostDetails, error) {
+func (r *postUsecaseRepoStub) List(filter repository.PostFilter, _, _ int64) (int64, []domain.Post, error) {
 	r.filter = filter
-	return 1, []repository.PostDetails{r.post}, r.err
+	return 1, []domain.Post{r.post}, r.err
 }
-func (r *postUsecaseRepoStub) Find(_ int64, increment bool) (*repository.PostDetails, error) {
+func (r *postUsecaseRepoStub) Find(_ int64, increment bool) (*domain.Post, error) {
 	r.incrementViews = increment
 	return &r.post, r.err
 }
-func (r *postUsecaseRepoStub) Create(input repository.CreatePostInput) (*repository.PostDetails, error) {
+func (r *postUsecaseRepoStub) Create(input repository.CreatePostInput) (*domain.Post, error) {
 	r.input = input
 	r.writes++
 	return &r.post, r.err
 }
-func (r *postUsecaseRepoStub) Update(_ int64, input repository.UpdatePostInput) (*repository.PostDetails, error) {
+func (r *postUsecaseRepoStub) Update(_ int64, input repository.UpdatePostInput) (*domain.Post, error) {
 	r.input.Title, r.input.Content = input.Title, input.Content
 	r.writes++
 	return &r.post, r.err
 }
-func (r *postUsecaseRepoStub) SetStatus(_ int64, status int16) error {
+func (r *postUsecaseRepoStub) SetStatus(_ int64, status domain.PostStatus) error {
 	r.writes++
 	r.post.Status = status
 	return r.err
@@ -66,7 +67,7 @@ func (r *postUsecaseFavoriteStub) Has(_ int64, userID int64) (bool, error) {
 func TestPostListScopes(t *testing.T) {
 	for _, mode := range []string{"public", "mine", "favorites", "admin"} {
 		t.Run(mode, func(t *testing.T) {
-			repo := &postUsecaseRepoStub{post: repository.PostDetails{Post: repository.Post{ID: 5}}}
+			repo := &postUsecaseRepoStub{post: domain.Post{ID: 5}}
 			favorites := &postUsecaseFavoriteStub{}
 			u := NewPostUsecase(repo, favorites, nil)
 			actor := Actor{UserID: 7, IsAdmin: true}
@@ -100,7 +101,7 @@ func TestPostListScopes(t *testing.T) {
 				if repo.filter.Status != repository.PostStatusAll || repo.filter.AuthorID != 99 || repo.filter.FavoriteUserID != 88 || repo.filter.AuthorName != "someone" {
 					t.Fatalf("admin filter lost: %+v", repo.filter)
 				}
-			} else if repo.filter.Status != repository.StatusPublished || repo.filter.AuthorName != "" || repo.filter.AuthorID != wantAuthor || repo.filter.FavoriteUserID != wantFavorite {
+			} else if repo.filter.Status != domain.PostStatusPublished || repo.filter.AuthorName != "" || repo.filter.AuthorID != wantAuthor || repo.filter.FavoriteUserID != wantFavorite {
 				t.Fatalf("unsafe filter: %+v", repo.filter)
 			}
 			if query.Filter.AuthorID != 99 {
@@ -130,7 +131,7 @@ func TestPostListScopes(t *testing.T) {
 }
 
 func TestPostInputAndModificationRules(t *testing.T) {
-	repo := &postUsecaseRepoStub{post: repository.PostDetails{Post: repository.Post{ID: 1, AuthorID: 7, CreatedAt: time.Now().Add(-time.Hour)}}}
+	repo := &postUsecaseRepoStub{post: domain.Post{ID: 1, AuthorID: 7, CreatedAt: time.Now().Add(-time.Hour)}}
 	u := NewPostUsecase(repo, &postUsecaseFavoriteStub{}, nil)
 	actor := Actor{UserID: 7, Username: "author"}
 	input := PostInput{CategoryID: forumcategory.NovelID, Title: " 标题 ", Content: " 内容 \n"}
@@ -147,7 +148,7 @@ func TestPostInputAndModificationRules(t *testing.T) {
 	if _, err := u.Update(Actor{UserID: 8}, 1, input); !isAppErrorCode(err, CodePostNotOwner) {
 		t.Fatal(err)
 	}
-	if err := u.Delete(Actor{IsAdmin: true}, 1); err != nil || repo.post.Status != repository.StatusDeleted {
+	if err := u.Delete(Actor{IsAdmin: true}, 1); err != nil || repo.post.Status != domain.PostStatusDeleted {
 		t.Fatal(err)
 	}
 

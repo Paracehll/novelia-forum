@@ -12,13 +12,14 @@ import (
 	"testing"
 	"time"
 
+	"forum/internal/domain"
 	"forum/internal/repository"
 	"forum/internal/usecase"
 )
 
 type listPostRepository struct {
 	repository.PostRepository
-	items []repository.PostDetails
+	items []domain.Post
 }
 
 type capturingPostRepository struct {
@@ -26,7 +27,7 @@ type capturingPostRepository struct {
 	filter repository.PostFilter
 }
 
-func (r *capturingPostRepository) List(filter repository.PostFilter, _, _ int64) (int64, []repository.PostDetails, error) {
+func (r *capturingPostRepository) List(filter repository.PostFilter, _, _ int64) (int64, []domain.Post, error) {
 	r.filter = filter
 	return 0, nil, nil
 }
@@ -34,14 +35,14 @@ func (r *capturingPostRepository) List(filter repository.PostFilter, _, _ int64)
 func TestAdminPostListStatusFilter(t *testing.T) {
 	for _, tc := range []struct {
 		query      string
-		wantStatus int16
+		wantStatus domain.PostStatus
 		wantError  bool
 	}{
 		{"", repository.PostStatusAll, false},
 		{"?status=all", repository.PostStatusAll, false},
-		{"?status=0", repository.StatusPublished, false},
-		{"?status=1", repository.StatusHidden, false},
-		{"?status=2", repository.StatusDeleted, false},
+		{"?status=0", domain.PostStatusPublished, false},
+		{"?status=1", domain.PostStatusHidden, false},
+		{"?status=2", domain.PostStatusDeleted, false},
 		{"?status=3", 0, true},
 		{"?status=", 0, true},
 		{"?status=1&status=2", 0, true},
@@ -161,17 +162,17 @@ func TestValidatePostTagLimit(t *testing.T) {
 	}
 }
 
-func (r listPostRepository) List(repository.PostFilter, int64, int64) (int64, []repository.PostDetails, error) {
+func (r listPostRepository) List(repository.PostFilter, int64, int64) (int64, []domain.Post, error) {
 	return int64(len(r.items)), r.items, nil
 }
 
 func TestPostListOmitsContentAndDetailPreservesIt(t *testing.T) {
-	post := repository.PostDetails{Post: repository.Post{
+	post := domain.Post{
 		ID: 42, Title: "标题", Content: "完整正文", AuthorUsername: "alice", CommentsCount: 3,
-	}}
+	}
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/post/", nil)
-	if err := respondPosts(recorder, request, usecase.NewPostUsecase(listPostRepository{items: []repository.PostDetails{post}}, nil, nil).List, repository.PostFilter{}); err != nil {
+	if err := respondPosts(recorder, request, usecase.NewPostUsecase(listPostRepository{items: []domain.Post{post}}, nil, nil).List, repository.PostFilter{}); err != nil {
 		t.Fatal(err)
 	}
 	var response page[map[string]json.RawMessage]
@@ -216,18 +217,18 @@ type writePostRepository struct {
 	written bool
 }
 
-func (r *writePostRepository) Find(int64, bool) (*repository.PostDetails, error) {
-	return &repository.PostDetails{Post: repository.Post{ID: 42, AuthorID: 1}}, nil
+func (r *writePostRepository) Find(int64, bool) (*domain.Post, error) {
+	return &domain.Post{ID: 42, AuthorID: 1}, nil
 }
 
-func (r *writePostRepository) Create(input repository.CreatePostInput) (*repository.PostDetails, error) {
+func (r *writePostRepository) Create(input repository.CreatePostInput) (*domain.Post, error) {
 	r.written = true
-	return &repository.PostDetails{Post: repository.Post{ID: 42, CategoryID: input.CategoryID}}, nil
+	return &domain.Post{ID: 42, CategoryID: input.CategoryID}, nil
 }
 
-func (r *writePostRepository) Update(id int64, input repository.UpdatePostInput) (*repository.PostDetails, error) {
+func (r *writePostRepository) Update(id int64, input repository.UpdatePostInput) (*domain.Post, error) {
 	r.written = true
-	return &repository.PostDetails{Post: repository.Post{ID: id, CategoryID: input.CategoryID}}, nil
+	return &domain.Post{ID: id, CategoryID: input.CategoryID}, nil
 }
 
 type noFavoriteRepository struct{ repository.FavoriteRepository }
@@ -298,17 +299,17 @@ func TestAnnouncementsPublishingRequiresAdmin(t *testing.T) {
 
 type deletePostRepository struct {
 	repository.PostRepository
-	post    repository.PostDetails
+	post    domain.Post
 	deleted bool
 }
 
-func (r *deletePostRepository) Find(int64, bool) (*repository.PostDetails, error) {
+func (r *deletePostRepository) Find(int64, bool) (*domain.Post, error) {
 	return &r.post, nil
 }
 
-func (r *deletePostRepository) SetStatus(id int64, status int16) error {
+func (r *deletePostRepository) SetStatus(id int64, status domain.PostStatus) error {
 	r.deleted = true
-	if id != r.post.ID || status != repository.StatusDeleted {
+	if id != r.post.ID || status != domain.PostStatusDeleted {
 		return fmt.Errorf("unexpected post status update: id=%d status=%d", id, status)
 	}
 	return nil
@@ -328,9 +329,9 @@ func TestPostDeletionWindow(t *testing.T) {
 		{"other user within window", "member", 2, 19 * time.Minute, http.StatusForbidden},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			repo := &deletePostRepository{post: repository.PostDetails{Post: repository.Post{
+			repo := &deletePostRepository{post: domain.Post{
 				ID: 42, AuthorID: 1, CreatedAt: time.Now().Add(-tc.age),
-			}}}
+			}}
 			router := chi.NewRouter()
 			NewPostHandler(usecase.NewPostUsecase(repo, noFavoriteRepository{}, nil), nil).RegisterRoutes(router)
 			token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{

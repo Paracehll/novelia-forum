@@ -44,14 +44,14 @@ type postResponse struct {
 	Content string `json:"content"`
 }
 
-func newPostResponse(value repository.PostDetails, favorited bool) postResponse {
+func newPostResponse(value domain.Post, favorited bool) postResponse {
 	return postResponse{
 		postListItemResponse: newPostListItemResponse(value, favorited),
 		Content:              value.Content,
 	}
 }
 
-func newPostListItemResponse(value repository.PostDetails, favorited bool) postListItemResponse {
+func newPostListItemResponse(value domain.Post, favorited bool) postListItemResponse {
 	tags := make([]postTagResponse, len(value.Tags))
 	for i, tag := range value.Tags {
 		tags[i] = postTagResponse{
@@ -66,7 +66,7 @@ func newPostListItemResponse(value repository.PostDetails, favorited bool) postL
 		Title:          value.Title,
 		AuthorID:       value.AuthorID,
 		AuthorUsername: value.AuthorUsername,
-		Status:         value.Status,
+		Status:         int16(value.Status),
 		ViewsCount:     value.ViewsCount,
 		CommentsCount:  value.CommentsCount,
 		CommentsLocked: value.CommentsLocked,

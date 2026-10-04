@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	forumcategory "forum/internal/category"
+	"forum/internal/domain"
 	"forum/internal/domainfilter"
 	"forum/internal/repository"
 )
@@ -44,7 +45,7 @@ func NewPostUsecase(postRepo repository.PostRepository, favoriteRepo repository.
 }
 
 type PostResult struct {
-	Post      repository.PostDetails
+	Post      domain.Post
 	Favorited bool
 }
 
@@ -55,7 +56,7 @@ type ListPostsQuery struct {
 
 // Public and personal lists must never inherit privileged identity filters.
 func publicPostQuery(query ListPostsQuery) ListPostsQuery {
-	query.Filter.Status = repository.StatusPublished
+	query.Filter.Status = domain.PostStatusPublished
 	query.Filter.AuthorName = ""
 	query.Filter.AuthorID = 0
 	query.Filter.FavoriteUserID = 0
@@ -70,7 +71,7 @@ func (u *PostUsecase) ListAdmin(actor Actor, query ListPostsQuery) (int64, []Pos
 	if err := checkPostAdmin(actor); err != nil {
 		return 0, nil, err
 	}
-	if query.Filter.Status != repository.PostStatusAll && !validPostStatus(query.Filter.Status) {
+	if query.Filter.Status != repository.PostStatusAll && !query.Filter.Status.Valid() {
 		return 0, nil, Invalid(CodePostStatusInvalid, "status 必须为 all、0、1 或 2")
 	}
 	if query.Filter.AuthorID < 0 || query.Filter.FavoriteUserID < 0 {
@@ -147,7 +148,7 @@ func (u *PostUsecase) Get(actor Actor, id int64) (*PostResult, error) {
 	return u.result(actor, post)
 }
 
-func (u *PostUsecase) result(actor Actor, post *repository.PostDetails) (*PostResult, error) {
+func (u *PostUsecase) result(actor Actor, post *domain.Post) (*PostResult, error) {
 	favorited := false
 	if actor.UserID > 0 {
 		var err error
@@ -235,7 +236,7 @@ func (u *PostUsecase) Create(actor Actor, input PostInput) (*PostResult, error) 
 	return &PostResult{Post: *post}, nil
 }
 
-func (u *PostUsecase) ownedPost(actor Actor, id int64) (*repository.PostDetails, error) {
+func (u *PostUsecase) ownedPost(actor Actor, id int64) (*domain.Post, error) {
 	if err := checkPostID(id); err != nil {
 		return nil, err
 	}
@@ -243,7 +244,7 @@ func (u *PostUsecase) ownedPost(actor Actor, id int64) (*repository.PostDetails,
 	if err != nil {
 		return nil, postError(err, "post.find")
 	}
-	if post.AuthorID != actor.UserID && !actor.IsAdmin {
+	if !post.IsOwnedBy(actor.UserID) && !actor.IsAdmin {
 		return nil, PermissionDenied(CodePostNotOwner, "只能修改自己的帖子")
 	}
 	return post, nil
@@ -270,10 +271,10 @@ func (u *PostUsecase) Delete(actor Actor, id int64) error {
 	if err != nil {
 		return err
 	}
-	if !actor.IsAdmin && time.Now().After(post.CreatedAt.Add(20*time.Minute)) {
+	if !actor.IsAdmin && !post.WithinDeletionWindow(time.Now()) {
 		return PermissionDenied(CodePostDeleteExpired, "帖子只能在发布后 20 分钟内删除")
 	}
-	return postError(u.postRepo.SetStatus(id, repository.StatusDeleted), "post.delete")
+	return postError(u.postRepo.SetStatus(id, domain.PostStatusDeleted), "post.delete")
 }
 
 func (u *PostUsecase) SetFavorite(actor Actor, id int64, favorite bool) error {
@@ -300,18 +301,14 @@ func checkPostID(id int64) error {
 	return nil
 }
 
-func validPostStatus(status int16) bool {
-	return status >= repository.StatusPublished && status <= repository.StatusDeleted
-}
-
-func (u *PostUsecase) SetStatus(actor Actor, id int64, status int16) error {
+func (u *PostUsecase) SetStatus(actor Actor, id int64, status domain.PostStatus) error {
 	if err := checkPostAdmin(actor); err != nil {
 		return err
 	}
 	if err := checkPostID(id); err != nil {
 		return err
 	}
-	if !validPostStatus(status) {
+	if !status.Valid() {
 		return Invalid(CodePostStatusInvalid, "status 必须为 0、1 或 2")
 	}
 	return postError(u.postRepo.SetStatus(id, status), "post.set_status")

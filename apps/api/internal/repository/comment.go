@@ -202,7 +202,7 @@ func (r *commentRepository) Create(input domain.Comment) (result *domain.Comment
 			FROM(table.Post).
 			WHERE(table.Post.ID.EQ(Int64(postID)).AND(table.Post.Status.EQ(Int16(StatusPublished)))).
 			FOR(UPDATE())
-		var post Post
+		var post model.Post
 		if err := lockPost.Query(tx, &post); err != nil {
 			return nil, err
 		}

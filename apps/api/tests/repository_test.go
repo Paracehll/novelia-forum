@@ -132,8 +132,8 @@ func TestJetRepositories(t *testing.T) {
 		t.Fatalf("unexpected posts: total=%d items=%d", total, len(posts))
 	}
 
-	if posts[0].Content != "" || posts[0].Attr != "" {
-		t.Fatal("list loaded content or attributes")
+	if posts[0].Content != "" {
+		t.Fatal("list loaded content")
 	}
 
 	viewed, err := postRepo.Find(post.ID, true)
@@ -265,13 +265,13 @@ func TestJetRepositories(t *testing.T) {
 		t.Fatal(err)
 	}
 	if updated.Title != "更新标题" || updated.CommentsCount != 1 || updated.CategoryID != updatedCategory.ID {
-		t.Fatalf("unexpected updated post: %#v", updated.Post)
+		t.Fatalf("unexpected updated post: %#v", updated)
 	}
 	if len(updated.Tags) != 1 || updated.Tags[0].ID != updatedTag.ID {
 		t.Fatalf("unexpected updated tags: %#v", updated.Tags)
 	}
 
-	if err := postRepo.SetStatus(post.ID, repository.StatusHidden); err != nil {
+	if err := postRepo.SetStatus(post.ID, domain.PostStatusHidden); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
@@ -281,8 +281,8 @@ func TestJetRepositories(t *testing.T) {
 	}{
 		{"public", repository.PostFilter{}, 0},
 		{"admin all", repository.PostFilter{Status: repository.PostStatusAll}, 1},
-		{"admin hidden", repository.PostFilter{Status: repository.StatusHidden}, 1},
-		{"admin deleted", repository.PostFilter{Status: repository.StatusDeleted}, 0},
+		{"admin hidden", repository.PostFilter{Status: domain.PostStatusHidden}, 1},
+		{"admin deleted", repository.PostFilter{Status: domain.PostStatusDeleted}, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			total, items, err := postRepo.List(tc.filter, 20, 0)
@@ -294,14 +294,14 @@ func TestJetRepositories(t *testing.T) {
 			}
 		})
 	}
-	if err := postRepo.SetStatus(post.ID, repository.StatusDeleted); err != nil {
+	if err := postRepo.SetStatus(post.ID, domain.PostStatusDeleted); err != nil {
 		t.Fatal(err)
 	}
-	deletedTotal, deletedPosts, err := postRepo.List(repository.PostFilter{Status: repository.StatusDeleted}, 20, 0)
+	deletedTotal, deletedPosts, err := postRepo.List(repository.PostFilter{Status: domain.PostStatusDeleted}, 20, 0)
 	if err != nil || deletedTotal != 1 || len(deletedPosts) != 1 || deletedPosts[0].ID != post.ID {
 		t.Fatalf("deleted post filter: total=%d items=%#v err=%v", deletedTotal, deletedPosts, err)
 	}
-	if err := postRepo.SetStatus(post.ID, repository.StatusPublished); err != nil {
+	if err := postRepo.SetStatus(post.ID, domain.PostStatusPublished); err != nil {
 		t.Fatal(err)
 	}
 	if err := postRepo.SetCommentsLocked(post.ID, true); err != nil {
@@ -316,7 +316,7 @@ func TestJetRepositories(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !moderated.CommentsLocked || moderated.PinOrder == nil || *moderated.PinOrder != pinOrder {
-		t.Fatalf("unexpected post subresources: %#v", moderated.Post)
+		t.Fatalf("unexpected post subresources: %#v", moderated)
 	}
 	if err := postRepo.SetCommentsLocked(post.ID, false); err != nil {
 		t.Fatal(err)

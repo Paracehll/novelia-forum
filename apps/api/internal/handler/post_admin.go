@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"forum/internal/domain"
 	"forum/internal/httpx"
 	"forum/internal/repository"
 
@@ -43,17 +44,17 @@ func (h *postHandler) listAdminPosts(w http.ResponseWriter, r *http.Request) err
 		}
 		if values[0] != "all" {
 			status, err := strconv.ParseInt(values[0], 10, 16)
-			if err != nil || !validStatus(int16(status)) {
+			if err != nil || !domain.PostStatus(status).Valid() {
 				return httpx.BadRequest("status 必须为 all、0、1 或 2")
 			}
-			filter.Status = int16(status)
+			filter.Status = domain.PostStatus(status)
 		}
 	}
 	return respondPosts(w, r, h.postUsecase.ListAdmin, filter)
 }
 
 type postStatusInput struct {
-	Status int16 `json:"status"`
+	Status domain.PostStatus `json:"status"`
 }
 
 func (h *postHandler) setPostStatus(w http.ResponseWriter, r *http.Request) error {
