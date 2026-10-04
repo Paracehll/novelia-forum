@@ -11,6 +11,7 @@ import (
 	"forum/internal/httpx"
 	"forum/internal/repository"
 	"forum/internal/usecase"
+
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/go-chi/chi/v5"
@@ -28,7 +29,13 @@ type capturingTagRepository struct {
 func (r *capturingTagRepository) Update(categoryID, id int64, name string, color int16, sortOrder int32) (*repository.Tag, error) {
 	r.categoryID, r.tagID = categoryID, id
 	r.name = name
-	return &repository.Tag{ID: id, CategoryID: categoryID, Name: name, Color: color, SortOrder: sortOrder}, r.err
+	return &repository.Tag{
+		ID:         id,
+		CategoryID: categoryID,
+		Name:       name,
+		Color:      color,
+		SortOrder:  sortOrder,
+	}, r.err
 }
 
 func (r *capturingTagRepository) SetActive(categoryID, id int64, active bool) error {
@@ -51,7 +58,9 @@ func (r *capturingTagRepository) ListActive() ([]repository.Tag, error) {
 
 func tagAdminToken(t *testing.T, role string) string {
 	t.Helper()
-	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": "tester", "uid": 1, "role": role}).SignedString([]byte(httpx.AccessTokenSecret))
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": "tester", "uid": 1, "role": role,
+	}).SignedString([]byte(httpx.AccessTokenSecret))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +97,9 @@ func TestAdminTagMutationUsesCategoryID(t *testing.T) {
 				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 			}
 			if repo.categoryID != 1 || repo.tagID != 9 || repo.active != tc.wantActive {
-				t.Fatalf("unexpected repository call: categoryID=%d tagID=%d active=%v", repo.categoryID, repo.tagID, repo.active)
+				t.Fatalf("unexpected repository call: categoryID=%d tagID=%d active=%v",
+					repo.categoryID, repo.tagID, repo.active,
+				)
 			}
 		})
 	}
@@ -102,13 +113,34 @@ func TestTagHandlers(t *testing.T) {
 	}{
 		{name: "public list", method: "GET", path: "/", status: 200},
 		{name: "empty admin list", method: "GET", path: "/1/tag", role: "admin", status: 200},
-		{name: "create", method: "POST", path: "/1/tag", body: `{"name":" 标签 ","color":2}`, role: "admin", status: 201},
-		{name: "blank name", method: "POST", path: "/1/tag", body: `{"name":"　 "}`, role: "admin", status: 400},
-		{name: "negative color", method: "PUT", path: "/1/tag/9", body: `{"name":"标签","color":-1}`, role: "admin", status: 400},
-		{name: "create conflict", method: "POST", path: "/1/tag", body: `{"name":"标签"}`, role: "admin", repoErr: repository.ErrConflict, status: 409},
-		{name: "update conflict", method: "PUT", path: "/1/tag/9", body: `{"name":"标签"}`, role: "admin", repoErr: repository.ErrConflict, status: 409},
-		{name: "missing tag", method: "DELETE", path: "/1/tag/9/active", role: "admin", repoErr: repository.ErrNotFound, status: 404},
-		{name: "database failure", method: "GET", path: "/1/tag", role: "admin", repoErr: errors.New("private database details"), status: 500},
+		{
+			name: "create", method: "POST", path: "/1/tag",
+			body: `{"name":" 标签 ","color":2}`, role: "admin", status: 201,
+		},
+		{
+			name: "blank name", method: "POST", path: "/1/tag",
+			body: `{"name":"　 "}`, role: "admin", status: 400,
+		},
+		{
+			name: "negative color", method: "PUT", path: "/1/tag/9",
+			body: `{"name":"标签","color":-1}`, role: "admin", status: 400,
+		},
+		{
+			name: "create conflict", method: "POST", path: "/1/tag", body: `{"name":"标签"}`,
+			role: "admin", repoErr: repository.ErrConflict, status: 409,
+		},
+		{
+			name: "update conflict", method: "PUT", path: "/1/tag/9", body: `{"name":"标签"}`,
+			role: "admin", repoErr: repository.ErrConflict, status: 409,
+		},
+		{
+			name: "missing tag", method: "DELETE", path: "/1/tag/9/active",
+			role: "admin", repoErr: repository.ErrNotFound, status: 404,
+		},
+		{
+			name: "database failure", method: "GET", path: "/1/tag",
+			role: "admin", repoErr: errors.New("private database details"), status: 500,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &capturingTagRepository{err: tc.repoErr}
@@ -137,7 +169,8 @@ func TestTagHandlers(t *testing.T) {
 			}
 			if tc.name == "public list" {
 				var items []categoryListResponse
-				if err := json.Unmarshal(response.Body.Bytes(), &items); err != nil || len(items) != 3 || len(items[0].Tags) != 1 || len(items[1].Tags) != 0 {
+				if err := json.Unmarshal(response.Body.Bytes(), &items); err != nil ||
+					len(items) != 3 || len(items[0].Tags) != 1 || len(items[1].Tags) != 0 {
 					t.Fatalf("public response=%s err=%v", response.Body.String(), err)
 				}
 			}
@@ -172,7 +205,9 @@ func TestTagAdminHandlersPassActor(t *testing.T) {
 				response := httptest.NewRecorder()
 				router.ServeHTTP(response, request)
 				if response.Code != http.StatusForbidden || repo.categoryID != 0 {
-					t.Fatalf("status=%d category=%d body=%s", response.Code, repo.categoryID, response.Body.String())
+					t.Fatalf("status=%d category=%d body=%s",
+						response.Code, repo.categoryID, response.Body.String(),
+					)
 				}
 			})
 		}

@@ -90,12 +90,15 @@ func (h *externalCommentHandler) list(w http.ResponseWriter, r *http.Request) er
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	total, items, err := h.commentUsecase.ListExternal(actorFromPrincipal(principal), usecase.ListExternalCommentsQuery{
-		Kind:       chi.URLParam(r, "type"),
-		SubjectKey: subjectKey,
-		Limit:      pagination.Limit,
-		Offset:     pagination.Offset,
-	})
+	total, items, err := h.commentUsecase.ListExternal(
+		actorFromPrincipal(principal),
+		usecase.ListExternalCommentsQuery{
+			Kind:       chi.URLParam(r, "type"),
+			SubjectKey: subjectKey,
+			Limit:      pagination.Limit,
+			Offset:     pagination.Offset,
+		},
+	)
 	if err != nil {
 		return transportError(err)
 	}
@@ -155,12 +158,16 @@ func (h *externalCommentHandler) create(w http.ResponseWriter, r *http.Request) 
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	comment, err := h.commentUsecase.CreateExternal(r.Context(), actorFromPrincipal(principal), usecase.CreateExternalCommentCommand{
-		Kind:       chi.URLParam(r, "type"),
-		SubjectKey: subjectKey,
-		RootID:     input.RootID,
-		Content:    input.Content,
-	})
+	comment, err := h.commentUsecase.CreateExternal(
+		r.Context(),
+		actorFromPrincipal(principal),
+		usecase.CreateExternalCommentCommand{
+			Kind:       chi.URLParam(r, "type"),
+			SubjectKey: subjectKey,
+			RootID:     input.RootID,
+			Content:    input.Content,
+		},
+	)
 	if err != nil {
 		return transportError(err)
 	}
@@ -182,11 +189,14 @@ func (h *externalCommentHandler) update(w http.ResponseWriter, r *http.Request) 
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	comment, err := h.commentUsecase.UpdateExternal(actorFromPrincipal(principal), usecase.UpdateExternalCommentCommand{
-		Kind:      chi.URLParam(r, "type"),
-		CommentID: id,
-		Content:   input.Content,
-	})
+	comment, err := h.commentUsecase.UpdateExternal(
+		actorFromPrincipal(principal),
+		usecase.UpdateExternalCommentCommand{
+			Kind:      chi.URLParam(r, "type"),
+			CommentID: id,
+			Content:   input.Content,
+		},
+	)
 	if err != nil {
 		return transportError(err)
 	}
@@ -200,10 +210,13 @@ func (h *externalCommentHandler) delete(w http.ResponseWriter, r *http.Request) 
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.commentUsecase.DeleteExternal(actorFromPrincipal(principal), usecase.DeleteExternalCommentCommand{
-		Kind:      chi.URLParam(r, "type"),
-		CommentID: id,
-	}); err != nil {
+	if err := h.commentUsecase.DeleteExternal(
+		actorFromPrincipal(principal),
+		usecase.DeleteExternalCommentCommand{
+			Kind:      chi.URLParam(r, "type"),
+			CommentID: id,
+		},
+	); err != nil {
 		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -224,11 +237,14 @@ func (h *externalCommentHandler) setStatus(w http.ResponseWriter, r *http.Reques
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.commentUsecase.SetExternalStatus(actorFromPrincipal(principal), usecase.SetExternalCommentStatusCommand{
-		Kind:      chi.URLParam(r, "type"),
-		CommentID: id,
-		Status:    status,
-	}); err != nil {
+	if err := h.commentUsecase.SetExternalStatus(
+		actorFromPrincipal(principal),
+		usecase.SetExternalCommentStatusCommand{
+			Kind:      chi.URLParam(r, "type"),
+			CommentID: id,
+			Status:    status,
+		},
+	); err != nil {
 		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)

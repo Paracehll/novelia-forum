@@ -55,7 +55,10 @@ func TestExternalCommentCreationChecksSubject(t *testing.T) {
 		{"missing", "novel", true, false, http.StatusNotFound, 1, nil},
 		{"invalid", "novel", false, false, http.StatusBadRequest, 0, nil},
 		{"unsupported", "unknown", false, false, http.StatusBadRequest, 0, nil},
-		{"check failed", "novel", true, false, http.StatusInternalServerError, 1, errors.New("private upstream failure")},
+		{
+			"check failed", "novel", true, false,
+			http.StatusInternalServerError, 1, errors.New("private upstream failure"),
+		},
 	} {
 		for _, body := range []string{`{"content":"评论"}`, `{"content":"回复","rootId":7}`} {
 			t.Run(tc.name+body, func(t *testing.T) {
@@ -72,13 +75,18 @@ func TestExternalCommentCreationChecksSubject(t *testing.T) {
 				router := chi.NewRouter()
 				comments := usecase.NewCommentUsecase(repo, nil, nil, checker)
 				NewExternalCommentHandler(comments).RegisterRoutes(router)
-				req := httptest.NewRequest(http.MethodPost, "/"+tc.kind+"/web-syosetu-n1234", strings.NewReader(body))
+				req := httptest.NewRequest(
+					http.MethodPost, "/"+tc.kind+"/web-syosetu-n1234", strings.NewReader(body),
+				)
 				req.Header.Set("Authorization", "Bearer "+token)
 				req.Header.Set("Content-Type", "application/json")
 				res := httptest.NewRecorder()
 				router.ServeHTTP(res, req)
-				if res.Code != tc.status || checks != tc.wantChecks || repo.written != (tc.status == http.StatusCreated) {
-					t.Fatalf("status=%d checks=%d written=%v body=%s", res.Code, checks, repo.written, res.Body.String())
+				if res.Code != tc.status || checks != tc.wantChecks ||
+					repo.written != (tc.status == http.StatusCreated) {
+					t.Fatalf("status=%d checks=%d written=%v body=%s",
+						res.Code, checks, repo.written, res.Body.String(),
+					)
 				}
 				if tc.checkErr != nil && res.Body.String() != "服务器内部错误" {
 					t.Fatalf("check failure response exposed details: %q", res.Body.String())

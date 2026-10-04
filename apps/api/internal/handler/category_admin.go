@@ -41,7 +41,10 @@ func (h *categoryHandler) listTags(w http.ResponseWriter, r *http.Request) error
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	items, err := h.tagUsecase.ListAdmin(actorFromPrincipal(principal), usecase.ListTagsQuery{CategoryID: categoryID})
+	items, err := h.tagUsecase.ListAdmin(
+		actorFromPrincipal(principal),
+		usecase.ListTagsQuery{CategoryID: categoryID},
+	)
 	if err != nil {
 		return transportError(err)
 	}
@@ -60,7 +63,12 @@ type tagInput struct {
 }
 
 func (input tagInput) toUsecaseInput(categoryID int64) usecase.TagInput {
-	return usecase.TagInput{CategoryID: categoryID, Name: input.Name, Color: input.Color, SortOrder: input.SortOrder}
+	return usecase.TagInput{
+		CategoryID: categoryID,
+		Name:       input.Name,
+		Color:      input.Color,
+		SortOrder:  input.SortOrder,
+	}
 }
 
 func (h *categoryHandler) createTag(w http.ResponseWriter, r *http.Request) error {
@@ -122,7 +130,14 @@ func (h *categoryHandler) setTagActive(w http.ResponseWriter, r *http.Request, a
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.tagUsecase.SetActive(actorFromPrincipal(principal), usecase.SetTagActiveCommand{CategoryID: categoryID, ID: id, Active: active}); err != nil {
+	if err := h.tagUsecase.SetActive(
+		actorFromPrincipal(principal),
+		usecase.SetTagActiveCommand{
+			CategoryID: categoryID,
+			ID:         id,
+			Active:     active,
+		},
+	); err != nil {
 		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)

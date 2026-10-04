@@ -24,8 +24,16 @@ func TestActorFromPrincipal(t *testing.T) {
 		want      usecase.Actor
 	}{
 		{"anonymous", httpx.Principal{}, usecase.Actor{}},
-		{"member", httpx.Principal{UserID: 7, Username: "alice", Role: "member"}, usecase.Actor{UserID: 7, Username: "alice"}},
-		{"admin", httpx.Principal{UserID: 8, Username: "bob", Role: "admin"}, usecase.Actor{UserID: 8, Username: "bob", IsAdmin: true}},
+		{
+			"member",
+			httpx.Principal{UserID: 7, Username: "alice", Role: "member"},
+			usecase.Actor{UserID: 7, Username: "alice"},
+		},
+		{
+			"admin",
+			httpx.Principal{UserID: 8, Username: "bob", Role: "admin"},
+			usecase.Actor{UserID: 8, Username: "bob", IsAdmin: true},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := actorFromPrincipal(tc.principal); got != tc.want {
@@ -84,7 +92,9 @@ func TestDomainFilterRejectsWrites(t *testing.T) {
 			router := chi.NewRouter()
 			resolver := handlerSubjectResolver{valid: true, exists: true}
 			commentUsecase := usecase.NewCommentUsecase(comments, posts, domains, resolver)
-			postHandler := NewPostHandler(usecase.NewPostUsecase(posts, noFavoriteRepository{}, domains), commentUsecase)
+			postHandler := NewPostHandler(
+				usecase.NewPostUsecase(posts, noFavoriteRepository{}, domains), commentUsecase,
+			)
 			router.Route("/post", postHandler.RegisterRoutes)
 			router.Route("/comment", NewCommentHandler(commentUsecase).RegisterRoutes)
 			router.Route("/external/comment", NewExternalCommentHandler(commentUsecase).RegisterRoutes)
@@ -94,7 +104,9 @@ func TestDomainFilterRejectsWrites(t *testing.T) {
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)
 			if response.Code != http.StatusBadRequest || posts.written || comments.written {
-				t.Fatalf("status=%d postWritten=%v commentWritten=%v body=%s", response.Code, posts.written, comments.written, response.Body.String())
+				t.Fatalf("status=%d postWritten=%v commentWritten=%v body=%s",
+					response.Code, posts.written, comments.written, response.Body.String(),
+				)
 			}
 			if !strings.Contains(response.Body.String(), "禁止使用的域名") {
 				t.Fatalf("unexpected response: %s", response.Body.String())
@@ -113,7 +125,9 @@ func TestDomainFilterErrorMapping(t *testing.T) {
 		posts := usecase.NewPostUsecase(&writePostRepository{}, nil, filter)
 		response := httptest.NewRecorder()
 		httpx.EH(func(http.ResponseWriter, *http.Request) error {
-			_, err := posts.Create(usecase.Actor{UserID: 1}, usecase.PostInput{CategoryID: 1, Title: "标题", Content: value})
+			_, err := posts.Create(usecase.Actor{UserID: 1}, usecase.PostInput{
+				CategoryID: 1, Title: "标题", Content: value,
+			})
 			return transportError(err)
 		})(response, httptest.NewRequest(http.MethodPost, "/", nil))
 		if filter == nil {

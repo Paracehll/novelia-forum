@@ -26,7 +26,13 @@ type adminCommentRepository struct {
 func (r *adminCommentRepository) ListAdmin(filter repository.CommentFilter, limit, offset int64) (int64, []domain.Comment, error) {
 	r.called = true
 	r.filter, r.limit, r.offset = filter, limit, offset
-	return 1, []domain.Comment{{ID: 5, SubjectKey: "42", SubjectType: domain.CommentSubjectPost, Content: "隐藏评论原文", Status: domain.CommentStatusHidden}}, nil
+	return 1, []domain.Comment{{
+		ID:          5,
+		SubjectKey:  "42",
+		SubjectType: domain.CommentSubjectPost,
+		Content:     "隐藏评论原文",
+		Status:      domain.CommentStatusHidden,
+	}}, nil
 }
 
 func (r *adminCommentRepository) SetStatus(domain.CommentSubjectType, int64, domain.CommentStatus) error {
@@ -54,13 +60,17 @@ func TestCommentAdminHandlersPassActor(t *testing.T) {
 		for _, role := range []string{"member", "admin"} {
 			t.Run(route.name+"/"+role, func(t *testing.T) {
 				repo := &adminCommentRepository{}
-				u := usecase.NewCommentUsecase(repo, nil, nil, handlerSubjectResolver{valid: true, exists: true})
+				u := usecase.NewCommentUsecase(
+					repo, nil, nil, handlerSubjectResolver{valid: true, exists: true},
+				)
 				router := chi.NewRouter()
 				router.Use(httpx.OptionalAccessToken)
 				// Deliberately omit the admin group's middleware to exercise usecase authorization.
 				router.Route("/admin/comment", NewCommentHandler(u).RegisterAdminRoutes)
 				router.Route("/external/comment", NewExternalCommentHandler(u).RegisterRoutes)
-				token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": "tester", "uid": 1, "role": role}).SignedString([]byte(httpx.AccessTokenSecret))
+				token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+					"sub": "tester", "uid": 1, "role": role,
+				}).SignedString([]byte(httpx.AccessTokenSecret))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -76,7 +86,9 @@ func TestCommentAdminHandlersPassActor(t *testing.T) {
 					wantStatus = route.wantStatus
 				}
 				if recorder.Code != wantStatus || repo.called != (role == "admin") {
-					t.Fatalf("status=%d want=%d called=%t body=%s", recorder.Code, wantStatus, repo.called, recorder.Body.String())
+					t.Fatalf("status=%d want=%d called=%t body=%s",
+						recorder.Code, wantStatus, repo.called, recorder.Body.String(),
+					)
 				}
 			})
 		}
@@ -92,11 +104,36 @@ func TestAdminCommentList(t *testing.T) {
 	}{
 		{name: "anonymous", wantStatus: http.StatusUnauthorized},
 		{name: "member", role: "member", wantStatus: http.StatusForbidden},
-		{name: "all posts", role: "admin", wantStatus: http.StatusOK, wantFilter: repository.CommentFilter{}, limit: 20},
-		{name: "combined filters", role: "admin", query: "?q=%20内容%20&author_name=%20小明%20&post_id=42&status=1&page=2&page_size=10", wantStatus: http.StatusOK, wantFilter: repository.CommentFilter{Search: "内容", AuthorName: "小明", PostID: 42, Status: commentStatus(domain.CommentStatusHidden)}, limit: 10, offset: 10},
-		{name: "published", role: "admin", query: "?status=0", wantStatus: http.StatusOK, wantFilter: repository.CommentFilter{Status: commentStatus(domain.CommentStatusPublished)}, limit: 20},
-		{name: "deleted", role: "admin", query: "?status=2", wantStatus: http.StatusOK, wantFilter: repository.CommentFilter{Status: commentStatus(domain.CommentStatusDeleted)}, limit: 20},
-		{name: "explicit all", role: "admin", query: "?status=all", wantStatus: http.StatusOK, wantFilter: repository.CommentFilter{}, limit: 20},
+		{
+			name: "all posts", role: "admin", wantStatus: http.StatusOK,
+			wantFilter: repository.CommentFilter{}, limit: 20,
+		},
+		{
+			name: "combined filters", role: "admin",
+			query:      "?q=%20内容%20&author_name=%20小明%20&post_id=42&status=1&page=2&page_size=10",
+			wantStatus: http.StatusOK,
+			wantFilter: repository.CommentFilter{
+				Search:     "内容",
+				AuthorName: "小明",
+				PostID:     42,
+				Status:     commentStatus(domain.CommentStatusHidden),
+			},
+			limit: 10, offset: 10,
+		},
+		{
+			name: "published", role: "admin", query: "?status=0", wantStatus: http.StatusOK,
+			wantFilter: repository.CommentFilter{Status: commentStatus(domain.CommentStatusPublished)},
+			limit:      20,
+		},
+		{
+			name: "deleted", role: "admin", query: "?status=2", wantStatus: http.StatusOK,
+			wantFilter: repository.CommentFilter{Status: commentStatus(domain.CommentStatusDeleted)},
+			limit:      20,
+		},
+		{
+			name: "explicit all", role: "admin", query: "?status=all", wantStatus: http.StatusOK,
+			wantFilter: repository.CommentFilter{}, limit: 20,
+		},
 		{name: "bad post", role: "admin", query: "?post_id=0", wantStatus: http.StatusBadRequest},
 		{name: "empty post", role: "admin", query: "?post_id=", wantStatus: http.StatusBadRequest},
 		{name: "multiple posts", role: "admin", query: "?post_id=1&post_id=2", wantStatus: http.StatusBadRequest},
@@ -114,7 +151,9 @@ func TestAdminCommentList(t *testing.T) {
 			NewCommentHandler(usecase.NewCommentUsecase(repo, nil, nil, nil)).RegisterAdminRoutes(router)
 			request := httptest.NewRequest(http.MethodGet, "/"+tc.query, nil)
 			if tc.role != "" {
-				token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": "tester", "uid": 1, "role": tc.role}).SignedString([]byte(httpx.AccessTokenSecret))
+				token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+					"sub": "tester", "uid": 1, "role": tc.role,
+				}).SignedString([]byte(httpx.AccessTokenSecret))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -131,14 +170,16 @@ func TestAdminCommentList(t *testing.T) {
 				}
 				return
 			}
-			if !reflect.DeepEqual(repo.filter, tc.wantFilter) || repo.limit != tc.limit || repo.offset != tc.offset {
+			if !reflect.DeepEqual(repo.filter, tc.wantFilter) ||
+				repo.limit != tc.limit || repo.offset != tc.offset {
 				t.Fatalf("unexpected query: %#v limit=%d offset=%d", repo.filter, repo.limit, repo.offset)
 			}
 			var response page[commentResponse]
 			if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 				t.Fatal(err)
 			}
-			if response.Total != 1 || len(response.Items) != 1 || response.Items[0].Content != "隐藏评论原文" || response.Items[0].PostID != 42 {
+			if response.Total != 1 || len(response.Items) != 1 ||
+				response.Items[0].Content != "隐藏评论原文" || response.Items[0].PostID != 42 {
 				t.Fatalf("unexpected response: %#v", response)
 			}
 		})

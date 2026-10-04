@@ -21,8 +21,16 @@ func TestCommentErrorResponses(t *testing.T) {
 		{usecase.PermissionDenied("test.permission_denied", "无权操作"), http.StatusForbidden, "无权操作"},
 		{usecase.NotFound("test.not_found", "资源不存在"), http.StatusNotFound, "资源不存在"},
 		{usecase.Conflict("test.conflict", "资源冲突"), http.StatusConflict, "资源冲突"},
-		{fmt.Errorf("comment.check_subject: %w", errors.New("upstream unavailable")), http.StatusInternalServerError, "服务器内部错误"},
-		{fmt.Errorf("comment.list_roots: %w", errors.New("database unavailable")), http.StatusInternalServerError, "服务器内部错误"},
+		{
+			fmt.Errorf("comment.check_subject: %w", errors.New("upstream unavailable")),
+			http.StatusInternalServerError,
+			"服务器内部错误",
+		},
+		{
+			fmt.Errorf("comment.list_roots: %w", errors.New("database unavailable")),
+			http.StatusInternalServerError,
+			"服务器内部错误",
+		},
 		{errors.New("评论不存在"), http.StatusInternalServerError, "服务器内部错误"},
 	} {
 		t.Run(tc.err.Error(), func(t *testing.T) {
@@ -37,9 +45,12 @@ func TestCommentErrorResponses(t *testing.T) {
 				response, httptest.NewRequest(http.MethodGet, "/", nil),
 			)
 			if response.Code != tc.status || response.Body.String() != tc.message {
-				t.Fatalf("got (%d, %q), want (%d, %q)", response.Code, response.Body.String(), tc.status, tc.message)
+				t.Fatalf("got (%d, %q), want (%d, %q)",
+					response.Code, response.Body.String(), tc.status, tc.message,
+				)
 			}
-			if response.Header().Get("Content-Length") != "" || response.Header().Get("X-Content-Type-Options") != "nosniff" {
+			if response.Header().Get("Content-Length") != "" ||
+				response.Header().Get("X-Content-Type-Options") != "nosniff" {
 				t.Fatalf("unexpected error headers: %v", response.Header())
 			}
 		})
@@ -52,7 +63,9 @@ func TestUnknownAppErrorKindFallsThroughToInternalError(t *testing.T) {
 		t.Fatal("unknown application error kind should remain unhandled")
 	}
 	response := httptest.NewRecorder()
-	httpx.EH(func(http.ResponseWriter, *http.Request) error { return transportError(appErr) })(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	httpx.EH(func(http.ResponseWriter, *http.Request) error { return transportError(appErr) })(
+		response, httptest.NewRequest(http.MethodGet, "/", nil),
+	)
 	if response.Code != http.StatusInternalServerError || response.Body.String() != "服务器内部错误" {
 		t.Fatalf("got (%d, %q)", response.Code, response.Body.String())
 	}

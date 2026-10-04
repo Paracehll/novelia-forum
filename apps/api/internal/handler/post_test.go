@@ -121,17 +121,25 @@ func TestAdminPostListStatusFilter(t *testing.T) {
 func TestPostListQueryPreservesHTTPFilters(t *testing.T) {
 	repo := &capturingPostRepository{}
 	h := NewPostHandler(usecase.NewPostUsecase(repo, noFavoriteRepository{}, nil), nil)
-	request := httptest.NewRequest(http.MethodGet,
-		"/post/?category=discussion&q=%20title%20&sort=newest&tag=2,3&tag=4&page=3&page_size=25&author_id=99&status=1", nil)
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/post/?category=discussion&q=%20title%20&sort=newest&tag=2,3&tag=4&page=3&page_size=25&author_id=99&status=1",
+		nil,
+	)
 	if err := h.list(httptest.NewRecorder(), request); err != nil {
 		t.Fatal(err)
 	}
 	filter := repo.filter
-	if filter.CategorySlug != "discussion" || filter.Search != "title" || filter.Sort != repository.PostSortNewest ||
-		len(filter.TagIDs) != 3 || filter.TagIDs[0] != 2 || filter.TagIDs[1] != 3 || filter.TagIDs[2] != 4 ||
-		filter.Status != domain.PostStatusPublished || filter.AuthorID != 0 || filter.FavoriteUserID != 0 ||
+	if filter.CategorySlug != "discussion" || filter.Search != "title" ||
+		filter.Sort != repository.PostSortNewest ||
+		len(filter.TagIDs) != 3 ||
+		filter.TagIDs[0] != 2 || filter.TagIDs[1] != 3 || filter.TagIDs[2] != 4 ||
+		filter.Status != domain.PostStatusPublished ||
+		filter.AuthorID != 0 || filter.FavoriteUserID != 0 ||
 		repo.limit != 25 || repo.offset != 50 {
-		t.Fatalf("unexpected query mapping: filter=%+v limit=%d offset=%d", filter, repo.limit, repo.offset)
+		t.Fatalf("unexpected query mapping: filter=%+v limit=%d offset=%d",
+			filter, repo.limit, repo.offset,
+		)
 	}
 }
 
@@ -182,7 +190,8 @@ func TestAdminPostListAuthorNameFilter(t *testing.T) {
 		if repo.filter.AuthorName != tc.wantName {
 			t.Fatalf("query %q: unexpected filter: %#v", tc.query, repo.filter)
 		}
-		if strings.Contains(tc.query, "author_id=42") && (repo.filter.AuthorID != 42 || repo.filter.Status != 1) {
+		if strings.Contains(tc.query, "author_id=42") &&
+			(repo.filter.AuthorID != 42 || repo.filter.Status != 1) {
 			t.Fatalf("combined filters lost: %#v", repo.filter)
 		}
 	}
@@ -207,7 +216,9 @@ func TestValidatePostTextLimits(t *testing.T) {
 		{"long content with padding", "标题", strings.Repeat("文", 20000) + " ", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := posts.Create(usecase.Actor{UserID: 1}, usecase.PostInput{CategoryID: 1, Title: tc.title, Content: tc.content})
+			_, err := posts.Create(usecase.Actor{UserID: 1}, usecase.PostInput{
+				CategoryID: 1, Title: tc.title, Content: tc.content,
+			})
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("validatePost() error = %v, want error %v", err, tc.wantErr)
 			}
@@ -227,7 +238,9 @@ func TestValidatePostTagLimit(t *testing.T) {
 		{"four tags", []int64{1, 2, 3, 4}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := posts.Create(usecase.Actor{UserID: 1}, usecase.PostInput{CategoryID: 1, Title: "标题", Content: "正文", TagIDs: tc.tagIDs})
+			_, err := posts.Create(usecase.Actor{UserID: 1}, usecase.PostInput{
+				CategoryID: 1, Title: "标题", Content: "正文", TagIDs: tc.tagIDs,
+			})
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("validatePost() error = %v, want error %v", err, tc.wantErr)
 			}
@@ -259,7 +272,13 @@ func TestPostListOmitsContentAndDetailPreservesIt(t *testing.T) {
 	}
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/post/", nil)
-	if err := respondPosts(recorder, request, usecase.NewPostUsecase(listPostRepository{items: []domain.PostListItem{listItem}}, nil, nil).List, usecase.ListPostsQuery{}); err != nil {
+	if err := respondPosts(
+		recorder, request,
+		usecase.NewPostUsecase(
+			listPostRepository{items: []domain.PostListItem{listItem}}, nil, nil,
+		).List,
+		usecase.ListPostsQuery{},
+	); err != nil {
 		t.Fatal(err)
 	}
 	var response page[map[string]json.RawMessage]
@@ -352,7 +371,9 @@ func TestAnnouncementsPublishingRequiresAdmin(t *testing.T) {
 				t.Run(fmt.Sprintf("%s/%s/%d", method, role, categoryID), func(t *testing.T) {
 					repo := &writePostRepository{}
 					router := chi.NewRouter()
-					NewPostHandler(usecase.NewPostUsecase(repo, noFavoriteRepository{}, nil), nil).RegisterRoutes(router)
+					NewPostHandler(
+						usecase.NewPostUsecase(repo, noFavoriteRepository{}, nil), nil,
+					).RegisterRoutes(router)
 					path := "/"
 					wantStatus := http.StatusCreated
 					if method == http.MethodPatch {
@@ -376,7 +397,9 @@ func TestAnnouncementsPublishingRequiresAdmin(t *testing.T) {
 					recorder := httptest.NewRecorder()
 					router.ServeHTTP(recorder, request)
 					if recorder.Code != wantStatus || repo.written != allowed {
-						t.Fatalf("status=%d want=%d written=%v allowed=%v body=%s", recorder.Code, wantStatus, repo.written, allowed, recorder.Body.String())
+						t.Fatalf("status=%d want=%d written=%v allowed=%v body=%s",
+							recorder.Code, wantStatus, repo.written, allowed, recorder.Body.String(),
+						)
 					}
 				})
 			}
@@ -420,7 +443,9 @@ func TestPostDeletionWindow(t *testing.T) {
 				ID: 42, AuthorID: 1, CreatedAt: time.Now().Add(-tc.age),
 			}}
 			router := chi.NewRouter()
-			NewPostHandler(usecase.NewPostUsecase(repo, noFavoriteRepository{}, nil), nil).RegisterRoutes(router)
+			NewPostHandler(
+				usecase.NewPostUsecase(repo, noFavoriteRepository{}, nil), nil,
+			).RegisterRoutes(router)
 			token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 				"sub": "tester", "uid": tc.userID, "role": tc.role,
 			}).SignedString([]byte(httpx.AccessTokenSecret))
@@ -432,7 +457,9 @@ func TestPostDeletionWindow(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			router.ServeHTTP(recorder, request)
 			if recorder.Code != tc.wantStatus || repo.deleted != (tc.wantStatus == http.StatusNoContent) {
-				t.Fatalf("status=%d want=%d deleted=%v body=%s", recorder.Code, tc.wantStatus, repo.deleted, recorder.Body.String())
+				t.Fatalf("status=%d want=%d deleted=%v body=%s",
+					recorder.Code, tc.wantStatus, repo.deleted, recorder.Body.String(),
+				)
 			}
 		})
 	}

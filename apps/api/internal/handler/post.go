@@ -192,7 +192,12 @@ type postInput struct {
 }
 
 func (input postInput) toUsecaseInput() usecase.PostInput {
-	return usecase.PostInput{CategoryID: input.CategoryID, Title: input.Title, Content: input.Content, TagIDs: input.TagIDs}
+	return usecase.PostInput{
+		CategoryID: input.CategoryID,
+		Title:      input.Title,
+		Content:    input.Content,
+		TagIDs:     input.TagIDs,
+	}
 }
 
 func (h *postHandler) create(w http.ResponseWriter, r *http.Request) error {
@@ -346,11 +351,14 @@ func (h *postHandler) createComment(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	comment, err := h.commentUsecase.Create(actorFromPrincipal(principal), usecase.CreatePostCommentCommand{
-		PostID:  postID,
-		RootID:  input.RootID,
-		Content: input.Content,
-	})
+	comment, err := h.commentUsecase.Create(
+		actorFromPrincipal(principal),
+		usecase.CreatePostCommentCommand{
+			PostID:  postID,
+			RootID:  input.RootID,
+			Content: input.Content,
+		},
+	)
 	if err != nil {
 		return transportError(err)
 	}

@@ -37,11 +37,14 @@ func (h *commentHandler) setStatus(w http.ResponseWriter, r *http.Request) error
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.commentUsecase.SetStatus(actorFromPrincipal(principal), usecase.SetCommentStatusCommand{
-		SubjectType: domain.CommentSubjectPost,
-		CommentID:   id,
-		Status:      status,
-	}); err != nil {
+	if err := h.commentUsecase.SetStatus(
+		actorFromPrincipal(principal),
+		usecase.SetCommentStatusCommand{
+			SubjectType: domain.CommentSubjectPost,
+			CommentID:   id,
+			Status:      status,
+		},
+	); err != nil {
 		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -54,7 +57,12 @@ func (h *commentHandler) deleteAllByAuthor(w http.ResponseWriter, r *http.Reques
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.commentUsecase.DeleteAllByAuthor(actorFromPrincipal(principal), usecase.DeleteCommentsByAuthorCommand{AuthorID: authorID}); err != nil {
+	if err := h.commentUsecase.DeleteAllByAuthor(
+		actorFromPrincipal(principal),
+		usecase.DeleteCommentsByAuthorCommand{
+			AuthorID: authorID,
+		},
+	); err != nil {
 		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -97,7 +105,10 @@ func (h *commentHandler) listAdmin(w http.ResponseWriter, r *http.Request) error
 		}
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	total, items, err := h.commentUsecase.ListAdmin(actorFromPrincipal(principal), listQuery)
+	total, items, err := h.commentUsecase.ListAdmin(
+		actorFromPrincipal(principal),
+		listQuery,
+	)
 	if err != nil {
 		return transportError(err)
 	}

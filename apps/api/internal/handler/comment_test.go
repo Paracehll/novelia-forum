@@ -40,7 +40,9 @@ func TestExternalCommentRepliesArePaginatedSeparately(t *testing.T) {
 	repo := &listingCommentRepository{rootID: 7}
 	router := chi.NewRouter()
 	resolver := handlerSubjectResolver{valid: true, exists: true}
-	NewExternalCommentHandler(usecase.NewCommentUsecase(repo, nil, nil, resolver)).RegisterRoutes(router)
+	NewExternalCommentHandler(
+		usecase.NewCommentUsecase(repo, nil, nil, resolver),
+	).RegisterRoutes(router)
 
 	for _, tc := range []struct {
 		path           string
@@ -61,13 +63,15 @@ func TestExternalCommentRepliesArePaginatedSeparately(t *testing.T) {
 		if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 			t.Fatal(err)
 		}
-		if response.Total != tc.wantTotal || len(response.Items) != 1 || response.Items[0].ID != tc.wantID || response.Items[0].ReplyCount != tc.wantReplyCount {
+		if response.Total != tc.wantTotal || len(response.Items) != 1 ||
+			response.Items[0].ID != tc.wantID || response.Items[0].ReplyCount != tc.wantReplyCount {
 			t.Fatalf("GET %s: unexpected response %#v", tc.path, response)
 		}
 		if tc.wantRootID == nil && response.Items[0].RootID != nil {
 			t.Fatalf("GET %s: expected a root comment", tc.path)
 		}
-		if tc.wantRootID != nil && (response.Items[0].RootID == nil || *response.Items[0].RootID != *tc.wantRootID) {
+		if tc.wantRootID != nil &&
+			(response.Items[0].RootID == nil || *response.Items[0].RootID != *tc.wantRootID) {
 			t.Fatalf("GET %s: unexpected root ID", tc.path)
 		}
 	}
@@ -104,12 +108,20 @@ func TestCommentEditingStateResponses(t *testing.T) {
 		{"external", "/novel/7", true},
 	} {
 		for _, role := range []string{"member", "admin"} {
-			for _, status := range []domain.CommentStatus{domain.CommentStatusPublished, domain.CommentStatusHidden, domain.CommentStatusDeleted, 99} {
+			for _, status := range []domain.CommentStatus{
+				domain.CommentStatusPublished,
+				domain.CommentStatusHidden,
+				domain.CommentStatusDeleted,
+				99,
+			} {
 				t.Run(route.name+"/"+role+"/"+strconv.Itoa(int(status)), func(t *testing.T) {
 					repo := &editableCommentRepository{comment: domain.Comment{
-						ID: 7, SubjectKey: "42", AuthorID: 1, Content: "original", Status: status, CreatedAt: time.Now(),
+						ID: 7, SubjectKey: "42", AuthorID: 1,
+						Content: "original", Status: status, CreatedAt: time.Now(),
 					}}
-					u := usecase.NewCommentUsecase(repo, nil, nil, handlerSubjectResolver{valid: true, exists: true})
+					u := usecase.NewCommentUsecase(
+						repo, nil, nil, handlerSubjectResolver{valid: true, exists: true},
+					)
 					router := chi.NewRouter()
 					if route.external {
 						NewExternalCommentHandler(u).RegisterRoutes(router)
@@ -122,7 +134,9 @@ func TestCommentEditingStateResponses(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					request := httptest.NewRequest(http.MethodPatch, route.path, strings.NewReader(`{"content":"updated"}`))
+					request := httptest.NewRequest(
+						http.MethodPatch, route.path, strings.NewReader(`{"content":"updated"}`),
+					)
 					request.Header.Set("Authorization", "Bearer "+token)
 					request.Header.Set("Content-Type", "application/json")
 					recorder := httptest.NewRecorder()
@@ -132,7 +146,9 @@ func TestCommentEditingStateResponses(t *testing.T) {
 						wantStatus = http.StatusOK
 					}
 					if recorder.Code != wantStatus || repo.updated != (status == domain.CommentStatusPublished) {
-						t.Fatalf("status=%d want=%d updated=%t body=%s", recorder.Code, wantStatus, repo.updated, recorder.Body.String())
+						t.Fatalf("status=%d want=%d updated=%t body=%s",
+							recorder.Code, wantStatus, repo.updated, recorder.Body.String(),
+						)
 					}
 					if wantStatus == http.StatusConflict && recorder.Body.String() != "只有已发布的评论可以编辑" {
 						t.Fatalf("unexpected state error: %q", recorder.Body.String())
@@ -175,7 +191,9 @@ func TestAdminCanEditCommentAfterWindow(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			router.ServeHTTP(recorder, request)
 			if recorder.Code != tc.wantStatus || repo.updated != (tc.wantStatus == http.StatusOK) {
-				t.Fatalf("status=%d want=%d updated=%v body=%s", recorder.Code, tc.wantStatus, repo.updated, recorder.Body.String())
+				t.Fatalf("status=%d want=%d updated=%v body=%s",
+					recorder.Code, tc.wantStatus, repo.updated, recorder.Body.String(),
+				)
 			}
 		})
 	}
@@ -200,7 +218,9 @@ func TestAdminCanModifyExternalCommentAfterWindow(t *testing.T) {
 			}}
 			router := chi.NewRouter()
 			resolver := handlerSubjectResolver{valid: true, exists: true}
-			NewExternalCommentHandler(usecase.NewCommentUsecase(repo, nil, nil, resolver)).RegisterRoutes(router)
+			NewExternalCommentHandler(
+				usecase.NewCommentUsecase(repo, nil, nil, resolver),
+			).RegisterRoutes(router)
 			token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 				"sub": "tester", "uid": 1, "role": tc.role,
 			}).SignedString([]byte(httpx.AccessTokenSecret))
@@ -260,7 +280,10 @@ func TestValidateCommentUpdate(t *testing.T) {
 
 func TestCommentResponsesPreserveContent(t *testing.T) {
 	rootID := int64(1)
-	comment := domain.Comment{ID: 2, SubjectKey: "123", RootID: &rootID, Content: "原始内容", Status: domain.CommentStatusHidden}
+	comment := domain.Comment{
+		ID: 2, SubjectKey: "123", RootID: &rootID,
+		Content: "原始内容", Status: domain.CommentStatusHidden,
+	}
 	post, err := newCommentResponse(comment)
 	if err != nil {
 		t.Fatal(err)
@@ -281,9 +304,14 @@ func TestEmbeddedReplyResponse(t *testing.T) {
 		Root:       domain.Comment{ID: rootID, SubjectKey: domain.PostCommentSubjectKey(42)},
 		ReplyCount: 3,
 	}
-	for _, status := range []domain.CommentStatus{domain.CommentStatusPublished, domain.CommentStatusHidden, domain.CommentStatusDeleted} {
+	for _, status := range []domain.CommentStatus{
+		domain.CommentStatusPublished,
+		domain.CommentStatusHidden,
+		domain.CommentStatusDeleted,
+	} {
 		thread.Replies = append(thread.Replies, domain.Comment{
-			ID: int64(status) + 2, SubjectKey: thread.Root.SubjectKey, RootID: &rootID, Content: "body", Status: status,
+			ID: int64(status) + 2, SubjectKey: thread.Root.SubjectKey, RootID: &rootID,
+			Content: "body", Status: status,
 		})
 	}
 	post, err := newCommentThreadResponse(thread)
@@ -291,7 +319,8 @@ func TestEmbeddedReplyResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	external := newExternalCommentThreadResponse(thread)
-	if post.Replies == nil || external.Replies == nil || post.Replies.Total != 3 || external.Replies.Total != 3 {
+	if post.Replies == nil || external.Replies == nil ||
+		post.Replies.Total != 3 || external.Replies.Total != 3 {
 		t.Fatal("missing embedded reply page")
 	}
 	for i, expected := range []string{"body", "body", "body"} {
@@ -305,7 +334,8 @@ func TestEmbeddedReplyResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if empty.Replies == nil || empty.Replies.Items == nil || len(empty.Replies.Items) != 0 || empty.Replies.Total != 0 {
+	if empty.Replies == nil || empty.Replies.Items == nil ||
+		len(empty.Replies.Items) != 0 || empty.Replies.Total != 0 {
 		t.Fatal("empty reply page must use an empty array")
 	}
 }
@@ -400,7 +430,8 @@ func TestInvalidCommentContentResponses(t *testing.T) {
 				request.Header.Set("Authorization", "Bearer "+token)
 				response := httptest.NewRecorder()
 				router.ServeHTTP(response, request)
-				if response.Code != http.StatusBadRequest || response.Body.String() != "评论内容不能为空且不能超过 1000 字" || repo.written {
+				if response.Code != http.StatusBadRequest ||
+					response.Body.String() != "评论内容不能为空且不能超过 1000 字" || repo.written {
 					t.Fatalf("status=%d body=%q written=%v", response.Code, response.Body.String(), repo.written)
 				}
 			})
