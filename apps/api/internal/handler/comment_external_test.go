@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"forum/internal/domain"
 	"forum/internal/httpx"
-	"forum/internal/repository"
 	"forum/internal/subject"
 	"forum/internal/usecase"
 	"github.com/go-chi/chi/v5"
@@ -18,8 +18,8 @@ import (
 
 type subjectCheckFunc func(context.Context, string, string) error
 
-func (f subjectCheckFunc) Check(ctx context.Context, kind, key string) (int16, error) {
-	return repository.CommentSubjectNovel, f(ctx, kind, key)
+func (f subjectCheckFunc) Check(ctx context.Context, kind, key string) (domain.CommentSubjectType, error) {
+	return domain.CommentSubjectNovel, f(ctx, kind, key)
 }
 
 func TestExternalCommentCreationChecksSubject(t *testing.T) {

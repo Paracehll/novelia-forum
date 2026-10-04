@@ -5,8 +5,9 @@ import (
 	"strconv"
 	"strings"
 
+	"forum/internal/domain"
 	"forum/internal/httpx"
-	"forum/internal/repository"
+	"forum/internal/usecase"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
@@ -35,7 +36,11 @@ func (h *commentHandler) setStatus(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
-	if err := h.commentUsecase.SetStatus(repository.CommentSubjectPost, id, status); err != nil {
+	if err := h.commentUsecase.SetStatus(usecase.SetCommentStatusCommand{
+		SubjectType: domain.CommentSubjectPost,
+		CommentID:   id,
+		Status:      status,
+	}); err != nil {
 		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -47,7 +52,7 @@ func (h *commentHandler) deleteAllByAuthor(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		return err
 	}
-	if err := h.commentUsecase.DeleteAllByAuthor(authorID); err != nil {
+	if err := h.commentUsecase.DeleteAllByAuthor(usecase.DeleteCommentsByAuthorCommand{AuthorID: authorID}); err != nil {
 		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -60,10 +65,11 @@ func (h *commentHandler) listAdmin(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
-	filter := repository.CommentFilter{
+	filter := usecase.ListAdminCommentsQuery{
 		Search:     strings.TrimSpace(query.Get("q")),
 		AuthorName: strings.TrimSpace(query.Get("author_name")),
-		Status:     repository.CommentStatusAll,
+		Limit:      pagination.Limit,
+		Offset:     pagination.Offset,
 	}
 	if values, ok := query["post_id"]; ok {
 		if len(values) != 1 {
@@ -84,10 +90,11 @@ func (h *commentHandler) listAdmin(w http.ResponseWriter, r *http.Request) error
 			if err != nil || !validStatus(int16(status)) {
 				return httpx.BadRequest("status 必须为 all、0、1 或 2")
 			}
-			filter.Status = int16(status)
+			value := domain.CommentStatus(status)
+			filter.Status = &value
 		}
 	}
-	total, items, err := h.commentUsecase.ListAdmin(filter, pagination.Limit, pagination.Offset)
+	total, items, err := h.commentUsecase.ListAdmin(filter)
 	if err != nil {
 		return transportError(err)
 	}
@@ -103,14 +110,14 @@ func (h *commentHandler) listAdmin(w http.ResponseWriter, r *http.Request) error
 	return nil
 }
 
-func parseCommentStatus(value string) (int16, error) {
+func parseCommentStatus(value string) (domain.CommentStatus, error) {
 	switch value {
 	case "published":
-		return repository.StatusPublished, nil
+		return domain.CommentStatusPublished, nil
 	case "hidden":
-		return repository.StatusHidden, nil
+		return domain.CommentStatusHidden, nil
 	case "deleted":
-		return repository.StatusDeleted, nil
+		return domain.CommentStatusDeleted, nil
 	default:
 		return 0, httpx.BadRequest("status 必须为 published、hidden 或 deleted")
 	}

@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	"forum/internal/domain"
 	"forum/internal/httpx"
-	"forum/internal/repository"
 	"forum/internal/usecase"
 
 	"github.com/go-chi/chi/v5"
@@ -63,8 +63,8 @@ type commentResponse struct {
 	Replies        *page[commentResponse] `json:"replies,omitempty"`
 }
 
-func newCommentResponse(value repository.Comment) (commentResponse, error) {
-	postID, err := repository.PostIDFromSubjectKey(value.SubjectKey)
+func newCommentResponse(value domain.Comment) (commentResponse, error) {
+	postID, err := domain.PostIDFromCommentSubjectKey(value.SubjectKey)
 	if err != nil {
 		return commentResponse{}, fmt.Errorf("comment %d: %w", value.ID, err)
 	}
@@ -75,14 +75,14 @@ func newCommentResponse(value repository.Comment) (commentResponse, error) {
 		Content:        value.Content,
 		AuthorID:       value.AuthorID,
 		AuthorUsername: value.AuthorUsername,
-		Status:         value.Status,
+		Status:         int16(value.Status),
 		CreatedAt:      value.CreatedAt,
 		UpdatedAt:      value.UpdatedAt,
 	}, nil
 }
 
-func newCommentThreadResponse(value repository.CommentThread) (commentResponse, error) {
-	response, err := newCommentResponse(value.Comment)
+func newCommentThreadResponse(value domain.CommentThreadPreview) (commentResponse, error) {
+	response, err := newCommentResponse(value.Root)
 	if err != nil {
 		return response, err
 	}
@@ -113,8 +113,11 @@ func (h *commentHandler) update(w http.ResponseWriter, r *http.Request) error {
 	principal, _ := httpx.AuthenticatedPrincipal(r)
 	comment, err := h.commentUsecase.Update(
 		commentActor(principal),
-		repository.CommentSubjectPost,
-		id, input.Content,
+		usecase.UpdateCommentCommand{
+			SubjectType: domain.CommentSubjectPost,
+			CommentID:   id,
+			Content:     input.Content,
+		},
 	)
 	if err != nil {
 		return transportError(err)
@@ -133,7 +136,10 @@ func (h *commentHandler) delete(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.commentUsecase.Delete(commentActor(principal), repository.CommentSubjectPost, id); err != nil {
+	if err := h.commentUsecase.Delete(commentActor(principal), usecase.DeleteCommentCommand{
+		SubjectType: domain.CommentSubjectPost,
+		CommentID:   id,
+	}); err != nil {
 		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -141,5 +147,9 @@ func (h *commentHandler) delete(w http.ResponseWriter, r *http.Request) error {
 }
 
 func commentActor(principal httpx.Principal) usecase.Actor {
-	return usecase.Actor{UserID: principal.UserID, IsAdmin: principal.IsAdmin()}
+	return usecase.Actor{
+		UserID:   principal.UserID,
+		Username: principal.Username,
+		IsAdmin:  principal.IsAdmin(),
+	}
 }

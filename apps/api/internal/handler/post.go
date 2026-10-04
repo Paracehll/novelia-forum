@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	forumcategory "forum/internal/category"
+	"forum/internal/domain"
 	"forum/internal/domainfilter"
 	"forum/internal/httpx"
 	"forum/internal/repository"
@@ -365,10 +366,12 @@ func (h *postHandler) listComments(w http.ResponseWriter, r *http.Request) error
 	principal, _ := httpx.AuthenticatedPrincipal(r)
 	total, items, err := h.commentUsecase.List(
 		commentActor(principal),
-		repository.CommentSubjectPost,
-		repository.PostSubjectKey(postID),
-		pagination.Limit,
-		pagination.Offset,
+		usecase.ListCommentsQuery{
+			SubjectType: domain.CommentSubjectPost,
+			SubjectKey:  domain.PostCommentSubjectKey(postID),
+			Limit:       pagination.Limit,
+			Offset:      pagination.Offset,
+		},
 	)
 	if err != nil {
 		return transportError(err)
@@ -400,11 +403,13 @@ func (h *postHandler) listCommentReplies(w http.ResponseWriter, r *http.Request)
 	principal, _ := httpx.AuthenticatedPrincipal(r)
 	total, items, err := h.commentUsecase.ListReplies(
 		commentActor(principal),
-		repository.CommentSubjectPost,
-		repository.PostSubjectKey(postID),
-		rootID,
-		pagination.Limit,
-		pagination.Offset,
+		usecase.ListCommentRepliesQuery{
+			SubjectType: domain.CommentSubjectPost,
+			SubjectKey:  domain.PostCommentSubjectKey(postID),
+			RootID:      rootID,
+			Limit:       pagination.Limit,
+			Offset:      pagination.Offset,
+		},
 	)
 	if err != nil {
 		return transportError(err)
@@ -433,12 +438,10 @@ func (h *postHandler) createComment(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	comment, err := h.commentUsecase.Create(repository.CreateCommentInput{
-		SubjectKey:     repository.PostSubjectKey(postID),
-		RootID:         input.RootID,
-		Content:        input.Content,
-		AuthorID:       principal.UserID,
-		AuthorUsername: principal.Username,
+	comment, err := h.commentUsecase.Create(commentActor(principal), usecase.CreatePostCommentCommand{
+		PostID:  postID,
+		RootID:  input.RootID,
+		Content: input.Content,
 	})
 	if err != nil {
 		return transportError(err)

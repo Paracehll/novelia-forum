@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"forum/internal/domain"
 	"forum/internal/httpx"
 	"forum/internal/repository"
 	"forum/internal/usecase"
@@ -209,14 +210,14 @@ func TestValidateCommentUpdate(t *testing.T) {
 
 func TestCommentResponsesPreserveContent(t *testing.T) {
 	rootID := int64(1)
-	comment := repository.Comment{ID: 2, SubjectKey: "123", RootID: &rootID, Content: "原始内容", Status: repository.StatusHidden}
+	comment := domain.Comment{ID: 2, SubjectKey: "123", RootID: &rootID, Content: "原始内容", Status: domain.CommentStatusHidden}
 	post, err := newCommentResponse(comment)
 	if err != nil {
 		t.Fatal(err)
 	}
 	external := newExternalCommentResponse(comment)
 	if post.Content != comment.Content || external.Content != comment.Content ||
-		post.Status != comment.Status || external.Status != comment.Status ||
+		post.Status != int16(comment.Status) || external.Status != int16(comment.Status) ||
 		post.ID != comment.ID || external.ID != comment.ID ||
 		post.RootID == nil || external.RootID == nil ||
 		*post.RootID != rootID || *external.RootID != rootID {
@@ -226,13 +227,13 @@ func TestCommentResponsesPreserveContent(t *testing.T) {
 
 func TestEmbeddedReplyResponse(t *testing.T) {
 	rootID := int64(1)
-	thread := repository.CommentThread{
-		Comment:    repository.Comment{ID: rootID, SubjectKey: repository.PostSubjectKey(42)},
+	thread := domain.CommentThreadPreview{
+		Root:       domain.Comment{ID: rootID, SubjectKey: domain.PostCommentSubjectKey(42)},
 		ReplyCount: 3,
 	}
-	for _, status := range []int16{repository.StatusPublished, repository.StatusHidden, repository.StatusDeleted} {
-		thread.Replies = append(thread.Replies, repository.Comment{
-			ID: int64(status) + 2, SubjectKey: thread.SubjectKey, RootID: &rootID, Content: "body", Status: status,
+	for _, status := range []domain.CommentStatus{domain.CommentStatusPublished, domain.CommentStatusHidden, domain.CommentStatusDeleted} {
+		thread.Replies = append(thread.Replies, domain.Comment{
+			ID: int64(status) + 2, SubjectKey: thread.Root.SubjectKey, RootID: &rootID, Content: "body", Status: status,
 		})
 	}
 	post, err := newCommentThreadResponse(thread)

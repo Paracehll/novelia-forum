@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"forum/internal/domain"
 	"forum/internal/httpx"
-	"forum/internal/repository"
 	"forum/internal/subject"
 	"forum/internal/usecase"
 
@@ -49,8 +49,8 @@ type externalCommentResponse struct {
 	Replies        *page[externalCommentResponse] `json:"replies,omitempty"`
 }
 
-func newExternalCommentThreadResponse(value repository.CommentThread) externalCommentResponse {
-	response := newExternalCommentResponse(value.Comment)
+func newExternalCommentThreadResponse(value domain.CommentThreadPreview) externalCommentResponse {
+	response := newExternalCommentResponse(value.Root)
 	response.ReplyCount = value.ReplyCount
 	items := make([]externalCommentResponse, len(value.Replies))
 	for i, reply := range value.Replies {
@@ -60,7 +60,7 @@ func newExternalCommentThreadResponse(value repository.CommentThread) externalCo
 	return response
 }
 
-func newExternalCommentResponse(value repository.Comment) externalCommentResponse {
+func newExternalCommentResponse(value domain.Comment) externalCommentResponse {
 	return externalCommentResponse{
 		ID:             value.ID,
 		SubjectKey:     value.SubjectKey,
@@ -68,7 +68,7 @@ func newExternalCommentResponse(value repository.Comment) externalCommentRespons
 		Content:        value.Content,
 		AuthorID:       value.AuthorID,
 		AuthorUsername: value.AuthorUsername,
-		Status:         value.Status,
+		Status:         int16(value.Status),
 		CreatedAt:      value.CreatedAt,
 		UpdatedAt:      value.UpdatedAt,
 	}
@@ -100,7 +100,12 @@ func (h *externalCommentHandler) list(w http.ResponseWriter, r *http.Request) er
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	total, items, err := h.commentUsecase.List(commentActor(principal), subjectType, subjectKey, pagination.Limit, pagination.Offset)
+	total, items, err := h.commentUsecase.List(commentActor(principal), usecase.ListCommentsQuery{
+		SubjectType: subjectType,
+		SubjectKey:  subjectKey,
+		Limit:       pagination.Limit,
+		Offset:      pagination.Offset,
+	})
 	if err != nil {
 		return transportError(err)
 	}
@@ -132,11 +137,13 @@ func (h *externalCommentHandler) listReplies(w http.ResponseWriter, r *http.Requ
 	principal, _ := httpx.AuthenticatedPrincipal(r)
 	total, items, err := h.commentUsecase.ListReplies(
 		commentActor(principal),
-		subjectType,
-		subjectKey,
-		rootID,
-		pagination.Limit,
-		pagination.Offset,
+		usecase.ListCommentRepliesQuery{
+			SubjectType: subjectType,
+			SubjectKey:  subjectKey,
+			RootID:      rootID,
+			Limit:       pagination.Limit,
+			Offset:      pagination.Offset,
+		},
 	)
 	if err != nil {
 		return transportError(err)
@@ -172,12 +179,11 @@ func (h *externalCommentHandler) create(w http.ResponseWriter, r *http.Request) 
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	comment, err := h.commentUsecase.CreateExternal(r.Context(), chi.URLParam(r, "type"), repository.CreateCommentInput{
-		SubjectKey:     subjectKey,
-		RootID:         input.RootID,
-		Content:        input.Content,
-		AuthorID:       principal.UserID,
-		AuthorUsername: principal.Username,
+	comment, err := h.commentUsecase.CreateExternal(r.Context(), commentActor(principal), usecase.CreateExternalCommentCommand{
+		Kind:       chi.URLParam(r, "type"),
+		SubjectKey: subjectKey,
+		RootID:     input.RootID,
+		Content:    input.Content,
 	})
 	if err != nil {
 		return transportError(err)
@@ -187,7 +193,7 @@ func (h *externalCommentHandler) create(w http.ResponseWriter, r *http.Request) 
 	return nil
 }
 
-func externalCommentParams(r *http.Request) (int16, int64, error) {
+func externalCommentParams(r *http.Request) (domain.CommentSubjectType, int64, error) {
 	subjectType, ok := subject.TypeID(chi.URLParam(r, "type"))
 	if !ok {
 		return 0, 0, httpx.BadRequest("不支持的外部资源类型")
@@ -209,7 +215,11 @@ func (h *externalCommentHandler) update(w http.ResponseWriter, r *http.Request) 
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	comment, err := h.commentUsecase.Update(commentActor(principal), subjectType, id, input.Content)
+	comment, err := h.commentUsecase.Update(commentActor(principal), usecase.UpdateCommentCommand{
+		SubjectType: subjectType,
+		CommentID:   id,
+		Content:     input.Content,
+	})
 	if err != nil {
 		return transportError(err)
 	}
@@ -223,7 +233,10 @@ func (h *externalCommentHandler) delete(w http.ResponseWriter, r *http.Request) 
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.commentUsecase.Delete(commentActor(principal), subjectType, id); err != nil {
+	if err := h.commentUsecase.Delete(commentActor(principal), usecase.DeleteCommentCommand{
+		SubjectType: subjectType,
+		CommentID:   id,
+	}); err != nil {
 		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -247,7 +260,11 @@ func (h *externalCommentHandler) setStatus(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		return err
 	}
-	if err := h.commentUsecase.SetStatus(subjectType, id, status); err != nil {
+	if err := h.commentUsecase.SetStatus(usecase.SetCommentStatusCommand{
+		SubjectType: subjectType,
+		CommentID:   id,
+		Status:      status,
+	}); err != nil {
 		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)

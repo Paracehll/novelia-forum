@@ -2,12 +2,13 @@
 package subject
 
 import (
-	"forum/internal/repository"
 	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"time"
+
+	"forum/internal/domain"
 )
 
 var (
@@ -17,20 +18,20 @@ var (
 )
 
 type Checker interface {
-	Check(ctx context.Context, kind, key string) (int16, error)
+	Check(ctx context.Context, kind, key string) (domain.CommentSubjectType, error)
 }
 
 type resourceType struct {
-	id      int16
+	id      domain.CommentSubjectType
 	resolve func(string) (string, error)
 }
 
 // IDs are persisted in comments and must never be reassigned.
 var registry = map[string]resourceType{
-	"novel": {id: repository.CommentSubjectNovel, resolve: novelResolver},
+	"novel": {id: domain.CommentSubjectNovel, resolve: novelResolver},
 }
 
-func TypeID(kind string) (int16, bool) {
+func TypeID(kind string) (domain.CommentSubjectType, bool) {
 	resource, ok := registry[kind]
 	return resource.id, ok
 }
@@ -53,7 +54,7 @@ func NewHTTPChecker() *HTTPChecker {
 	}
 }
 
-func (c *HTTPChecker) Check(ctx context.Context, kind, key string) (int16, error) {
+func (c *HTTPChecker) Check(ctx context.Context, kind, key string) (domain.CommentSubjectType, error) {
 	resource, ok := c.registry[kind]
 	if !ok {
 		return 0, ErrUnsupported
