@@ -46,6 +46,7 @@ type PublishedPostReader interface {
 }
 
 type CommentUsecase struct {
+	tx              repository.TransactionRunner
 	commentRepo     repository.CommentRepository
 	postRepo        PublishedPostReader
 	domainFilter    *domainfilter.Filter
@@ -53,12 +54,17 @@ type CommentUsecase struct {
 }
 
 func NewCommentUsecase(
+	tx repository.TransactionRunner,
 	commentRepo repository.CommentRepository,
 	postRepo PublishedPostReader,
 	domainFilter *domainfilter.Filter,
 	subjectResolver SubjectResolver,
 ) *CommentUsecase {
+	if tx == nil {
+		panic("comment usecase requires a transaction runner")
+	}
 	return &CommentUsecase{
+		tx:              tx,
 		commentRepo:     commentRepo,
 		postRepo:        postRepo,
 		domainFilter:    domainFilter,
@@ -311,7 +317,12 @@ func (u *CommentUsecase) createComment(
 ) (*domain.Comment, error) {
 	input.AuthorID = actor.UserID
 	input.AuthorUsername = actor.Username
-	comment, err := u.commentRepo.Create(ctx, input)
+	var comment *domain.Comment
+	err := u.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		var err error
+		comment, err = u.commentRepo.Create(txCtx, input)
+		return err
+	})
 	switch {
 	case err == nil:
 		return comment, nil
@@ -397,7 +408,9 @@ func (u *CommentUsecase) SetStatus(ctx context.Context, actor Actor, command Set
 }
 
 func (u *CommentUsecase) setStatus(ctx context.Context, command SetCommentStatusCommand, operation string) error {
-	err := u.commentRepo.SetStatus(ctx, command.SubjectType, command.CommentID, command.Status)
+	err := u.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		return u.commentRepo.SetStatus(txCtx, command.SubjectType, command.CommentID, command.Status)
+	})
 	switch {
 	case err == nil:
 		return nil

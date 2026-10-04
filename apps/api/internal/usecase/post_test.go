@@ -85,7 +85,7 @@ func (r *postUsecaseFavoriteStub) Has(ctx context.Context, _ int64, userID int64
 func TestPostListQueryMapsToRepositoryFilter(t *testing.T) {
 	status := domain.PostStatusHidden
 	repo := &postUsecaseRepoStub{}
-	u := NewPostUsecase(repo, nil, nil)
+	u := NewPostUsecase(immediateTransaction{}, repo, nil, nil)
 	query := ListPostsQuery{
 		CategorySlug: "discussion", Search: " title ", Sort: PostSortNewest,
 		TagIDs: []int64{2, 3}, AuthorName: " alice ", AuthorID: 7,
@@ -123,7 +123,7 @@ func TestPostListQueryDefaultsAndValidation(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &postUsecaseRepoStub{}
-			u := NewPostUsecase(repo, nil, nil)
+			u := NewPostUsecase(immediateTransaction{}, repo, nil, nil)
 			_, _, err := u.ListAdmin(context.Background(), Actor{IsAdmin: true}, tc.query)
 			if tc.code != "" {
 				if !isAppErrorCode(err, tc.code) {
@@ -143,7 +143,7 @@ func TestPostListScopes(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			repo := &postUsecaseRepoStub{listItem: domain.PostListItem{ID: 5}}
 			favorites := &postUsecaseFavoriteStub{}
-			u := NewPostUsecase(repo, favorites, nil)
+			u := NewPostUsecase(immediateTransaction{}, repo, favorites, nil)
 			actor := Actor{UserID: 7, IsAdmin: true}
 			status := domain.PostStatusHidden
 			query := ListPostsQuery{Limit: 20, Status: &status, AuthorName: "someone", AuthorID: 99}
@@ -182,7 +182,7 @@ func TestPostListScopes(t *testing.T) {
 			}
 		})
 	}
-	u := NewPostUsecase(nil, nil, nil)
+	u := NewPostUsecase(immediateTransaction{}, nil, nil, nil)
 	if _, _, err := u.ListMine(
 		context.Background(),
 		Actor{},
@@ -222,7 +222,7 @@ func TestPostListScopes(t *testing.T) {
 
 func TestPostInputAndModificationRules(t *testing.T) {
 	repo := &postUsecaseRepoStub{post: domain.Post{ID: 1, AuthorID: 7, CreatedAt: time.Now().Add(-time.Hour)}}
-	u := NewPostUsecase(repo, &postUsecaseFavoriteStub{}, nil)
+	u := NewPostUsecase(immediateTransaction{}, repo, &postUsecaseFavoriteStub{}, nil)
 	actor := Actor{UserID: 7, Username: "author"}
 	input := PostInput{CategoryID: forumcategory.NovelID, Title: " 标题 ", Content: " 内容 \n"}
 	result, err := u.Create(context.Background(), actor, input)
@@ -284,7 +284,7 @@ func TestPostRepositoryErrors(t *testing.T) {
 		{repository.ErrInvalidTag, KindInvalid, CodePostTagInvalid},
 		{repository.ErrConflict, KindConflict, CodePostConflict},
 	} {
-		u := NewPostUsecase(&postUsecaseRepoStub{err: fmt.Errorf("repo: %w", tc.cause)}, nil, nil)
+		u := NewPostUsecase(immediateTransaction{}, &postUsecaseRepoStub{err: fmt.Errorf("repo: %w", tc.cause)}, nil, nil)
 		var err error
 		if tc.cause == repository.ErrNotFound {
 			_, err = u.Get(context.Background(), Actor{}, 1)
@@ -297,7 +297,7 @@ func TestPostRepositoryErrors(t *testing.T) {
 		}
 	}
 	repo := &postUsecaseRepoStub{post: domain.Post{ID: 1, AuthorID: 7}, updateErr: fmt.Errorf("repo: %w", repository.ErrNotFound)}
-	u := NewPostUsecase(repo, nil, nil)
+	u := NewPostUsecase(immediateTransaction{}, repo, nil, nil)
 	_, err := u.Update(context.Background(), Actor{UserID: 7}, 1, input)
 	var appErr *AppError
 	if !errors.As(err, &appErr) || appErr.Kind != KindConflict || appErr.Code != CodePostConflict {
@@ -309,7 +309,7 @@ func TestPostReadErrorsKeepCause(t *testing.T) {
 	for _, cause := range []error{repository.ErrNotFound, repository.ErrInvalidTag, errors.New("storage unavailable")} {
 		t.Run(cause.Error(), func(t *testing.T) {
 			repo := &postUsecaseRepoStub{err: cause}
-			u := NewPostUsecase(repo, nil, nil)
+			u := NewPostUsecase(immediateTransaction{}, repo, nil, nil)
 			_, _, listErr := u.List(context.Background(), Actor{}, ListPostsQuery{Limit: 20})
 			repo.err = nil
 			u.favoriteRepo = &postUsecaseFavoriteStub{err: cause}

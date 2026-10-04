@@ -52,7 +52,7 @@ func TestExternalCommentRepliesArePaginatedSeparately(t *testing.T) {
 	router := chi.NewRouter()
 	resolver := handlerSubjectResolver{valid: true, exists: true}
 	NewExternalCommentHandler(
-		usecase.NewCommentUsecase(repo, nil, nil, resolver),
+		usecase.NewCommentUsecase(immediateTransaction{}, repo, nil, nil, resolver),
 	).RegisterRoutes(router)
 
 	for _, tc := range []struct {
@@ -144,7 +144,7 @@ func TestCommentEditingStateResponses(t *testing.T) {
 						ID: 7, SubjectKey: "42", AuthorID: 1,
 						Content: "original", Status: status, CreatedAt: time.Now(),
 					}}
-					u := usecase.NewCommentUsecase(
+					u := usecase.NewCommentUsecase(immediateTransaction{},
 						repo, nil, nil, handlerSubjectResolver{valid: true, exists: true},
 					)
 					router := chi.NewRouter()
@@ -203,7 +203,7 @@ func TestAdminCanEditCommentAfterWindow(t *testing.T) {
 				ID: 7, SubjectKey: "42", AuthorID: 1, CreatedAt: time.Now().Add(-tc.age),
 			}}
 			router := chi.NewRouter()
-			NewCommentHandler(usecase.NewCommentUsecase(repo, nil, nil, nil)).RegisterRoutes(router)
+			NewCommentHandler(usecase.NewCommentUsecase(immediateTransaction{}, repo, nil, nil, nil)).RegisterRoutes(router)
 			token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 				"sub": "tester", "uid": tc.userID, "role": tc.role,
 			}).SignedString([]byte(httpx.AccessTokenSecret))
@@ -244,7 +244,7 @@ func TestAdminCanModifyExternalCommentAfterWindow(t *testing.T) {
 			router := chi.NewRouter()
 			resolver := handlerSubjectResolver{valid: true, exists: true}
 			NewExternalCommentHandler(
-				usecase.NewCommentUsecase(repo, nil, nil, resolver),
+				usecase.NewCommentUsecase(immediateTransaction{}, repo, nil, nil, resolver),
 			).RegisterRoutes(router)
 			token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 				"sub": "tester", "uid": 1, "role": tc.role,
@@ -398,7 +398,7 @@ func TestInvalidCommentRequestsStopBeforeUsecase(t *testing.T) {
 	router.Route("/post", NewPostHandler(nil, nil).RegisterRoutes)
 	router.Route("/comment", NewCommentHandler(nil).RegisterRoutes)
 	router.Route("/admin/comment", NewCommentHandler(nil).RegisterAdminRoutes)
-	externalComments := usecase.NewCommentUsecase(
+	externalComments := usecase.NewCommentUsecase(immediateTransaction{},
 		&domainCommentRepository{}, nil, nil,
 		handlerSubjectResolver{valid: true, exists: true},
 	)
@@ -441,7 +441,7 @@ func TestInvalidCommentContentResponses(t *testing.T) {
 			t.Run(route.method+route.path+"/"+strconv.Itoa(len(content)), func(t *testing.T) {
 				repo := &domainCommentRepository{}
 				resolver := handlerSubjectResolver{valid: true, exists: true}
-				comments := usecase.NewCommentUsecase(repo, nil, nil, resolver)
+				comments := usecase.NewCommentUsecase(immediateTransaction{}, repo, nil, nil, resolver)
 				router := chi.NewRouter()
 				router.Route("/post", NewPostHandler(nil, comments).RegisterRoutes)
 				router.Route("/comment", NewCommentHandler(comments).RegisterRoutes)

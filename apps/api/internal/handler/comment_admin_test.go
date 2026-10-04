@@ -70,7 +70,7 @@ func TestCommentAdminHandlersPassActor(t *testing.T) {
 		for _, role := range []string{"member", "admin"} {
 			t.Run(route.name+"/"+role, func(t *testing.T) {
 				repo := &adminCommentRepository{}
-				u := usecase.NewCommentUsecase(
+				u := usecase.NewCommentUsecase(immediateTransaction{},
 					repo, nil, nil, handlerSubjectResolver{valid: true, exists: true},
 				)
 				router := chi.NewRouter()
@@ -158,7 +158,7 @@ func TestAdminCommentList(t *testing.T) {
 			repo := &adminCommentRepository{}
 			router := chi.NewRouter()
 			router.Use(httpx.RequireAdmin)
-			NewCommentHandler(usecase.NewCommentUsecase(repo, nil, nil, nil)).RegisterAdminRoutes(router)
+			NewCommentHandler(usecase.NewCommentUsecase(immediateTransaction{}, repo, nil, nil, nil)).RegisterAdminRoutes(router)
 			request := httptest.NewRequest(http.MethodGet, "/"+tc.query, nil)
 			if tc.role != "" {
 				token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{

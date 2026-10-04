@@ -36,17 +36,23 @@ const (
 )
 
 type PostUsecase struct {
+	tx           repository.TransactionRunner
 	postRepo     repository.PostRepository
 	favoriteRepo repository.FavoriteRepository
 	domains      *domainfilter.Filter
 }
 
 func NewPostUsecase(
+	tx repository.TransactionRunner,
 	postRepo repository.PostRepository,
 	favoriteRepo repository.FavoriteRepository,
 	domains *domainfilter.Filter,
 ) *PostUsecase {
+	if tx == nil {
+		panic("post usecase requires a transaction runner")
+	}
 	return &PostUsecase{
+		tx:           tx,
 		postRepo:     postRepo,
 		favoriteRepo: favoriteRepo,
 		domains:      domains,
@@ -279,9 +285,19 @@ func (u *PostUsecase) Create(ctx context.Context, actor Actor, input PostInput) 
 	if err := u.validateInput(actor, input); err != nil {
 		return nil, err
 	}
-	post, err := u.postRepo.Create(ctx, repository.CreatePostInput{
-		CategoryID: input.CategoryID, Title: strings.TrimSpace(input.Title), Content: input.Content,
-		TagIDs: input.TagIDs, AuthorID: actor.UserID, AuthorUsername: actor.Username, Attr: "{}",
+	var post *domain.Post
+	err := u.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		var err error
+		post, err = u.postRepo.Create(txCtx, repository.CreatePostInput{
+			CategoryID:     input.CategoryID,
+			Title:          strings.TrimSpace(input.Title),
+			Content:        input.Content,
+			TagIDs:         input.TagIDs,
+			AuthorID:       actor.UserID,
+			AuthorUsername: actor.Username,
+			Attr:           "{}",
+		})
+		return err
 	})
 	switch {
 	case err == nil:
@@ -321,8 +337,19 @@ func (u *PostUsecase) Update(ctx context.Context, actor Actor, id int64, input P
 	if err := u.validateInput(actor, input); err != nil {
 		return nil, err
 	}
-	post, err := u.postRepo.Update(ctx, id, repository.UpdatePostInput{
-		CategoryID: input.CategoryID, Title: strings.TrimSpace(input.Title), Content: input.Content, TagIDs: input.TagIDs,
+	var result *PostResult
+	err := u.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		post, err := u.postRepo.Update(txCtx, id, repository.UpdatePostInput{
+			CategoryID: input.CategoryID,
+			Title:      strings.TrimSpace(input.Title),
+			Content:    input.Content,
+			TagIDs:     input.TagIDs,
+		})
+		if err != nil {
+			return err
+		}
+		result, err = u.result(txCtx, actor, post)
+		return err
 	})
 	switch {
 	case err == nil:
@@ -338,7 +365,7 @@ func (u *PostUsecase) Update(ctx context.Context, actor Actor, id int64, input P
 	default:
 		return nil, fmt.Errorf("post.update: %w", err)
 	}
-	return u.result(ctx, actor, post)
+	return result, nil
 }
 
 func (u *PostUsecase) Delete(ctx context.Context, actor Actor, id int64) error {

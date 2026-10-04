@@ -42,7 +42,7 @@ func (r *tagRepository) ListByCategory(ctx context.Context, categoryID int64) ([
 		WHERE(table.Tag.CategoryID.EQ(Int64(categoryID))).
 		ORDER_BY(table.Tag.SortOrder.ASC(), table.Tag.ID.ASC())
 	var dest []model.Tag
-	if err := stmt.QueryContext(ctx, r.db, &dest); err != nil {
+	if err := stmt.QueryContext(ctx, queryDB(ctx, r.db), &dest); err != nil {
 		return nil, storageError(err, "tag.ListByCategory")
 	}
 	return tagsFromModels(dest), nil
@@ -54,14 +54,14 @@ func (r *tagRepository) ListActive(ctx context.Context) ([]Tag, error) {
 		WHERE(table.Tag.IsActive.IS_TRUE()).
 		ORDER_BY(table.Tag.CategoryID.ASC(), table.Tag.SortOrder.ASC(), table.Tag.ID.ASC())
 	var dest []model.Tag
-	if err := stmt.QueryContext(ctx, r.db, &dest); err != nil {
+	if err := stmt.QueryContext(ctx, queryDB(ctx, r.db), &dest); err != nil {
 		return nil, storageError(err, "tag.ListActive")
 	}
 	return tagsFromModels(dest), nil
 }
 
 func (r *tagRepository) ListForPost(ctx context.Context, postID int64) ([]Tag, error) {
-	return listPostTags(ctx, r.db, postID)
+	return listPostTags(ctx, queryDB(ctx, r.db), postID)
 }
 
 // listPostTags also accepts a transaction so writes can assemble their result
@@ -92,7 +92,7 @@ func (r *tagRepository) ListForPosts(ctx context.Context, postIDs []int64) (map[
 		FROM(table.PostTag.INNER_JOIN(table.Tag, table.PostTag.TagID.EQ(table.Tag.ID))).
 		WHERE(table.PostTag.PostID.IN(integerExpressions(postIDs)...)).
 		ORDER_BY(table.PostTag.PostID.ASC(), table.Tag.SortOrder.ASC(), table.Tag.ID.ASC())
-	if err := stmt.QueryContext(ctx, r.db, &records); err != nil {
+	if err := stmt.QueryContext(ctx, queryDB(ctx, r.db), &records); err != nil {
 		return nil, storageError(err, "tag.ListForPosts")
 	}
 	for _, record := range records {
@@ -113,7 +113,7 @@ func (r *tagRepository) Create(
 	stmt := table.Tag.INSERT(table.Tag.CategoryID, table.Tag.Name, table.Tag.Color, table.Tag.SortOrder, table.Tag.Attr).
 		MODEL(dest).
 		RETURNING(table.Tag.AllColumns)
-	if err := stmt.QueryContext(ctx, r.db, &dest); err != nil {
+	if err := stmt.QueryContext(ctx, queryDB(ctx, r.db), &dest); err != nil {
 		return nil, storageError(err, "tag.Create")
 	}
 	tag := tagFromModel(dest)
@@ -137,7 +137,7 @@ func (r *tagRepository) Update(
 		WHERE(table.Tag.ID.EQ(Int64(id)).AND(table.Tag.CategoryID.EQ(Int64(categoryID)))).
 		RETURNING(table.Tag.AllColumns)
 	var dest model.Tag
-	if err := stmt.QueryContext(ctx, r.db, &dest); err != nil {
+	if err := stmt.QueryContext(ctx, queryDB(ctx, r.db), &dest); err != nil {
 		return nil, storageError(err, "tag.Update")
 	}
 	tag := tagFromModel(dest)
@@ -148,7 +148,7 @@ func (r *tagRepository) SetActive(ctx context.Context, categoryID, id int64, act
 	stmt := table.Tag.UPDATE(table.Tag.IsActive, table.Tag.UpdatedAt).
 		SET(Bool(active), TimestampzT(time.Now())).
 		WHERE(table.Tag.ID.EQ(Int64(id)).AND(table.Tag.CategoryID.EQ(Int64(categoryID))))
-	result, err := stmt.ExecContext(ctx, r.db)
+	result, err := stmt.ExecContext(ctx, queryDB(ctx, r.db))
 	if err != nil {
 		return storageError(err, "tag.SetActive")
 	}

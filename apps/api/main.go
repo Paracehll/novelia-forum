@@ -68,13 +68,14 @@ func main() {
 	defer db.Close()
 
 	// repository
+	transactions := repository.NewTransactionManager(db)
 	tagRepo := repository.NewTagRepository(db)
 	postRepo := repository.NewPostRepository(db, tagRepo)
 	commentRepo := repository.NewCommentRepository(db)
 	favoriteRepo := repository.NewFavoriteRepository(db)
 
-	postUsecase := usecase.NewPostUsecase(postRepo, favoriteRepo, domains)
-	commentUsecase := usecase.NewCommentUsecase(commentRepo, postRepo, domains, subjects)
+	postUsecase := usecase.NewPostUsecase(transactions, postRepo, favoriteRepo, domains)
+	commentUsecase := usecase.NewCommentUsecase(transactions, commentRepo, postRepo, domains, subjects)
 	tagUsecase := usecase.NewTagUsecase(tagRepo)
 
 	// handler

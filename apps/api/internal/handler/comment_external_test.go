@@ -73,7 +73,7 @@ func TestExternalCommentCreationChecksSubject(t *testing.T) {
 					return tc.exists
 				}
 				router := chi.NewRouter()
-				comments := usecase.NewCommentUsecase(repo, nil, nil, checker)
+				comments := usecase.NewCommentUsecase(immediateTransaction{}, repo, nil, nil, checker)
 				NewExternalCommentHandler(comments).RegisterRoutes(router)
 				req := httptest.NewRequest(
 					http.MethodPost, "/"+tc.kind+"/web-syosetu-n1234", strings.NewReader(body),
@@ -102,7 +102,7 @@ func TestExternalCommentReadsDoNotCheckSubject(t *testing.T) {
 		t.Fatal("reading historical comments must not check subject")
 		return false
 	}}
-	comments := usecase.NewCommentUsecase(&listingCommentRepository{rootID: 7}, nil, nil, checker)
+	comments := usecase.NewCommentUsecase(immediateTransaction{}, &listingCommentRepository{rootID: 7}, nil, nil, checker)
 	NewExternalCommentHandler(comments).RegisterRoutes(router)
 	for _, path := range []string{"/novel/deleted", "/novel/deleted/7/reply"} {
 		res := httptest.NewRecorder()

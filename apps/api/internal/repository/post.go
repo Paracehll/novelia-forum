@@ -45,6 +45,7 @@ type UpdatePostInput struct {
 	TagIDs         []int64
 }
 
+// Create and Update require a context provided by WithinTransaction.
 type PostRepository interface {
 	List(ctx context.Context, filter PostFilter, limit, offset int64) (int64, []domain.PostListItem, error)
 	Find(ctx context.Context, id int64, incrementViews bool) (*domain.Post, error)
@@ -179,7 +180,7 @@ func (r *postRepository) List(
 	from := postFrom(filter)
 	countStmt := SELECT(COUNT(STAR)).FROM(from).WHERE(condition)
 	var count struct{ Count int64 }
-	if err := countStmt.QueryContext(ctx, r.db, &count); err != nil {
+	if err := countStmt.QueryContext(ctx, queryDB(ctx, r.db), &count); err != nil {
 		return 0, nil, err
 	}
 
@@ -195,7 +196,7 @@ func (r *postRepository) List(
 		LIMIT(limit).
 		OFFSET(offset)
 	var records []model.Post
-	if err := stmt.QueryContext(ctx, r.db, &records); err != nil {
+	if err := stmt.QueryContext(ctx, queryDB(ctx, r.db), &records); err != nil {
 		return 0, nil, err
 	}
 	postIDs := make([]int64, len(records))
@@ -219,7 +220,7 @@ func (r *postRepository) ExistsPublished(ctx context.Context, id int64) (exists 
 	stmt := SELECT(EXISTS(SELECT(table.Post.ID).
 		FROM(table.Post).
 		WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(int16(domain.PostStatusPublished)))))).AS("Exists"))
-	if err := stmt.QueryContext(ctx, r.db, &result); err != nil {
+	if err := stmt.QueryContext(ctx, queryDB(ctx, r.db), &result); err != nil {
 		return false, err
 	}
 	return result.Exists, nil
@@ -237,12 +238,12 @@ func (r *postRepository) Find(
 			SET(table.Post.ViewsCount.ADD(Int32(1))).
 			WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(int16(domain.PostStatusPublished))))).
 			RETURNING(table.Post.AllColumns)
-		err = stmt.QueryContext(ctx, r.db, &dest)
+		err = stmt.QueryContext(ctx, queryDB(ctx, r.db), &dest)
 	} else {
 		stmt := SELECT(table.Post.AllColumns).
 			FROM(table.Post).
 			WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(int16(domain.PostStatusPublished)))))
-		err = stmt.QueryContext(ctx, r.db, &dest)
+		err = stmt.QueryContext(ctx, queryDB(ctx, r.db), &dest)
 	}
 	if err != nil {
 		return nil, err
@@ -260,11 +261,10 @@ func (r *postRepository) Create(ctx context.Context, input CreatePostInput) (res
 	if _, ok := forumcategory.FindByID(input.CategoryID); !ok {
 		return nil, ErrInvalidCategory
 	}
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := requireTransaction(ctx, r.db)
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
 
 	record := model.Post{
 		CategoryID:     input.CategoryID,
@@ -295,9 +295,6 @@ func (r *postRepository) Create(ctx context.Context, input CreatePostInput) (res
 		return nil, err
 	}
 	post := postFromModel(record, tags)
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
 	return &post, nil
 }
 
@@ -339,11 +336,10 @@ func (r *postRepository) Update(
 	if _, ok := forumcategory.FindByID(input.CategoryID); !ok {
 		return nil, ErrInvalidCategory
 	}
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := requireTransaction(ctx, r.db)
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
 	stmt := table.Post.UPDATE(table.Post.CategoryID, table.Post.Title, table.Post.Content, table.Post.UpdatedAt).
 		SET(Int64(input.CategoryID), String(input.Title), String(input.Content), TimestampzT(time.Now())).
 		WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(int16(domain.PostStatusPublished))))).
@@ -360,9 +356,6 @@ func (r *postRepository) Update(
 		return nil, err
 	}
 	post := postFromModel(record, tags)
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
 	return &post, nil
 }
 
@@ -371,7 +364,7 @@ func (r *postRepository) SetStatus(ctx context.Context, id int64, status domain.
 	stmt := table.Post.UPDATE(table.Post.Status, table.Post.UpdatedAt).
 		SET(Int16(int16(status)), TimestampzT(time.Now())).
 		WHERE(table.Post.ID.EQ(Int64(id)))
-	return execPostUpdate(ctx, r.db, stmt)
+	return execPostUpdate(ctx, queryDB(ctx, r.db), stmt)
 }
 
 func (r *postRepository) SetCommentsLocked(ctx context.Context, id int64, locked bool) (err error) {
@@ -379,7 +372,7 @@ func (r *postRepository) SetCommentsLocked(ctx context.Context, id int64, locked
 	stmt := table.Post.UPDATE(table.Post.CommentsLocked, table.Post.UpdatedAt).
 		SET(Bool(locked), TimestampzT(time.Now())).
 		WHERE(table.Post.ID.EQ(Int64(id)))
-	return execPostUpdate(ctx, r.db, stmt)
+	return execPostUpdate(ctx, queryDB(ctx, r.db), stmt)
 }
 
 func (r *postRepository) SetPinOrder(ctx context.Context, id int64, pinOrder *int32) (err error) {
@@ -387,7 +380,7 @@ func (r *postRepository) SetPinOrder(ctx context.Context, id int64, pinOrder *in
 	stmt := table.Post.UPDATE(table.Post.PinOrder, table.Post.UpdatedAt).
 		SET(pinOrder, TimestampzT(time.Now())).
 		WHERE(table.Post.ID.EQ(Int64(id)))
-	return execPostUpdate(ctx, r.db, stmt)
+	return execPostUpdate(ctx, queryDB(ctx, r.db), stmt)
 }
 
 func execPostUpdate(ctx context.Context, db qrm.DB, stmt UpdateStatement) error {

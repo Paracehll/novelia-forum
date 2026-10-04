@@ -54,7 +54,7 @@ func TestCommentStatusPersistenceErrors(t *testing.T) {
 	for _, operation := range []string{"comment.delete", "comment.set_status"} {
 		t.Run(operation, func(t *testing.T) {
 			repo := &adminCommentRepoStub{err: repository.ErrNotFound}
-			u := NewCommentUsecase(repo, nil, nil, nil)
+			u := NewCommentUsecase(immediateTransaction{}, repo, nil, nil, nil)
 			command := SetCommentStatusCommand{CommentID: 7, Status: domain.CommentStatusDeleted}
 			if err := u.setStatus(context.Background(), command, operation); !isAppErrorCode(err, CodeCommentNotFound) {
 				t.Fatalf("expected missing comment, got %v", err)
@@ -117,7 +117,7 @@ func TestCommentAdminPermissions(t *testing.T) {
 		} {
 			t.Run(operation.name+"/"+tc.name, func(t *testing.T) {
 				repo := &adminCommentRepoStub{}
-				u := NewCommentUsecase(repo, nil, nil, subjectResolverStub{supported: true})
+				u := NewCommentUsecase(immediateTransaction{}, repo, nil, nil, subjectResolverStub{supported: true})
 				err := operation.call(u, tc.actor)
 				if tc.actor.IsAdmin {
 					if err != nil || repo.calls != 1 {
@@ -136,7 +136,7 @@ func TestCommentAdminPermissions(t *testing.T) {
 
 func TestCommentExternalStatusChecksPermissionBeforeSubject(t *testing.T) {
 	// Missing resolver/repository ensure authorization is independent of subject support.
-	u := NewCommentUsecase(nil, nil, nil, nil)
+	u := NewCommentUsecase(immediateTransaction{}, nil, nil, nil, nil)
 	command := SetExternalCommentStatusCommand{Kind: "unknown", CommentID: 7}
 	if err := u.SetExternalStatus(
 		context.Background(),
@@ -156,7 +156,7 @@ func TestCommentExternalStatusChecksPermissionBeforeSubject(t *testing.T) {
 
 func TestCommentAdminCommands(t *testing.T) {
 	repo := &adminCommentRepoStub{}
-	u := NewCommentUsecase(repo, nil, nil, subjectResolverStub{supported: true})
+	u := NewCommentUsecase(immediateTransaction{}, repo, nil, nil, subjectResolverStub{supported: true})
 	actor := Actor{UserID: 2, IsAdmin: true}
 	status := domain.CommentStatusHidden
 	query := ListAdminCommentsQuery{Search: "body", AuthorName: "alice", PostID: 42, Status: &status, Limit: 10, Offset: 20}

@@ -122,7 +122,7 @@ func TestCommentContentValidation(t *testing.T) {
 					checks++
 					return true
 				})
-				u := NewCommentUsecase(repo, nil, nil, checker)
+				u := NewCommentUsecase(immediateTransaction{}, repo, nil, nil, checker)
 				actor := Actor{UserID: 1, Username: "tester"}
 				var err error
 				switch operation {
@@ -184,7 +184,7 @@ func TestCommentModificationPermissions(t *testing.T) {
 							CreatedAt: time.Now().Add(-tc.age),
 						},
 					}
-					u := NewCommentUsecase(repo, nil, nil, nil)
+					u := NewCommentUsecase(immediateTransaction{}, repo, nil, nil, nil)
 					var err error
 					if operation == "update" {
 						_, err = u.Update(context.Background(), tc.principal, UpdateCommentCommand{
@@ -221,7 +221,7 @@ func TestCommentModificationPermissions(t *testing.T) {
 
 func TestPostCommentCreationUsesActor(t *testing.T) {
 	repo := &commentRepoStub{}
-	u := NewCommentUsecase(repo, nil, nil, nil)
+	u := NewCommentUsecase(immediateTransaction{}, repo, nil, nil, nil)
 	actor := Actor{UserID: 42, Username: "alice"}
 
 	if _, err := u.Create(
@@ -243,7 +243,7 @@ func TestExternalCommentCheckFailureStopsWrite(t *testing.T) {
 			repo := &commentRepoStub{}
 			checks := 0
 			cause := errors.New("private upstream failure")
-			u := NewCommentUsecase(repo, nil, nil, subjectResolverStub{
+			u := NewCommentUsecase(immediateTransaction{}, repo, nil, nil, subjectResolverStub{
 				supported: true, valid: true, exists: exists, checkErr: cause, checks: &checks,
 			})
 			comment, err := u.CreateExternal(context.Background(), Actor{UserID: 1}, CreateExternalCommentCommand{
@@ -282,7 +282,7 @@ func TestExternalCommentChecksBeforeWrite(t *testing.T) {
 				exists:    tc.exists,
 				checks:    &checks,
 			}
-			u := NewCommentUsecase(repo, nil, nil, checker)
+			u := NewCommentUsecase(immediateTransaction{}, repo, nil, nil, checker)
 			actor := Actor{UserID: 1, Username: "tester"}
 			command := CreateExternalCommentCommand{
 				Kind: "novel", SubjectKey: "web-syosetu-n1234", Content: "body",
@@ -363,12 +363,12 @@ func TestCommentRepositoryErrors(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cause := errors.New("private database details")
-			u := NewCommentUsecase(failingCommentRepository{err: cause}, nil, nil, checker)
+			u := NewCommentUsecase(immediateTransaction{}, failingCommentRepository{err: cause}, nil, nil, checker)
 			err := tc.call(u)
 			if !errors.Is(err, cause) || !strings.Contains(err.Error(), tc.name) {
 				t.Fatalf("expected operation and original cause, got %v", err)
 			}
-			u = NewCommentUsecase(failingCommentRepository{err: fmt.Errorf("query: %w", tc.storageError)}, nil, nil, checker)
+			u = NewCommentUsecase(immediateTransaction{}, failingCommentRepository{err: fmt.Errorf("query: %w", tc.storageError)}, nil, nil, checker)
 			if err := tc.call(u); !isAppErrorCode(err, tc.missingCode) {
 				t.Fatalf("expected code %s, got %v", tc.missingCode, err)
 			}
@@ -386,12 +386,12 @@ func (s postExistenceStub) ExistsPublished(context.Context, int64) (bool, error)
 }
 
 func TestCommentPublishedPostCheck(t *testing.T) {
-	u := NewCommentUsecase(nil, postExistenceStub{exists: true}, nil, nil)
+	u := NewCommentUsecase(immediateTransaction{}, nil, postExistenceStub{exists: true}, nil, nil)
 	if err := u.checkSubjectExist(context.Background(), domain.CommentSubjectPost, "42"); err != nil {
 		t.Fatalf("published post rejected: %v", err)
 	}
 	cause := errors.New("storage unavailable")
-	u = NewCommentUsecase(nil, postExistenceStub{err: cause}, nil, nil)
+	u = NewCommentUsecase(immediateTransaction{}, nil, postExistenceStub{err: cause}, nil, nil)
 	if err := u.checkSubjectExist(context.Background(), domain.CommentSubjectPost, "42"); !errors.Is(err, cause) {
 		t.Fatalf("storage error lost: %v", err)
 	}
@@ -403,13 +403,13 @@ func TestCommentReadSubjectChecks(t *testing.T) {
 		return false
 	})
 	// Unimplemented comment queries panic if a missing post reaches the repository.
-	missing := NewCommentUsecase(
+	missing := NewCommentUsecase(immediateTransaction{},
 		&struct{ repository.CommentRepository }{},
 		postExistenceStub{},
 		nil,
 		checker,
 	)
-	external := NewCommentUsecase(&commentRepoStub{}, nil, nil, checker)
+	external := NewCommentUsecase(immediateTransaction{}, &commentRepoStub{}, nil, nil, checker)
 	for _, replies := range []bool{false, true} {
 		var err error
 		if replies {
@@ -457,7 +457,7 @@ func TestCommentCreationStorageFailures(t *testing.T) {
 			{"locked post", repository.ErrCommentsLocked, CodeCommentLocked, true},
 		} {
 			t.Run(fmt.Sprintf("external=%t/%s", external, tc.name), func(t *testing.T) {
-				u := NewCommentUsecase(failingCommentRepository{err: fmt.Errorf("create: %w", tc.storage)}, nil, nil, checker)
+				u := NewCommentUsecase(immediateTransaction{}, failingCommentRepository{err: fmt.Errorf("create: %w", tc.storage)}, nil, nil, checker)
 				rootID := int64(7)
 				var err error
 				if external {
@@ -497,7 +497,7 @@ func TestCommentListContentVisibility(t *testing.T) {
 		} {
 			t.Run(fmt.Sprintf("actor=%+v/status=%d", actor, status), func(t *testing.T) {
 				repo := &commentRepoStub{comment: domain.Comment{ID: 7, AuthorID: 1, Content: "body", Status: status}}
-				u := NewCommentUsecase(repo, nil, nil, nil)
+				u := NewCommentUsecase(immediateTransaction{}, repo, nil, nil, nil)
 				want := repo.comment
 				if !actor.IsAdmin && status != domain.CommentStatusPublished {
 					want.Content = ""

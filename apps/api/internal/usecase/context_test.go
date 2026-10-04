@@ -10,6 +10,13 @@ import (
 	"forum/internal/repository"
 )
 
+// immediateTransaction preserves existing unit-test contexts and repository stubs.
+type immediateTransaction struct{}
+
+func (immediateTransaction) WithinTransaction(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
+}
+
 type contextRecorder struct {
 	t     *testing.T
 	want  context.Context
@@ -114,7 +121,7 @@ func TestPostContextSurvivesHelpersAndMultipleRepositories(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := &contextRecorder{t: t, want: ctx}
-			u := NewPostUsecase(contextPostRepository{recorder: r}, contextFavoriteRepository{recorder: r}, nil)
+			u := NewPostUsecase(immediateTransaction{}, contextPostRepository{recorder: r}, contextFavoriteRepository{recorder: r}, nil)
 			if err := tc.call(u); err != nil {
 				t.Fatal(err)
 			}
@@ -147,7 +154,7 @@ func TestCommentContextSurvivesSubjectCheckAndWrite(t *testing.T) {
 	defer cancel()
 	t.Run("published post check and read", func(t *testing.T) {
 		r := &contextRecorder{t: t, want: ctx}
-		u := NewCommentUsecase(contextCommentRepository{recorder: r}, contextPostRepository{recorder: r}, nil, nil)
+		u := NewCommentUsecase(immediateTransaction{}, contextCommentRepository{recorder: r}, contextPostRepository{recorder: r}, nil, nil)
 		if _, _, err := u.List(
 			ctx,
 			Actor{},
@@ -167,7 +174,7 @@ func TestCommentContextSurvivesSubjectCheckAndWrite(t *testing.T) {
 			r.record(checkCtx, "subject.check")
 			return true
 		})
-		u := NewCommentUsecase(contextCommentRepository{recorder: r}, nil, nil, resolver)
+		u := NewCommentUsecase(immediateTransaction{}, contextCommentRepository{recorder: r}, nil, nil, resolver)
 		if _, err := u.CreateExternal(
 			ctx,
 			Actor{UserID: 1},

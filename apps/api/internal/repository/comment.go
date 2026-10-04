@@ -21,6 +21,7 @@ type CommentFilter struct {
 	Status             *domain.CommentStatus
 }
 
+// Create and SetStatus require a context provided by WithinTransaction.
 type CommentRepository interface {
 	ListAdmin(ctx context.Context, filter CommentFilter, limit, offset int64) (int64, []domain.Comment, error)
 	ListRoots(
@@ -63,7 +64,7 @@ func (r *commentRepository) ListRoots(
 		AND(table.Comment.RootID.IS_NULL())
 	countStmt := SELECT(COUNT(STAR)).FROM(table.Comment).WHERE(condition)
 	var count struct{ Count int64 }
-	if err := countStmt.QueryContext(ctx, r.db, &count); err != nil {
+	if err := countStmt.QueryContext(ctx, queryDB(ctx, r.db), &count); err != nil {
 		return 0, nil, err
 	}
 	stmt := SELECT(table.Comment.AllColumns).
@@ -73,7 +74,7 @@ func (r *commentRepository) ListRoots(
 		LIMIT(limit).
 		OFFSET(offset)
 	var dest []model.Comment
-	if err := stmt.QueryContext(ctx, r.db, &dest); err != nil {
+	if err := stmt.QueryContext(ctx, queryDB(ctx, r.db), &dest); err != nil {
 		return 0, nil, err
 	}
 	rootIDs := make([]int64, len(dest))
@@ -95,7 +96,7 @@ func (r *commentRepository) ListRoots(
 				AND(table.Comment.SubjectKey.EQ(String(subjectKey))).
 				AND(table.Comment.RootID.IN(integerExpressions(rootIDs)...))).
 			GROUP_BY(table.Comment.RootID).
-			QueryContext(ctx, r.db, &replyCounts)
+			QueryContext(ctx, queryDB(ctx, r.db), &replyCounts)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -120,7 +121,7 @@ func (r *commentRepository) ListRoots(
 		err := SELECT(ranked.AllColumns()).FROM(ranked).
 			WHERE(IntegerColumn("reply_rank").From(ranked).LT_EQ(Int64(CommentReplyPageSize))).
 			ORDER_BY(table.Comment.CreatedAt.From(ranked).ASC(), table.Comment.ID.From(ranked).ASC()).
-			QueryContext(ctx, r.db, &replies)
+			QueryContext(ctx, queryDB(ctx, r.db), &replies)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -153,20 +154,20 @@ func (r *commentRepository) ListReplies(
 			AND(table.Comment.RootID.IS_NULL()),
 	)
 	var root struct{ ID int64 }
-	if err := rootStmt.QueryContext(ctx, r.db, &root); err != nil {
+	if err := rootStmt.QueryContext(ctx, queryDB(ctx, r.db), &root); err != nil {
 		return 0, nil, err
 	}
 	condition := table.Comment.SubjectType.EQ(Int16(int16(subjectType))).
 		AND(table.Comment.SubjectKey.EQ(String(subjectKey))).
 		AND(table.Comment.RootID.EQ(Int64(rootID)))
 	var count struct{ Count int64 }
-	if err := SELECT(COUNT(STAR)).FROM(table.Comment).WHERE(condition).QueryContext(ctx, r.db, &count); err != nil {
+	if err := SELECT(COUNT(STAR)).FROM(table.Comment).WHERE(condition).QueryContext(ctx, queryDB(ctx, r.db), &count); err != nil {
 		return 0, nil, err
 	}
 	var dest []model.Comment
 	if err = SELECT(table.Comment.AllColumns).FROM(table.Comment).WHERE(condition).
 		ORDER_BY(table.Comment.CreatedAt.ASC(), table.Comment.ID.ASC()).
-		LIMIT(limit).OFFSET(offset).QueryContext(ctx, r.db, &dest); err != nil {
+		LIMIT(limit).OFFSET(offset).QueryContext(ctx, queryDB(ctx, r.db), &dest); err != nil {
 		return 0, nil, err
 	}
 	return count.Count, commentsFromModels(dest), nil
@@ -192,7 +193,7 @@ func (r *commentRepository) ListAdmin(
 		condition = condition.AND(RawBool(`"comment"."author_username" ILIKE :authorPattern`, RawArgs{":authorPattern": "%" + filter.AuthorName + "%"}))
 	}
 	var count struct{ Count int64 }
-	if err := SELECT(COUNT(STAR)).FROM(table.Comment).WHERE(condition).QueryContext(ctx, r.db, &count); err != nil {
+	if err := SELECT(COUNT(STAR)).FROM(table.Comment).WHERE(condition).QueryContext(ctx, queryDB(ctx, r.db), &count); err != nil {
 		return 0, nil, err
 	}
 	var dest []model.Comment
@@ -200,7 +201,7 @@ func (r *commentRepository) ListAdmin(
 		ORDER_BY(table.Comment.CreatedAt.DESC(), table.Comment.ID.DESC()).
 		LIMIT(limit).
 		OFFSET(offset).
-		QueryContext(ctx, r.db, &dest)
+		QueryContext(ctx, queryDB(ctx, r.db), &dest)
 	return count.Count, commentsFromModels(dest), err
 }
 
@@ -215,7 +216,7 @@ func (r *commentRepository) Find(
 		WHERE(table.Comment.ID.EQ(Int64(id)).
 			AND(table.Comment.SubjectType.EQ(Int16(int16(subjectType)))))
 	var dest model.Comment
-	if err := stmt.QueryContext(ctx, r.db, &dest); err != nil {
+	if err := stmt.QueryContext(ctx, queryDB(ctx, r.db), &dest); err != nil {
 		return nil, err
 	}
 	converted := commentFromModel(dest)
@@ -224,11 +225,10 @@ func (r *commentRepository) Find(
 
 func (r *commentRepository) Create(ctx context.Context, input domain.Comment) (result *domain.Comment, err error) {
 	defer func() { err = storageError(err, "comment.Create") }()
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := requireTransaction(ctx, r.db)
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
 	var postID int64
 	if input.SubjectType == domain.CommentSubjectPost {
 		postID, err = domain.PostIDFromCommentSubjectKey(input.SubjectKey)
@@ -295,9 +295,6 @@ func (r *commentRepository) Create(ctx context.Context, input domain.Comment) (r
 			return nil, err
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
 	converted := commentFromModel(record)
 	return &converted, nil
 }
@@ -316,7 +313,7 @@ func (r *commentRepository) Update(
 			AND(table.Comment.Status.EQ(Int16(StatusPublished)))).
 		RETURNING(table.Comment.AllColumns)
 	var dest model.Comment
-	if err := stmt.QueryContext(ctx, r.db, &dest); err != nil {
+	if err := stmt.QueryContext(ctx, queryDB(ctx, r.db), &dest); err != nil {
 		return nil, err
 	}
 	converted := commentFromModel(dest)
@@ -330,11 +327,10 @@ func (r *commentRepository) SetStatus(
 	status domain.CommentStatus,
 ) (err error) {
 	defer func() { err = storageError(err, "comment.SetStatus") }()
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := requireTransaction(ctx, r.db)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
 	lockComment := SELECT(table.Comment.AllColumns).
 		FROM(table.Comment).
 		WHERE(table.Comment.ID.EQ(Int64(id)).
@@ -354,7 +350,7 @@ func (r *commentRepository) SetStatus(
 	if domain.CommentSubjectType(record.SubjectType) != domain.CommentSubjectPost ||
 		domain.CommentStatus(record.Status) == status ||
 		(record.Status != StatusPublished && status != domain.CommentStatusPublished) {
-		return tx.Commit()
+		return nil
 	}
 	postID, err := domain.PostIDFromCommentSubjectKey(record.SubjectKey)
 	if err != nil {
@@ -375,12 +371,12 @@ func (r *commentRepository) SetStatus(
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (r *commentRepository) DeleteAllByAuthor(ctx context.Context, authorID int64) (err error) {
 	defer func() { err = storageError(err, "comment.DeleteAllByAuthor") }()
-	_, err = r.db.ExecContext(ctx, `
+	_, err = queryDB(ctx, r.db).ExecContext(ctx, `
 		WITH published_comments AS (
 			UPDATE comment
 			SET status = $2, updated_at = CURRENT_TIMESTAMP

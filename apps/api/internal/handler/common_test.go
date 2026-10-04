@@ -101,9 +101,9 @@ func TestDomainFilterRejectsWrites(t *testing.T) {
 			comments := &domainCommentRepository{}
 			router := chi.NewRouter()
 			resolver := handlerSubjectResolver{valid: true, exists: true}
-			commentUsecase := usecase.NewCommentUsecase(comments, posts, domains, resolver)
+			commentUsecase := usecase.NewCommentUsecase(immediateTransaction{}, comments, posts, domains, resolver)
 			postHandler := NewPostHandler(
-				usecase.NewPostUsecase(posts, noFavoriteRepository{}, domains), commentUsecase,
+				usecase.NewPostUsecase(immediateTransaction{}, posts, noFavoriteRepository{}, domains), commentUsecase,
 			)
 			router.Route("/post", postHandler.RegisterRoutes)
 			router.Route("/comment", NewCommentHandler(commentUsecase).RegisterRoutes)
@@ -132,7 +132,7 @@ func TestDomainFilterErrorMapping(t *testing.T) {
 	}
 	value := strings.Repeat("a", 4097) + ".example"
 	for _, filter := range []*domainfilter.Filter{nil, domains} {
-		posts := usecase.NewPostUsecase(&writePostRepository{}, nil, filter)
+		posts := usecase.NewPostUsecase(immediateTransaction{}, &writePostRepository{}, nil, filter)
 		response := httptest.NewRecorder()
 		httpx.EH(func(http.ResponseWriter, *http.Request) error {
 			_, err := posts.Create(context.Background(), usecase.Actor{UserID: 1}, usecase.PostInput{

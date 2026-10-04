@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"forum/internal/domain"
 	"forum/internal/infra"
 	"forum/internal/repository"
 	"os"
@@ -39,8 +40,13 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	tagRepo = repository.NewTagRepository(testDB)
-	postRepo = repository.NewPostRepository(testDB, tagRepo)
-	commentRepo = repository.NewCommentRepository(testDB)
+	transactions := repository.NewTransactionManager(testDB)
+	postRepo = transactionalPostRepository{
+		PostRepository: repository.NewPostRepository(testDB, tagRepo), tx: transactions,
+	}
+	commentRepo = transactionalCommentRepository{
+		CommentRepository: repository.NewCommentRepository(testDB), tx: transactions,
+	}
 	favoriteRepo = repository.NewFavoriteRepository(testDB)
 	resetDatabase()
 	code := m.Run()
@@ -50,6 +56,63 @@ func TestMain(m *testing.M) {
 		code = 1
 	}
 	os.Exit(code)
+}
+
+// The existing integration cases call repositories directly. Keep those calls
+// atomic without moving transaction ownership back into production repositories.
+type transactionalPostRepository struct {
+	repository.PostRepository
+	tx repository.TransactionRunner
+}
+
+func (r transactionalPostRepository) Create(ctx context.Context, input repository.CreatePostInput) (*domain.Post, error) {
+	var post *domain.Post
+	err := r.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		var err error
+		post, err = r.PostRepository.Create(txCtx, input)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return post, nil
+}
+
+func (r transactionalPostRepository) Update(ctx context.Context, id int64, input repository.UpdatePostInput) (*domain.Post, error) {
+	var post *domain.Post
+	err := r.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		var err error
+		post, err = r.PostRepository.Update(txCtx, id, input)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return post, nil
+}
+
+type transactionalCommentRepository struct {
+	repository.CommentRepository
+	tx repository.TransactionRunner
+}
+
+func (r transactionalCommentRepository) Create(ctx context.Context, input domain.Comment) (*domain.Comment, error) {
+	var comment *domain.Comment
+	err := r.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		var err error
+		comment, err = r.CommentRepository.Create(txCtx, input)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return comment, nil
+}
+
+func (r transactionalCommentRepository) SetStatus(ctx context.Context, subjectType domain.CommentSubjectType, id int64, status domain.CommentStatus) error {
+	return r.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		return r.CommentRepository.SetStatus(txCtx, subjectType, id, status)
+	})
 }
 
 func resetDatabase() {
