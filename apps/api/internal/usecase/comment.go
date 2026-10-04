@@ -268,7 +268,7 @@ func (u *CommentUsecase) CreateExternal(
 	}
 	exists, err := u.subjectResolver.Check(ctx, command.Kind, command.SubjectKey)
 	if err != nil {
-		return nil, errors.New("comment.check_subject: 检查评论所属资源失败")
+		return nil, fmt.Errorf("comment.check_subject: %w", err)
 	}
 	if !exists {
 		return nil, NotFound(CodeCommentSubjectNotFound, "评论所属资源不存在")

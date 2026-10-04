@@ -219,8 +219,8 @@ func TestExternalCommentCheckFailureStopsWrite(t *testing.T) {
 			if err == nil || errors.As(err, &appErr) || comment != nil || repo.writes != 0 || checks != 1 {
 				t.Fatalf("comment=%v err=%v writes=%d checks=%d", comment, err, repo.writes, checks)
 			}
-			if errors.Is(err, cause) || strings.Contains(err.Error(), cause.Error()) {
-				t.Fatalf("check failure exposed its cause: %v", err)
+			if !errors.Is(err, cause) || !strings.Contains(err.Error(), "comment.check_subject") || !strings.Contains(err.Error(), cause.Error()) {
+				t.Fatalf("check failure lost its operation or original cause: %v", err)
 			}
 		})
 	}
