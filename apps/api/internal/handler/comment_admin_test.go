@@ -101,6 +101,9 @@ func TestAdminCommentList(t *testing.T) {
 		{name: "empty post", role: "admin", query: "?post_id=", wantStatus: http.StatusBadRequest},
 		{name: "multiple posts", role: "admin", query: "?post_id=1&post_id=2", wantStatus: http.StatusBadRequest},
 		{name: "bad status", role: "admin", query: "?status=3", wantStatus: http.StatusBadRequest},
+		{name: "empty status", role: "admin", query: "?status=", wantStatus: http.StatusBadRequest},
+		{name: "negative status", role: "admin", query: "?status=-1", wantStatus: http.StatusBadRequest},
+		{name: "overflow status", role: "admin", query: "?status=65536", wantStatus: http.StatusBadRequest},
 		{name: "multiple statuses", role: "admin", query: "?status=0&status=1", wantStatus: http.StatusBadRequest},
 		{name: "bad pagination", role: "admin", query: "?page=0", wantStatus: http.StatusBadRequest},
 	} {

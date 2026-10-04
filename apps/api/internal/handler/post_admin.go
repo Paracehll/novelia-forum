@@ -66,7 +66,7 @@ func (h *postHandler) setPostStatus(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.postUsecase.SetStatus(commentActor(principal), id, *input.Status); err != nil {
+	if err := h.postUsecase.SetStatus(actorFromPrincipal(principal), id, *input.Status); err != nil {
 		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -87,7 +87,7 @@ func (h *postHandler) setPostCommentsLocked(w http.ResponseWriter, r *http.Reque
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.postUsecase.SetCommentsLocked(commentActor(principal), id, locked); err != nil {
+	if err := h.postUsecase.SetCommentsLocked(actorFromPrincipal(principal), id, locked); err != nil {
 		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -108,7 +108,7 @@ func (h *postHandler) pinPost(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.postUsecase.SetPinOrder(commentActor(principal), id, input.PinOrder); err != nil {
+	if err := h.postUsecase.SetPinOrder(actorFromPrincipal(principal), id, input.PinOrder); err != nil {
 		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -121,7 +121,7 @@ func (h *postHandler) unpinPost(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.postUsecase.SetPinOrder(commentActor(principal), id, nil); err != nil {
+	if err := h.postUsecase.SetPinOrder(actorFromPrincipal(principal), id, nil); err != nil {
 		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)

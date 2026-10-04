@@ -17,6 +17,24 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+func TestActorFromPrincipal(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		principal httpx.Principal
+		want      usecase.Actor
+	}{
+		{"anonymous", httpx.Principal{}, usecase.Actor{}},
+		{"member", httpx.Principal{UserID: 7, Username: "alice", Role: "member"}, usecase.Actor{UserID: 7, Username: "alice"}},
+		{"admin", httpx.Principal{UserID: 8, Username: "bob", Role: "admin"}, usecase.Actor{UserID: 8, Username: "bob", IsAdmin: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := actorFromPrincipal(tc.principal); got != tc.want {
+				t.Fatalf("actor=%+v want=%+v", got, tc.want)
+			}
+		})
+	}
+}
+
 type domainCommentRepository struct {
 	repository.CommentRepository
 	written bool

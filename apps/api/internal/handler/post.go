@@ -150,7 +150,7 @@ func respondPosts(w http.ResponseWriter, r *http.Request, list postListFunc, que
 	}
 	query.Limit, query.Offset = pagination.Limit, pagination.Offset
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	total, items, err := list(commentActor(principal), query)
+	total, items, err := list(actorFromPrincipal(principal), query)
 	if err != nil {
 		return transportError(err)
 	}
@@ -176,7 +176,7 @@ func (h *postHandler) get(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	post, err := h.postUsecase.Get(commentActor(principal), id)
+	post, err := h.postUsecase.Get(actorFromPrincipal(principal), id)
 	if err != nil {
 		return transportError(err)
 	}
@@ -201,7 +201,7 @@ func (h *postHandler) create(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	post, err := h.postUsecase.Create(commentActor(principal), input.command())
+	post, err := h.postUsecase.Create(actorFromPrincipal(principal), input.command())
 	if err != nil {
 		return transportError(err)
 	}
@@ -220,7 +220,7 @@ func (h *postHandler) update(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	post, err := h.postUsecase.Update(commentActor(principal), id, input.command())
+	post, err := h.postUsecase.Update(actorFromPrincipal(principal), id, input.command())
 	if err != nil {
 		return transportError(err)
 	}
@@ -234,7 +234,7 @@ func (h *postHandler) delete(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.postUsecase.Delete(commentActor(principal), id); err != nil {
+	if err := h.postUsecase.Delete(actorFromPrincipal(principal), id); err != nil {
 		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -247,7 +247,7 @@ func (h *postHandler) setFavorite(w http.ResponseWriter, r *http.Request, favori
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.postUsecase.SetFavorite(commentActor(principal), id, favorite); err != nil {
+	if err := h.postUsecase.SetFavorite(actorFromPrincipal(principal), id, favorite); err != nil {
 		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -273,7 +273,7 @@ func (h *postHandler) listComments(w http.ResponseWriter, r *http.Request) error
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
 	total, items, err := h.commentUsecase.List(
-		commentActor(principal),
+		actorFromPrincipal(principal),
 		usecase.ListCommentsQuery{
 			SubjectType: domain.CommentSubjectPost,
 			SubjectKey:  domain.PostCommentSubjectKey(postID),
@@ -310,7 +310,7 @@ func (h *postHandler) listCommentReplies(w http.ResponseWriter, r *http.Request)
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
 	total, items, err := h.commentUsecase.ListReplies(
-		commentActor(principal),
+		actorFromPrincipal(principal),
 		usecase.ListCommentRepliesQuery{
 			SubjectType: domain.CommentSubjectPost,
 			SubjectKey:  domain.PostCommentSubjectKey(postID),
@@ -346,7 +346,7 @@ func (h *postHandler) createComment(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	comment, err := h.commentUsecase.Create(commentActor(principal), usecase.CreatePostCommentCommand{
+	comment, err := h.commentUsecase.Create(actorFromPrincipal(principal), usecase.CreatePostCommentCommand{
 		PostID:  postID,
 		RootID:  input.RootID,
 		Content: input.Content,

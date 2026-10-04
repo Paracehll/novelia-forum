@@ -8,7 +8,7 @@ import (
 	"unicode/utf8"
 
 	"forum/internal/httpx"
-	"forum/internal/repository"
+	"forum/internal/usecase"
 )
 
 type page[T any] struct {
@@ -55,6 +55,10 @@ func uniquePositiveIDs(ids []int64) bool {
 	return true
 }
 
-func validStatus(status int16) bool {
-	return status >= repository.StatusPublished && status <= repository.StatusDeleted
+func actorFromPrincipal(principal httpx.Principal) usecase.Actor {
+	return usecase.Actor{
+		UserID:   principal.UserID,
+		Username: principal.Username,
+		IsAdmin:  principal.IsAdmin(),
+	}
 }

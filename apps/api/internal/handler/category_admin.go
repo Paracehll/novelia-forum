@@ -41,7 +41,7 @@ func (h *categoryHandler) listTags(w http.ResponseWriter, r *http.Request) error
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	items, err := h.tagUsecase.ListAdmin(commentActor(principal), usecase.ListTagsQuery{CategoryID: categoryID})
+	items, err := h.tagUsecase.ListAdmin(actorFromPrincipal(principal), usecase.ListTagsQuery{CategoryID: categoryID})
 	if err != nil {
 		return transportError(err)
 	}
@@ -73,7 +73,7 @@ func (h *categoryHandler) createTag(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	tag, err := h.tagUsecase.Create(commentActor(principal), input.command(categoryID))
+	tag, err := h.tagUsecase.Create(actorFromPrincipal(principal), input.command(categoryID))
 	if err != nil {
 		return transportError(err)
 	}
@@ -96,7 +96,7 @@ func (h *categoryHandler) updateTag(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	tag, err := h.tagUsecase.Update(commentActor(principal), id, input.command(categoryID))
+	tag, err := h.tagUsecase.Update(actorFromPrincipal(principal), id, input.command(categoryID))
 	if err != nil {
 		return transportError(err)
 	}
@@ -122,7 +122,7 @@ func (h *categoryHandler) setTagActive(w http.ResponseWriter, r *http.Request, a
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.tagUsecase.SetActive(commentActor(principal), usecase.SetTagActiveCommand{CategoryID: categoryID, ID: id, Active: active}); err != nil {
+	if err := h.tagUsecase.SetActive(actorFromPrincipal(principal), usecase.SetTagActiveCommand{CategoryID: categoryID, ID: id, Active: active}); err != nil {
 		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)

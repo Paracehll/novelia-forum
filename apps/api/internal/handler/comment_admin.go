@@ -37,7 +37,7 @@ func (h *commentHandler) setStatus(w http.ResponseWriter, r *http.Request) error
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.commentUsecase.SetStatus(commentActor(principal), usecase.SetCommentStatusCommand{
+	if err := h.commentUsecase.SetStatus(actorFromPrincipal(principal), usecase.SetCommentStatusCommand{
 		SubjectType: domain.CommentSubjectPost,
 		CommentID:   id,
 		Status:      status,
@@ -54,7 +54,7 @@ func (h *commentHandler) deleteAllByAuthor(w http.ResponseWriter, r *http.Reques
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.commentUsecase.DeleteAllByAuthor(commentActor(principal), usecase.DeleteCommentsByAuthorCommand{AuthorID: authorID}); err != nil {
+	if err := h.commentUsecase.DeleteAllByAuthor(actorFromPrincipal(principal), usecase.DeleteCommentsByAuthorCommand{AuthorID: authorID}); err != nil {
 		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -89,7 +89,7 @@ func (h *commentHandler) listAdmin(w http.ResponseWriter, r *http.Request) error
 		}
 		if values[0] != "all" {
 			status, err := strconv.ParseInt(values[0], 10, 16)
-			if err != nil || !validStatus(int16(status)) {
+			if err != nil || !domain.CommentStatus(status).Valid() {
 				return httpx.BadRequest("status 必须为 all、0、1 或 2")
 			}
 			value := domain.CommentStatus(status)
@@ -97,7 +97,7 @@ func (h *commentHandler) listAdmin(w http.ResponseWriter, r *http.Request) error
 		}
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	total, items, err := h.commentUsecase.ListAdmin(commentActor(principal), filter)
+	total, items, err := h.commentUsecase.ListAdmin(actorFromPrincipal(principal), filter)
 	if err != nil {
 		return transportError(err)
 	}

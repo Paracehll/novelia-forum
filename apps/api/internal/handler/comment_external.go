@@ -72,10 +72,6 @@ func newExternalCommentResponse(value domain.Comment) externalCommentResponse {
 	}
 }
 
-func externalCommentID(r *http.Request) (int64, error) {
-	return httpx.ParseParamPositiveInt(r, "commentId")
-}
-
 func externalCommentSubjectKey(r *http.Request) (string, error) {
 	subjectKey := chi.URLParam(r, "subjectKey")
 	if !validText(subjectKey, 1, 255) {
@@ -94,7 +90,7 @@ func (h *externalCommentHandler) list(w http.ResponseWriter, r *http.Request) er
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	total, items, err := h.commentUsecase.ListExternal(commentActor(principal), usecase.ListExternalCommentsQuery{
+	total, items, err := h.commentUsecase.ListExternal(actorFromPrincipal(principal), usecase.ListExternalCommentsQuery{
 		Kind:       chi.URLParam(r, "type"),
 		SubjectKey: subjectKey,
 		Limit:      pagination.Limit,
@@ -126,7 +122,7 @@ func (h *externalCommentHandler) listReplies(w http.ResponseWriter, r *http.Requ
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
 	total, items, err := h.commentUsecase.ListExternalReplies(
-		commentActor(principal),
+		actorFromPrincipal(principal),
 		usecase.ListExternalCommentRepliesQuery{
 			Kind:       chi.URLParam(r, "type"),
 			SubjectKey: subjectKey,
@@ -159,7 +155,7 @@ func (h *externalCommentHandler) create(w http.ResponseWriter, r *http.Request) 
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	comment, err := h.commentUsecase.CreateExternal(r.Context(), commentActor(principal), usecase.CreateExternalCommentCommand{
+	comment, err := h.commentUsecase.CreateExternal(r.Context(), actorFromPrincipal(principal), usecase.CreateExternalCommentCommand{
 		Kind:       chi.URLParam(r, "type"),
 		SubjectKey: subjectKey,
 		RootID:     input.RootID,
@@ -174,7 +170,7 @@ func (h *externalCommentHandler) create(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *externalCommentHandler) update(w http.ResponseWriter, r *http.Request) error {
-	id, err := externalCommentID(r)
+	id, err := httpx.ParseParamPositiveInt(r, "commentId")
 	if err != nil {
 		return err
 	}
@@ -186,7 +182,7 @@ func (h *externalCommentHandler) update(w http.ResponseWriter, r *http.Request) 
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	comment, err := h.commentUsecase.UpdateExternal(commentActor(principal), usecase.UpdateExternalCommentCommand{
+	comment, err := h.commentUsecase.UpdateExternal(actorFromPrincipal(principal), usecase.UpdateExternalCommentCommand{
 		Kind:      chi.URLParam(r, "type"),
 		CommentID: id,
 		Content:   input.Content,
@@ -199,12 +195,12 @@ func (h *externalCommentHandler) update(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *externalCommentHandler) delete(w http.ResponseWriter, r *http.Request) error {
-	id, err := externalCommentID(r)
+	id, err := httpx.ParseParamPositiveInt(r, "commentId")
 	if err != nil {
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.commentUsecase.DeleteExternal(commentActor(principal), usecase.DeleteExternalCommentCommand{
+	if err := h.commentUsecase.DeleteExternal(actorFromPrincipal(principal), usecase.DeleteExternalCommentCommand{
 		Kind:      chi.URLParam(r, "type"),
 		CommentID: id,
 	}); err != nil {
@@ -215,7 +211,7 @@ func (h *externalCommentHandler) delete(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *externalCommentHandler) setStatus(w http.ResponseWriter, r *http.Request) error {
-	id, err := externalCommentID(r)
+	id, err := httpx.ParseParamPositiveInt(r, "commentId")
 	if err != nil {
 		return err
 	}
@@ -228,7 +224,7 @@ func (h *externalCommentHandler) setStatus(w http.ResponseWriter, r *http.Reques
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.commentUsecase.SetExternalStatus(commentActor(principal), usecase.SetExternalCommentStatusCommand{
+	if err := h.commentUsecase.SetExternalStatus(actorFromPrincipal(principal), usecase.SetExternalCommentStatusCommand{
 		Kind:      chi.URLParam(r, "type"),
 		CommentID: id,
 		Status:    status,
