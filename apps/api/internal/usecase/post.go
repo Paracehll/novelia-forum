@@ -125,7 +125,7 @@ func (u *PostUsecase) list(actor Actor, query ListPostsQuery) (int64, []domain.P
 	query.Filter.Search = strings.TrimSpace(query.Filter.Search)
 	total, posts, err := u.postRepo.List(query.Filter, query.Limit, query.Offset)
 	if err != nil {
-		return 0, nil, postError(err, "post.list")
+		return 0, nil, fmt.Errorf("post.list: %w", err)
 	}
 	var favorites map[int64]bool
 	if actor.UserID > 0 {
@@ -135,7 +135,7 @@ func (u *PostUsecase) list(actor Actor, query ListPostsQuery) (int64, []domain.P
 		}
 		favorites, err = u.favoriteRepo.ListPostIDs(actor.UserID, ids)
 		if err != nil {
-			return 0, nil, postError(err, "post.list_favorites")
+			return 0, nil, fmt.Errorf("post.list_favorites: %w", err)
 		}
 	}
 	for i := range posts {
@@ -149,8 +149,11 @@ func (u *PostUsecase) Get(actor Actor, id int64) (*PostResult, error) {
 		return nil, err
 	}
 	post, err := u.postRepo.Find(id, true)
+	if errors.Is(err, repository.ErrNotFound) {
+		return nil, NotFound(CodePostNotFound, "帖子不存在")
+	}
 	if err != nil {
-		return nil, postError(err, "post.get")
+		return nil, fmt.Errorf("post.get: %w", err)
 	}
 	return u.result(actor, post)
 }
@@ -161,7 +164,7 @@ func (u *PostUsecase) result(actor Actor, post *domain.Post) (*PostResult, error
 		var err error
 		favorited, err = u.favoriteRepo.Has(post.ID, actor.UserID)
 		if err != nil {
-			return nil, postError(err, "post.get_favorite")
+			return nil, fmt.Errorf("post.get_favorite: %w", err)
 		}
 	}
 	return &PostResult{Post: *post, Favorited: favorited}, nil
@@ -237,8 +240,16 @@ func (u *PostUsecase) Create(actor Actor, input PostInput) (*PostResult, error) 
 		CategoryID: input.CategoryID, Title: strings.TrimSpace(input.Title), Content: input.Content,
 		TagIDs: input.TagIDs, AuthorID: actor.UserID, AuthorUsername: actor.Username, Attr: "{}",
 	})
-	if err != nil {
-		return nil, postError(err, "post.create")
+	switch {
+	case err == nil:
+	case errors.Is(err, repository.ErrInvalidCategory):
+		return nil, Invalid(CodePostCategoryInvalid, "分类无效")
+	case errors.Is(err, repository.ErrInvalidTag):
+		return nil, Invalid(CodePostTagInvalid, "标签无效")
+	case errors.Is(err, repository.ErrConflict):
+		return nil, Conflict(CodePostConflict, "帖子数据冲突")
+	default:
+		return nil, fmt.Errorf("post.create: %w", err)
 	}
 	return &PostResult{Post: *post}, nil
 }
@@ -248,8 +259,11 @@ func (u *PostUsecase) ownedPost(actor Actor, id int64) (*domain.Post, error) {
 		return nil, err
 	}
 	post, err := u.postRepo.Find(id, false)
+	if errors.Is(err, repository.ErrNotFound) {
+		return nil, NotFound(CodePostNotFound, "帖子不存在")
+	}
 	if err != nil {
-		return nil, postError(err, "post.find")
+		return nil, fmt.Errorf("post.find: %w", err)
 	}
 	if !post.IsOwnedBy(actor.UserID) && !actor.IsAdmin {
 		return nil, PermissionDenied(CodePostNotOwner, "只能修改自己的帖子")
@@ -267,8 +281,19 @@ func (u *PostUsecase) Update(actor Actor, id int64, input PostInput) (*PostResul
 	post, err := u.postRepo.Update(id, repository.UpdatePostInput{
 		CategoryID: input.CategoryID, Title: strings.TrimSpace(input.Title), Content: input.Content, TagIDs: input.TagIDs,
 	})
-	if err != nil {
-		return nil, postError(err, "post.update")
+	switch {
+	case err == nil:
+	case errors.Is(err, repository.ErrNotFound):
+		// The post existed above; it changed or disappeared before the write.
+		return nil, Conflict(CodePostConflict, "帖子数据已变化，请刷新后重试")
+	case errors.Is(err, repository.ErrInvalidCategory):
+		return nil, Invalid(CodePostCategoryInvalid, "分类无效")
+	case errors.Is(err, repository.ErrInvalidTag):
+		return nil, Invalid(CodePostTagInvalid, "标签无效")
+	case errors.Is(err, repository.ErrConflict):
+		return nil, Conflict(CodePostConflict, "帖子数据冲突")
+	default:
+		return nil, fmt.Errorf("post.update: %w", err)
 	}
 	return u.result(actor, post)
 }
@@ -281,7 +306,14 @@ func (u *PostUsecase) Delete(actor Actor, id int64) error {
 	if !actor.IsAdmin && !post.WithinDeletionWindow(time.Now()) {
 		return PermissionDenied(CodePostDeleteExpired, "帖子只能在发布后 20 分钟内删除")
 	}
-	return postError(u.postRepo.SetStatus(id, domain.PostStatusDeleted), "post.delete")
+	err = u.postRepo.SetStatus(id, domain.PostStatusDeleted)
+	if errors.Is(err, repository.ErrNotFound) {
+		return NotFound(CodePostNotFound, "帖子不存在")
+	}
+	if err != nil {
+		return fmt.Errorf("post.delete: %w", err)
+	}
+	return nil
 }
 
 func (u *PostUsecase) SetFavorite(actor Actor, id int64, favorite bool) error {
@@ -291,7 +323,14 @@ func (u *PostUsecase) SetFavorite(actor Actor, id int64, favorite bool) error {
 	if actor.UserID <= 0 {
 		return PermissionDenied(CodePostAuthRequired, "需要登录")
 	}
-	return postError(u.favoriteRepo.Set(id, actor.UserID, favorite), "post.set_favorite")
+	err := u.favoriteRepo.Set(id, actor.UserID, favorite)
+	if favorite && errors.Is(err, repository.ErrNotFound) {
+		return NotFound(CodePostNotFound, "帖子不存在")
+	}
+	if err != nil {
+		return fmt.Errorf("post.set_favorite: %w", err)
+	}
+	return nil
 }
 
 func checkPostAdmin(actor Actor) error {
@@ -318,7 +357,14 @@ func (u *PostUsecase) SetStatus(actor Actor, id int64, status domain.PostStatus)
 	if !status.Valid() {
 		return Invalid(CodePostStatusInvalid, "status 必须为 0、1 或 2")
 	}
-	return postError(u.postRepo.SetStatus(id, status), "post.set_status")
+	err := u.postRepo.SetStatus(id, status)
+	if errors.Is(err, repository.ErrNotFound) {
+		return NotFound(CodePostNotFound, "帖子不存在")
+	}
+	if err != nil {
+		return fmt.Errorf("post.set_status: %w", err)
+	}
+	return nil
 }
 
 func (u *PostUsecase) SetCommentsLocked(actor Actor, id int64, locked bool) error {
@@ -328,7 +374,14 @@ func (u *PostUsecase) SetCommentsLocked(actor Actor, id int64, locked bool) erro
 	if err := checkPostID(id); err != nil {
 		return err
 	}
-	return postError(u.postRepo.SetCommentsLocked(id, locked), "post.set_comments_locked")
+	err := u.postRepo.SetCommentsLocked(id, locked)
+	if errors.Is(err, repository.ErrNotFound) {
+		return NotFound(CodePostNotFound, "帖子不存在")
+	}
+	if err != nil {
+		return fmt.Errorf("post.set_comments_locked: %w", err)
+	}
+	return nil
 }
 
 func (u *PostUsecase) SetPinOrder(actor Actor, id int64, pinOrder *int32) error {
@@ -339,22 +392,12 @@ func (u *PostUsecase) SetPinOrder(actor Actor, id int64, pinOrder *int32) error 
 		return err
 	}
 	// Any int32 order is supported; nil removes the pin, as in the handler.
-	return postError(u.postRepo.SetPinOrder(id, pinOrder), "post.set_pin_order")
-}
-
-func postError(err error, operation string) error {
-	switch {
-	case err == nil:
-		return nil
-	case errors.Is(err, repository.ErrNotFound):
+	err := u.postRepo.SetPinOrder(id, pinOrder)
+	if errors.Is(err, repository.ErrNotFound) {
 		return NotFound(CodePostNotFound, "帖子不存在")
-	case errors.Is(err, repository.ErrInvalidCategory):
-		return Invalid(CodePostCategoryInvalid, "分类无效")
-	case errors.Is(err, repository.ErrInvalidTag):
-		return Invalid(CodePostTagInvalid, "标签无效")
-	case errors.Is(err, repository.ErrConflict):
-		return Conflict(CodePostConflict, "帖子数据冲突")
-	default:
-		return fmt.Errorf("%s: %w", operation, err)
 	}
+	if err != nil {
+		return fmt.Errorf("post.set_pin_order: %w", err)
+	}
+	return nil
 }

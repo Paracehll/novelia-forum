@@ -21,6 +21,7 @@ type postUsecaseRepoStub struct {
 	writes         int
 	incrementViews bool
 	err            error
+	updateErr      error
 }
 
 func (r *postUsecaseRepoStub) List(filter repository.PostFilter, _, _ int64) (int64, []domain.PostListItem, error) {
@@ -39,7 +40,7 @@ func (r *postUsecaseRepoStub) Create(input repository.CreatePostInput) (*domain.
 func (r *postUsecaseRepoStub) Update(_ int64, input repository.UpdatePostInput) (*domain.Post, error) {
 	r.input.Title, r.input.Content = input.Title, input.Content
 	r.writes++
-	return &r.post, r.err
+	return &r.post, r.updateErr
 }
 func (r *postUsecaseRepoStub) SetStatus(_ int64, status domain.PostStatus) error {
 	r.writes++
@@ -50,6 +51,7 @@ func (r *postUsecaseRepoStub) SetStatus(_ int64, status domain.PostStatus) error
 type postUsecaseFavoriteStub struct {
 	repository.FavoriteRepository
 	userID int64
+	err    error
 }
 
 func (r *postUsecaseFavoriteStub) ListPostIDs(userID int64, ids []int64) (map[int64]bool, error) {
@@ -58,11 +60,11 @@ func (r *postUsecaseFavoriteStub) ListPostIDs(userID int64, ids []int64) (map[in
 	for _, id := range ids {
 		favorites[id] = true
 	}
-	return favorites, nil
+	return favorites, r.err
 }
 func (r *postUsecaseFavoriteStub) Has(_ int64, userID int64) (bool, error) {
 	r.userID = userID
-	return true, nil
+	return true, r.err
 }
 
 func TestPostListScopes(t *testing.T) {
@@ -176,6 +178,7 @@ func TestPostInputAndModificationRules(t *testing.T) {
 }
 
 func TestPostRepositoryErrors(t *testing.T) {
+	input := PostInput{CategoryID: forumcategory.NovelID, Title: "标题", Content: "正文"}
 	for _, tc := range []struct {
 		cause error
 		kind  ErrorKind
@@ -186,14 +189,43 @@ func TestPostRepositoryErrors(t *testing.T) {
 		{repository.ErrInvalidTag, KindInvalid, CodePostTagInvalid},
 		{repository.ErrConflict, KindConflict, CodePostConflict},
 	} {
-		err := postError(fmt.Errorf("repo: %w", tc.cause), "post.test")
+		u := NewPostUsecase(&postUsecaseRepoStub{err: fmt.Errorf("repo: %w", tc.cause)}, nil, nil)
+		var err error
+		if tc.cause == repository.ErrNotFound {
+			_, err = u.Get(Actor{}, 1)
+		} else {
+			_, err = u.Create(Actor{UserID: 7}, input)
+		}
 		var appErr *AppError
 		if !errors.As(err, &appErr) || appErr.Kind != tc.kind || appErr.Code != tc.code {
 			t.Fatalf("cause=%v err=%v", tc.cause, err)
 		}
 	}
-	cause := errors.New("storage unavailable")
-	if err := postError(cause, "post.test"); !errors.Is(err, cause) {
-		t.Fatalf("lost cause: %v", err)
+	repo := &postUsecaseRepoStub{post: domain.Post{ID: 1, AuthorID: 7}, updateErr: fmt.Errorf("repo: %w", repository.ErrNotFound)}
+	u := NewPostUsecase(repo, nil, nil)
+	_, err := u.Update(Actor{UserID: 7}, 1, input)
+	var appErr *AppError
+	if !errors.As(err, &appErr) || appErr.Kind != KindConflict || appErr.Code != CodePostConflict {
+		t.Fatalf("post changed before update: %v", err)
+	}
+}
+
+func TestPostReadErrorsKeepCause(t *testing.T) {
+	for _, cause := range []error{repository.ErrNotFound, repository.ErrInvalidTag, errors.New("storage unavailable")} {
+		t.Run(cause.Error(), func(t *testing.T) {
+			repo := &postUsecaseRepoStub{err: cause}
+			u := NewPostUsecase(repo, nil, nil)
+			_, _, listErr := u.List(Actor{}, ListPostsQuery{Limit: 20})
+			repo.err = nil
+			u.favoriteRepo = &postUsecaseFavoriteStub{err: cause}
+			_, _, favoritesErr := u.List(Actor{UserID: 7}, ListPostsQuery{Limit: 20})
+			_, favoriteErr := u.Get(Actor{UserID: 7}, 1)
+			for _, err := range []error{listErr, favoritesErr, favoriteErr} {
+				var appErr *AppError
+				if !errors.Is(err, cause) || errors.As(err, &appErr) {
+					t.Fatalf("unexpected read error conversion: cause=%v err=%v", cause, err)
+				}
+			}
+		})
 	}
 }
