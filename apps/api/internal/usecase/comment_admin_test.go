@@ -39,6 +39,24 @@ func (r *adminCommentRepoStub) DeleteAllByAuthor(authorID int64) error {
 	return r.err
 }
 
+func TestCommentStatusPersistenceErrors(t *testing.T) {
+	cause := errors.New("storage failure")
+	for _, operation := range []string{"comment.delete", "comment.set_status"} {
+		t.Run(operation, func(t *testing.T) {
+			repo := &adminCommentRepoStub{err: repository.ErrNotFound}
+			u := NewCommentUsecase(repo, nil, nil, nil)
+			command := SetCommentStatusCommand{CommentID: 7, Status: domain.CommentStatusDeleted}
+			if err := u.setStatus(command, operation); !isAppErrorCode(err, CodeCommentNotFound) {
+				t.Fatalf("expected missing comment, got %v", err)
+			}
+			repo.err = cause
+			if err := u.setStatus(command, operation); !errors.Is(err, cause) || err.Error() != operation+": "+cause.Error() {
+				t.Fatalf("expected operation and original cause, got %v", err)
+			}
+		})
+	}
+}
+
 func TestCommentAdminPermissions(t *testing.T) {
 	for _, operation := range []struct {
 		name string

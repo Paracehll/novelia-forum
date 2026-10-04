@@ -358,15 +358,11 @@ func (u *CommentUsecase) Delete(actor Actor, command DeleteCommentCommand) error
 	if _, err := u.findModifiableComment(actor, command.SubjectType, command.CommentID); err != nil {
 		return err
 	}
-	err := u.commentRepo.SetStatus(command.SubjectType, command.CommentID, domain.CommentStatusDeleted)
-	switch {
-	case err == nil:
-		return nil
-	case errors.Is(err, repository.ErrNotFound):
-		return NotFound(CodeCommentNotFound, "评论不存在")
-	default:
-		return fmt.Errorf("comment.delete: %w", err)
-	}
+	return u.setStatus(SetCommentStatusCommand{
+		SubjectType: command.SubjectType,
+		CommentID:   command.CommentID,
+		Status:      domain.CommentStatusDeleted,
+	}, "comment.delete")
 }
 
 type SetCommentStatusCommand struct {
@@ -382,6 +378,10 @@ func (u *CommentUsecase) SetStatus(actor Actor, command SetCommentStatusCommand)
 	if !command.Status.Valid() {
 		return Invalid(CodeCommentStatusInvalid, "评论状态无效")
 	}
+	return u.setStatus(command, "comment.set_status")
+}
+
+func (u *CommentUsecase) setStatus(command SetCommentStatusCommand, operation string) error {
 	err := u.commentRepo.SetStatus(command.SubjectType, command.CommentID, command.Status)
 	switch {
 	case err == nil:
@@ -389,7 +389,7 @@ func (u *CommentUsecase) SetStatus(actor Actor, command SetCommentStatusCommand)
 	case errors.Is(err, repository.ErrNotFound):
 		return NotFound(CodeCommentNotFound, "评论不存在")
 	default:
-		return fmt.Errorf("comment.set_status: %w", err)
+		return fmt.Errorf("%s: %w", operation, err)
 	}
 }
 
