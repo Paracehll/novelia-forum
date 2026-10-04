@@ -13,28 +13,22 @@ import (
 	"auth/internal/subject"
 )
 
-// CommentErrorCode is a stable business failure, independent of transport messages.
-type CommentErrorCode string
-
-func (code CommentErrorCode) Error() string { return string(code) }
-
 const (
-	ErrCommentContentInvalid  CommentErrorCode = "comment.content_invalid"
-	ErrCommentNotOwner        CommentErrorCode = "comment.not_owner"
-	ErrCommentEditExpired     CommentErrorCode = "comment.edit_expired"
-	ErrCommentNotFound        CommentErrorCode = "comment.not_found"
-	ErrCommentsLocked         CommentErrorCode = "comment.locked"
-	ErrCommentSubjectNotFound CommentErrorCode = "comment.subject_not_found"
-	ErrCommentRootNotFound    CommentErrorCode = "comment.root_not_found"
-	ErrCommentRootInvalid     CommentErrorCode = "comment.root_invalid"
-	ErrCommentConflict        CommentErrorCode = "comment.conflict"
-	ErrCommentDomainBlocked   CommentErrorCode = "comment.domain_blocked"
-	ErrCommentDomainInvalid   CommentErrorCode = "comment.domain_invalid"
+	CodeCommentContentInvalid     = "comment.content_invalid"
+	CodeCommentNotOwner           = "comment.not_owner"
+	CodeCommentEditExpired        = "comment.edit_expired"
+	CodeCommentNotFound           = "comment.not_found"
+	CodeCommentLocked             = "comment.locked"
+	CodeCommentSubjectNotFound    = "comment.subject_not_found"
+	CodeCommentSubjectTypeInvalid = "comment.subject_type_invalid"
+	CodeCommentSubjectKeyInvalid  = "comment.subject_key_invalid"
+	CodeCommentRootNotFound       = "comment.root_not_found"
+	CodeCommentRootInvalid        = "comment.root_invalid"
+	CodeCommentConflict           = "comment.conflict"
+	CodeCommentDomainBlocked      = "comment.domain_blocked"
+	CodeCommentDomainInvalid      = "comment.domain_invalid"
 )
 
-// CommentUsecase shares comment rules across forum posts and external resources.
-// Authentication and route role checks remain in transport middleware.
-// Repository methods retain the transactions that maintain post comment counts.
 type CommentUsecase struct {
 	commentRepo    repository.CommentRepository
 	postRepo       repository.PostRepository
@@ -58,7 +52,7 @@ func NewCommentUsecase(
 
 func (u *CommentUsecase) checkContent(content string) error {
 	if strings.TrimSpace(content) == "" || utf8.RuneCountInString(content) > 1000 {
-		return ErrCommentContentInvalid
+		return Invalid(CodeCommentContentInvalid, "content 不能为空且不能超过 1000 字")
 	}
 	if u.domainFilter == nil {
 		return nil
@@ -67,9 +61,9 @@ func (u *CommentUsecase) checkContent(content string) error {
 	case err == nil:
 		return nil
 	case errors.Is(err, domainfilter.ErrBlocked):
-		return ErrCommentDomainBlocked
+		return Invalid(CodeCommentDomainBlocked, "内容包含禁止使用的域名")
 	case errors.Is(err, domainfilter.ErrText), errors.Is(err, domainfilter.ErrCandidate):
-		return ErrCommentDomainInvalid
+		return Invalid(CodeCommentDomainInvalid, "内容无法完成域名检查")
 	default:
 		return fmt.Errorf("comment.check_content: %w", err)
 	}
@@ -88,10 +82,10 @@ func (u *CommentUsecase) checkModifiable(principal Actor, subjectType int16, id 
 		return commentError(err, "comment.find")
 	}
 	if comment.AuthorID != principal.UserID && !principal.IsAdmin {
-		return ErrCommentNotOwner
+		return Forbidden(CodeCommentNotOwner, "只能修改自己的评论")
 	}
 	if !principal.IsAdmin && time.Now().After(comment.CreatedAt.Add(20*time.Minute)) {
-		return ErrCommentEditExpired
+		return Forbidden(CodeCommentEditExpired, "评论只能在发布后 20 分钟内编辑或删除")
 	}
 	return nil
 }
@@ -101,16 +95,16 @@ func commentError(err error, operation string) error {
 		return nil
 	}
 	if errors.Is(err, repository.ErrNotFound) {
-		return ErrCommentNotFound
+		return NotFound(CodeCommentNotFound, "评论不存在")
 	}
 	if errors.Is(err, repository.ErrCommentRootNotFound) {
-		return ErrCommentRootNotFound
+		return NotFound(CodeCommentRootNotFound, "根评论不存在")
 	}
 	if errors.Is(err, repository.ErrInvalidCommentRoot) {
-		return ErrCommentRootInvalid
+		return Invalid(CodeCommentRootInvalid, "根评论无效")
 	}
 	if errors.Is(err, repository.ErrConflict) {
-		return ErrCommentConflict
+		return Conflict(CodeCommentConflict, "评论数据冲突")
 	}
 	return fmt.Errorf("%s: %w", operation, err)
 }
@@ -170,7 +164,7 @@ func (u *CommentUsecase) checkPost(subjectType int16, key string) error {
 	}
 	if _, err := u.postRepo.Find(id, false); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return ErrCommentSubjectNotFound
+			return NotFound(CodeCommentSubjectNotFound, "评论所属资源不存在")
 		}
 		return fmt.Errorf("comment.check_post: %w", err)
 	}
@@ -202,7 +196,7 @@ func (u *CommentUsecase) ListReplies(
 	}
 	total, items, err := u.commentRepo.ListReplies(subjectType, key, rootID, limit, offset)
 	if errors.Is(err, repository.ErrNotFound) {
-		return 0, nil, ErrCommentRootNotFound
+		return 0, nil, NotFound(CodeCommentRootNotFound, "根评论不存在")
 	}
 	if err != nil {
 		return 0, nil, fmt.Errorf("comment.list_replies: %w", err)
@@ -218,10 +212,10 @@ func (u *CommentUsecase) CreatePost(input repository.CreateCommentInput) (*repos
 	input.Attr = "{}"
 	comment, err := u.commentRepo.Create(input)
 	if errors.Is(err, repository.ErrNotFound) {
-		return nil, ErrCommentSubjectNotFound
+		return nil, NotFound(CodeCommentSubjectNotFound, "评论所属资源不存在")
 	}
 	if errors.Is(err, repository.ErrCommentsLocked) {
-		return nil, ErrCommentsLocked
+		return nil, Conflict(CodeCommentLocked, "评论区已锁定")
 	}
 	if err != nil {
 		return nil, commentError(err, "comment.create_post")
@@ -241,11 +235,11 @@ func (u *CommentUsecase) CreateExternal(
 	if err != nil {
 		switch {
 		case errors.Is(err, subject.ErrUnsupported):
-			return nil, err
+			return nil, Invalid(CodeCommentSubjectTypeInvalid, "不支持的外部资源类型")
 		case errors.Is(err, subject.ErrNotFound):
-			return nil, ErrCommentSubjectNotFound
+			return nil, NotFound(CodeCommentSubjectNotFound, "评论所属资源不存在")
 		case errors.Is(err, subject.ErrInvalid):
-			return nil, err
+			return nil, Invalid(CodeCommentSubjectKeyInvalid, "subjectKey 格式无效")
 		default:
 			return nil, fmt.Errorf("comment.check_subject: %w", err)
 		}

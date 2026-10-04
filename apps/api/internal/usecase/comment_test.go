@@ -48,6 +48,11 @@ func (f subjectCheckFunc) Check(ctx context.Context, kind, key string) (int16, e
 	return f(ctx, kind, key)
 }
 
+func isAppErrorCode(err error, code string) bool {
+	var appErr *AppError
+	return errors.As(err, &appErr) && appErr.Code == code
+}
+
 func TestCommentContentValidation(t *testing.T) {
 	for _, operation := range []string{"create post", "create external", "update post", "update external"} {
 		for _, tc := range []struct {
@@ -85,7 +90,7 @@ func TestCommentContentValidation(t *testing.T) {
 					_, err = u.Update(Actor{UserID: 1}, subjectType, 7, tc.content)
 				}
 				if !tc.valid {
-					if !errors.Is(err, ErrCommentContentInvalid) || repo.writes != 0 || checks != 0 {
+					if !isAppErrorCode(err, CodeCommentContentInvalid) || repo.writes != 0 || checks != 0 {
 						t.Fatalf("err=%v writes=%d checks=%d", err, repo.writes, checks)
 					}
 					return
@@ -139,11 +144,11 @@ func TestCommentModificationPermissions(t *testing.T) {
 							t.Fatalf("err=%v writes=%d", err, repo.writes)
 						}
 					} else {
-						wantErr := ErrCommentNotOwner
+						wantCode := CodeCommentNotOwner
 						if tc.name == "expired" {
-							wantErr = ErrCommentEditExpired
+							wantCode = CodeCommentEditExpired
 						}
-						if !errors.Is(err, wantErr) || repo.writes != 0 {
+						if !isAppErrorCode(err, wantCode) || repo.writes != 0 {
 							t.Fatalf("err=%v writes=%d", err, repo.writes)
 						}
 					}
@@ -156,15 +161,16 @@ func TestCommentModificationPermissions(t *testing.T) {
 func TestExternalCommentChecksBeforeWrite(t *testing.T) {
 	upstreamErr := errors.New("upstream unavailable")
 	for _, tc := range []struct {
-		name    string
-		err     error
-		wantErr error
+		name      string
+		err       error
+		wantCode  string
+		wantCause error
 	}{
-		{"exists", nil, nil},
-		{"missing", subject.ErrNotFound, ErrCommentSubjectNotFound},
-		{"invalid", subject.ErrInvalid, subject.ErrInvalid},
-		{"unsupported", subject.ErrUnsupported, subject.ErrUnsupported},
-		{"unavailable", upstreamErr, upstreamErr},
+		{"exists", nil, "", nil},
+		{"missing", subject.ErrNotFound, CodeCommentSubjectNotFound, nil},
+		{"invalid", subject.ErrInvalid, CodeCommentSubjectKeyInvalid, nil},
+		{"unsupported", subject.ErrUnsupported, CodeCommentSubjectTypeInvalid, nil},
+		{"unavailable", upstreamErr, "", upstreamErr},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &commentRepoStub{}
@@ -186,16 +192,22 @@ func TestExternalCommentChecksBeforeWrite(t *testing.T) {
 			if checks != 1 {
 				t.Fatalf("checks=%d", checks)
 			}
-			if tc.wantErr == nil {
+			if tc.wantCode == "" && tc.wantCause == nil {
 				if err != nil || repo.writes != 1 ||
 					repo.input.SubjectType != repository.CommentSubjectNovel ||
 					repo.input.Attr != "{}" || repo.input.AuthorID != 1 {
 					t.Fatalf("err=%v writes=%d input=%+v", err, repo.writes, repo.input)
 				}
-			} else {
-				if !errors.Is(err, tc.wantErr) || repo.writes != 0 {
-					t.Fatalf("err=%v writes=%d", err, repo.writes)
-				}
+				return
+			}
+			if repo.writes != 0 {
+				t.Fatalf("unexpected writes: %d", repo.writes)
+			}
+			if tc.wantCode != "" && !isAppErrorCode(err, tc.wantCode) {
+				t.Fatalf("got %v, want code %s", err, tc.wantCode)
+			}
+			if tc.wantCause != nil && !errors.Is(err, tc.wantCause) {
+				t.Fatalf("got %v, want cause %v", err, tc.wantCause)
 			}
 		})
 	}
@@ -221,21 +233,21 @@ func TestCommentRepositoryErrors(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
 		call         func(*CommentUsecase) error
-		missing      error
+		missingCode  string
 		storageError error
 	}{
 		{"comment.create_post", func(u *CommentUsecase) error {
 			_, err := u.CreatePost(repository.CreateCommentInput{SubjectKey: "42", Content: "body"})
 			return err
-		}, ErrCommentSubjectNotFound, repository.ErrNotFound},
+		}, CodeCommentSubjectNotFound, repository.ErrNotFound},
 		{"comment.create_external", func(u *CommentUsecase) error {
 			_, err := u.CreateExternal(context.Background(), "novel", repository.CreateCommentInput{SubjectKey: "wenku-book", Content: "body"})
 			return err
-		}, ErrCommentRootNotFound, repository.ErrCommentRootNotFound},
+		}, CodeCommentRootNotFound, repository.ErrCommentRootNotFound},
 		{"comment.list_replies", func(u *CommentUsecase) error {
 			_, _, err := u.ListReplies(repository.CommentSubjectNovel, "wenku-book", 7, 20, 0)
 			return err
-		}, ErrCommentRootNotFound, repository.ErrNotFound},
+		}, CodeCommentRootNotFound, repository.ErrNotFound},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cause := errors.New("private database details")
@@ -245,8 +257,8 @@ func TestCommentRepositoryErrors(t *testing.T) {
 				t.Fatalf("expected operation and original cause, got %v", err)
 			}
 			u = NewCommentUsecase(failingCommentRepository{err: fmt.Errorf("query: %w", tc.storageError)}, nil, nil, checker)
-			if err := tc.call(u); !errors.Is(err, tc.missing) {
-				t.Fatalf("expected %v, got %v", tc.missing, err)
+			if err := tc.call(u); !isAppErrorCode(err, tc.missingCode) {
+				t.Fatalf("expected code %s, got %v", tc.missingCode, err)
 			}
 		})
 	}
@@ -278,7 +290,7 @@ func TestCommentReadSubjectChecks(t *testing.T) {
 		} else {
 			_, _, err = missing.ListRoots(repository.CommentSubjectPost, "42", 20, 0)
 		}
-		if !errors.Is(err, ErrCommentSubjectNotFound) {
+		if !isAppErrorCode(err, CodeCommentSubjectNotFound) {
 			t.Fatalf("expected missing post, got %v", err)
 		}
 		if replies {
@@ -298,13 +310,13 @@ func TestCommentCreationStorageFailures(t *testing.T) {
 	})
 	for _, external := range []bool{false, true} {
 		for _, tc := range []struct {
-			name    string
-			storage error
-			want    error
+			name     string
+			storage  error
+			wantCode string
 		}{
-			{"missing root", repository.ErrCommentRootNotFound, ErrCommentRootNotFound},
-			{"invalid root", repository.ErrInvalidCommentRoot, ErrCommentRootInvalid},
-			{"conflict", repository.ErrConflict, ErrCommentConflict},
+			{"missing root", repository.ErrCommentRootNotFound, CodeCommentRootNotFound},
+			{"invalid root", repository.ErrInvalidCommentRoot, CodeCommentRootInvalid},
+			{"conflict", repository.ErrConflict, CodeCommentConflict},
 		} {
 			t.Run(fmt.Sprintf("external=%t/%s", external, tc.name), func(t *testing.T) {
 				u := NewCommentUsecase(failingCommentRepository{err: fmt.Errorf("create: %w", tc.storage)}, nil, nil, checker)
@@ -316,8 +328,8 @@ func TestCommentCreationStorageFailures(t *testing.T) {
 				} else {
 					_, err = u.CreatePost(input)
 				}
-				if !errors.Is(err, tc.want) {
-					t.Fatalf("got %v, want %v", err, tc.want)
+				if !isAppErrorCode(err, tc.wantCode) {
+					t.Fatalf("got %v, want code %s", err, tc.wantCode)
 				}
 			})
 		}

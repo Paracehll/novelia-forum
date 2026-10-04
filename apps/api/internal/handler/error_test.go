@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"auth/internal/httpx"
-	"auth/internal/subject"
 	"auth/internal/usecase"
 )
 
@@ -18,19 +17,10 @@ func TestCommentErrorResponses(t *testing.T) {
 		status  int
 		message string
 	}{
-		{subject.ErrUnsupported, http.StatusBadRequest, "不支持的外部资源类型"},
-		{subject.ErrInvalid, http.StatusBadRequest, "subjectKey 格式无效"},
-		{usecase.ErrCommentContentInvalid, http.StatusBadRequest, "content 不能为空且不能超过 1000 字"},
-		{usecase.ErrCommentDomainBlocked, http.StatusBadRequest, "内容包含禁止使用的域名"},
-		{usecase.ErrCommentNotOwner, http.StatusForbidden, "只能修改自己的评论"},
-		{usecase.ErrCommentEditExpired, http.StatusForbidden, "评论只能在发布后 20 分钟内编辑或删除"},
-		{usecase.ErrCommentNotFound, http.StatusNotFound, "评论不存在"},
-		{usecase.ErrCommentSubjectNotFound, http.StatusNotFound, "评论所属资源不存在"},
-		{usecase.ErrCommentRootNotFound, http.StatusNotFound, "根评论不存在"},
-		{usecase.ErrCommentDomainInvalid, http.StatusBadRequest, "内容无法完成域名检查"},
-		{usecase.ErrCommentsLocked, http.StatusConflict, "评论区已锁定"},
-		{usecase.ErrCommentRootInvalid, http.StatusBadRequest, "根评论无效"},
-		{usecase.ErrCommentConflict, http.StatusConflict, "评论数据冲突"},
+		{usecase.Invalid("test.invalid", "参数无效"), http.StatusBadRequest, "参数无效"},
+		{usecase.Forbidden("test.forbidden", "无权操作"), http.StatusForbidden, "无权操作"},
+		{usecase.NotFound("test.not_found", "资源不存在"), http.StatusNotFound, "资源不存在"},
+		{usecase.Conflict("test.conflict", "资源冲突"), http.StatusConflict, "资源冲突"},
 		{fmt.Errorf("comment.check_subject: %w", errors.New("upstream unavailable")), http.StatusInternalServerError, "服务器内部错误"},
 		{fmt.Errorf("comment.list_roots: %w", errors.New("database unavailable")), http.StatusInternalServerError, "服务器内部错误"},
 		{errors.New("评论不存在"), http.StatusInternalServerError, "服务器内部错误"},
@@ -53,5 +43,17 @@ func TestCommentErrorResponses(t *testing.T) {
 				t.Fatalf("unexpected error headers: %v", response.Header())
 			}
 		})
+	}
+}
+
+func TestUnknownAppErrorKindFallsThroughToInternalError(t *testing.T) {
+	appErr := &usecase.AppError{Kind: "future", Code: "future.failure", Message: "不应暴露"}
+	if transportError(appErr) != appErr {
+		t.Fatal("unknown application error kind should remain unhandled")
+	}
+	response := httptest.NewRecorder()
+	httpx.EH(func(http.ResponseWriter, *http.Request) error { return transportError(appErr) })(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	if response.Code != http.StatusInternalServerError || response.Body.String() != "服务器内部错误" {
+		t.Fatalf("got (%d, %q)", response.Code, response.Body.String())
 	}
 }

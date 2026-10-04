@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -151,7 +152,14 @@ func (h *externalCommentHandler) create(w http.ResponseWriter, r *http.Request) 
 		return err
 	}
 	if err := subject.ValidateKey(chi.URLParam(r, "type"), subjectKey); err != nil {
-		return transportError(err)
+		switch {
+		case errors.Is(err, subject.ErrUnsupported):
+			return httpx.BadRequest("不支持的外部资源类型")
+		case errors.Is(err, subject.ErrInvalid):
+			return httpx.BadRequest("subjectKey 格式无效")
+		default:
+			return err
+		}
 	}
 	input, err := httpx.Body[commentInput](r)
 	if err != nil {
