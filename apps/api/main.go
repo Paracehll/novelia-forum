@@ -75,9 +75,10 @@ func main() {
 
 	postUsecase := usecase.NewPostUsecase(postRepo, favoriteRepo, domains)
 	commentUsecase := usecase.NewCommentUsecase(commentRepo, postRepo, domains, subjects)
+	tagUsecase := usecase.NewTagUsecase(tagRepo)
 
 	// handler
-	categoryHandler := handler.NewCategoryHandler(tagRepo)
+	categoryHandler := handler.NewCategoryHandler(tagUsecase)
 	postHandler := handler.NewPostHandler(postUsecase, commentUsecase)
 	commentHandler := handler.NewCommentHandler(commentUsecase)
 	externalCommentHandler := handler.NewExternalCommentHandler(commentUsecase)

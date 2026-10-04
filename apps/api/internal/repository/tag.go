@@ -1,16 +1,17 @@
 package repository
 
 import (
-	"forum/.gen/main/public/model"
-	"forum/.gen/main/public/table"
 	"database/sql"
 	"time"
 
+	"forum/.gen/main/public/model"
+	"forum/.gen/main/public/table"
+	"forum/internal/domain"
+
 	. "github.com/go-jet/jet/v2/postgres"
-	"github.com/go-jet/jet/v2/qrm"
 )
 
-type Tag = model.Tag
+type Tag = domain.Tag
 
 type TagRepository interface {
 	ListByCategory(categoryID int64) ([]Tag, error)
@@ -31,11 +32,11 @@ func (r *tagRepository) ListByCategory(categoryID int64) ([]Tag, error) {
 		FROM(table.Tag).
 		WHERE(table.Tag.CategoryID.EQ(Int64(categoryID))).
 		ORDER_BY(table.Tag.SortOrder.ASC(), table.Tag.ID.ASC())
-	var dest []Tag
+	var dest []model.Tag
 	if err := stmt.Query(r.db, &dest); err != nil {
-		return nil, err
+		return nil, storageError(err, "tag.ListByCategory")
 	}
-	return dest, nil
+	return tagsFromModels(dest), nil
 }
 
 func (r *tagRepository) ListActive() ([]Tag, error) {
@@ -43,11 +44,11 @@ func (r *tagRepository) ListActive() ([]Tag, error) {
 		FROM(table.Tag).
 		WHERE(table.Tag.IsActive.IS_TRUE()).
 		ORDER_BY(table.Tag.CategoryID.ASC(), table.Tag.SortOrder.ASC(), table.Tag.ID.ASC())
-	var dest []Tag
+	var dest []model.Tag
 	if err := stmt.Query(r.db, &dest); err != nil {
-		return nil, err
+		return nil, storageError(err, "tag.ListActive")
 	}
-	return dest, nil
+	return tagsFromModels(dest), nil
 }
 
 func (r *tagRepository) ListForPost(postID int64) ([]Tag, error) {
@@ -55,11 +56,11 @@ func (r *tagRepository) ListForPost(postID int64) ([]Tag, error) {
 		FROM(table.Tag.INNER_JOIN(table.PostTag, table.Tag.ID.EQ(table.PostTag.TagID))).
 		WHERE(table.PostTag.PostID.EQ(Int64(postID))).
 		ORDER_BY(table.Tag.SortOrder.ASC(), table.Tag.ID.ASC())
-	var dest []Tag
+	var dest []model.Tag
 	if err := stmt.Query(r.db, &dest); err != nil {
-		return nil, err
+		return nil, storageError(err, "tag.ListForPost")
 	}
-	return dest, nil
+	return tagsFromModels(dest), nil
 }
 
 func (r *tagRepository) ListForPosts(postIDs []int64) (map[int64][]Tag, error) {
@@ -77,23 +78,24 @@ func (r *tagRepository) ListForPosts(postIDs []int64) (map[int64][]Tag, error) {
 		WHERE(table.PostTag.PostID.IN(integerExpressions(postIDs)...)).
 		ORDER_BY(table.PostTag.PostID.ASC(), table.Tag.SortOrder.ASC(), table.Tag.ID.ASC())
 	if err := stmt.Query(r.db, &records); err != nil {
-		return nil, err
+		return nil, storageError(err, "tag.ListForPosts")
 	}
 	for _, record := range records {
-		dest[record.PostID] = append(dest[record.PostID], record.Tag)
+		dest[record.PostID] = append(dest[record.PostID], tagFromModel(record.Tag))
 	}
 	return dest, nil
 }
 
 func (r *tagRepository) Create(categoryID int64, name string, color int16, sortOrder int32, attr string) (*Tag, error) {
-	dest := Tag{CategoryID: categoryID, Name: name, Color: color, SortOrder: sortOrder, Attr: attr}
+	dest := model.Tag{CategoryID: categoryID, Name: name, Color: color, SortOrder: sortOrder, Attr: attr}
 	stmt := table.Tag.INSERT(table.Tag.CategoryID, table.Tag.Name, table.Tag.Color, table.Tag.SortOrder, table.Tag.Attr).
 		MODEL(dest).
 		RETURNING(table.Tag.AllColumns)
 	if err := stmt.Query(r.db, &dest); err != nil {
-		return nil, err
+		return nil, storageError(err, "tag.Create")
 	}
-	return &dest, nil
+	tag := tagFromModel(dest)
+	return &tag, nil
 }
 
 func (r *tagRepository) Update(categoryID, id int64, name string, color int16, sortOrder int32) (*Tag, error) {
@@ -106,11 +108,12 @@ func (r *tagRepository) Update(categoryID, id int64, name string, color int16, s
 		SET(String(name), Int16(color), Int32(sortOrder), TimestampzT(time.Now())).
 		WHERE(table.Tag.ID.EQ(Int64(id)).AND(table.Tag.CategoryID.EQ(Int64(categoryID)))).
 		RETURNING(table.Tag.AllColumns)
-	var dest Tag
+	var dest model.Tag
 	if err := stmt.Query(r.db, &dest); err != nil {
-		return nil, err
+		return nil, storageError(err, "tag.Update")
 	}
-	return &dest, nil
+	tag := tagFromModel(dest)
+	return &tag, nil
 }
 
 func (r *tagRepository) SetActive(categoryID, id int64, active bool) error {
@@ -119,14 +122,39 @@ func (r *tagRepository) SetActive(categoryID, id int64, active bool) error {
 		WHERE(table.Tag.ID.EQ(Int64(id)).AND(table.Tag.CategoryID.EQ(Int64(categoryID))))
 	result, err := stmt.Exec(r.db)
 	if err != nil {
-		return err
+		return storageError(err, "tag.SetActive")
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
-		return err
+		return storageError(err, "tag.SetActive")
 	}
 	if affected == 0 {
-		return qrm.ErrNoRows
+		return ErrNotFound
 	}
 	return nil
+}
+
+func tagFromModel(tag model.Tag) Tag {
+	return Tag{
+		ID:         tag.ID,
+		CategoryID: tag.CategoryID,
+		Name:       tag.Name,
+		Color:      tag.Color,
+		IsActive:   tag.IsActive,
+		SortOrder:  tag.SortOrder,
+		CreatedAt:  tag.CreatedAt,
+		UpdatedAt:  tag.UpdatedAt,
+		Attr:       tag.Attr,
+	}
+}
+
+func tagsFromModels(tags []model.Tag) []Tag {
+	if tags == nil {
+		return nil
+	}
+	dest := make([]Tag, len(tags))
+	for i, tag := range tags {
+		dest[i] = tagFromModel(tag)
+	}
+	return dest
 }

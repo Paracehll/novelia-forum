@@ -4,19 +4,20 @@ import (
 	"net/http"
 
 	forumcategory "forum/internal/category"
+	"forum/internal/domain"
 	"forum/internal/httpx"
-	"forum/internal/repository"
+	"forum/internal/usecase"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
 )
 
 type categoryHandler struct {
-	tagRepo repository.TagRepository
+	tagUsecase *usecase.TagUsecase
 }
 
-func NewCategoryHandler(tagRepo repository.TagRepository) *categoryHandler {
-	return &categoryHandler{tagRepo: tagRepo}
+func NewCategoryHandler(tagUsecase *usecase.TagUsecase) *categoryHandler {
+	return &categoryHandler{tagUsecase: tagUsecase}
 }
 
 func (h *categoryHandler) RegisterRoutes(router chi.Router) {
@@ -37,7 +38,7 @@ type categoryTagResponse struct {
 }
 
 func (h *categoryHandler) list(w http.ResponseWriter, r *http.Request) error {
-	tags, err := h.tagRepo.ListActive()
+	tags, err := h.tagUsecase.ListActive()
 	if err != nil {
 		return httpx.InternalError(err, "查询标签失败")
 	}
@@ -45,7 +46,7 @@ func (h *categoryHandler) list(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-func newCategoryResponses(items []forumcategory.Definition, tags []repository.Tag) []categoryListResponse {
+func newCategoryResponses(items []forumcategory.Definition, tags []domain.Tag) []categoryListResponse {
 	tagsByCategory := make(map[int64][]categoryTagResponse, len(items))
 	for _, tag := range tags {
 		tagsByCategory[tag.CategoryID] = append(tagsByCategory[tag.CategoryID], categoryTagResponse{
