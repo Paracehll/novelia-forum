@@ -1,10 +1,10 @@
 package repository
 
 import (
+	"database/sql"
 	"forum/.gen/main/public/model"
 	"forum/.gen/main/public/table"
 	forumcategory "forum/internal/category"
-	"database/sql"
 	"time"
 
 	. "github.com/go-jet/jet/v2/postgres"
@@ -53,6 +53,7 @@ type UpdatePostInput struct {
 type PostRepository interface {
 	List(filter PostFilter, limit, offset int64) (int64, []PostDetails, error)
 	Find(id int64, incrementViews bool) (*PostDetails, error)
+	ExistsPublished(id int64) (bool, error)
 	Create(input CreatePostInput) (*PostDetails, error)
 	Update(id int64, input UpdatePostInput) (*PostDetails, error)
 	SetStatus(id int64, status int16) error
@@ -177,6 +178,18 @@ func (r *postRepository) List(filter PostFilter, limit, offset int64) (int64, []
 		dest[i] = PostDetails{Post: record, Tags: tagsByPostID[record.ID]}
 	}
 	return count.Count, dest, nil
+}
+
+func (r *postRepository) ExistsPublished(id int64) (exists bool, err error) {
+	defer func() { err = storageError(err, "post.ExistsPublished") }()
+	var result struct{ Exists bool }
+	stmt := SELECT(EXISTS(SELECT(table.Post.ID).
+		FROM(table.Post).
+		WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(StatusPublished))))).AS("Exists"))
+	if err := stmt.Query(r.db, &result); err != nil {
+		return false, err
+	}
+	return result.Exists, nil
 }
 
 func (r *postRepository) Find(id int64, incrementViews bool) (result *PostDetails, err error) {

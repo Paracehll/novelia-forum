@@ -19,6 +19,8 @@ const (
 	CodeCommentAdminRequired      = "comment.admin_required"
 	CodeCommentEditExpired        = "comment.edit_expired"
 	CodeCommentNotFound           = "comment.not_found"
+	CodeCommentNotEditable        = "comment.not_editable"
+	CodeCommentStatusInvalid      = "comment.status_invalid"
 	CodeCommentLocked             = "comment.locked"
 	CodeCommentSubjectNotFound    = "comment.subject_not_found"
 	CodeCommentSubjectTypeInvalid = "comment.subject_type_invalid"
@@ -38,16 +40,21 @@ type SubjectResolver interface {
 	Check(ctx context.Context, kind, key string) (bool, error)
 }
 
+// PublishedPostReader provides only the visibility check needed by comment reads.
+type PublishedPostReader interface {
+	ExistsPublished(id int64) (bool, error)
+}
+
 type CommentUsecase struct {
 	commentRepo     repository.CommentRepository
-	postRepo        repository.PostRepository
+	postRepo        PublishedPostReader
 	domainFilter    *domainfilter.Filter
 	subjectResolver SubjectResolver
 }
 
 func NewCommentUsecase(
 	commentRepo repository.CommentRepository,
-	postRepo repository.PostRepository,
+	postRepo PublishedPostReader,
 	domainFilter *domainfilter.Filter,
 	subjectResolver SubjectResolver,
 ) *CommentUsecase {
@@ -79,6 +86,9 @@ func (u *CommentUsecase) ListAdmin(actor Actor, query ListAdminCommentsQuery) (i
 	if err := checkCommentAdmin(actor); err != nil {
 		return 0, nil, err
 	}
+	if query.Status != nil && !query.Status.Valid() {
+		return 0, nil, Invalid(CodeCommentStatusInvalid, "评论状态无效")
+	}
 	filter := repository.CommentFilter{
 		Search:     query.Search,
 		AuthorName: query.AuthorName,
@@ -100,11 +110,12 @@ func (u *CommentUsecase) checkSubjectExist(subjectType domain.CommentSubjectType
 	if err != nil {
 		return fmt.Errorf("comment.check_post: %w", err)
 	}
-	if _, err := u.postRepo.Find(id, false); err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return NotFound(CodeCommentSubjectNotFound, "评论所属帖子不存在")
-		}
+	exists, err := u.postRepo.ExistsPublished(id)
+	if err != nil {
 		return fmt.Errorf("comment.check_post: %w", err)
+	}
+	if !exists {
+		return NotFound(CodeCommentSubjectNotFound, "评论所属帖子不存在")
 	}
 	return nil
 }
@@ -197,22 +208,22 @@ func (u *CommentUsecase) checkContent(content string) error {
 	}
 }
 
-func (u *CommentUsecase) checkModifiable(actor Actor, subjectType domain.CommentSubjectType, id int64) error {
+func (u *CommentUsecase) findModifiableComment(actor Actor, subjectType domain.CommentSubjectType, id int64) (*domain.Comment, error) {
 	comment, err := u.commentRepo.Find(subjectType, id)
 	switch {
 	case err == nil:
 	case errors.Is(err, repository.ErrNotFound):
-		return NotFound(CodeCommentNotFound, "评论不存在")
+		return nil, NotFound(CodeCommentNotFound, "评论不存在")
 	default:
-		return fmt.Errorf("comment.find: %w", err)
+		return nil, fmt.Errorf("comment.find: %w", err)
 	}
 	if comment.AuthorID != actor.UserID && !actor.IsAdmin {
-		return PermissionDenied(CodeCommentNotOwner, "只能修改自己的评论")
+		return nil, PermissionDenied(CodeCommentNotOwner, "只能修改自己的评论")
 	}
 	if !actor.IsAdmin && time.Now().After(comment.CreatedAt.Add(20*time.Minute)) {
-		return PermissionDenied(CodeCommentEditExpired, "评论只能在发布后 20 分钟内编辑或删除")
+		return nil, PermissionDenied(CodeCommentEditExpired, "评论只能在发布后 20 分钟内编辑或删除")
 	}
-	return nil
+	return comment, nil
 }
 
 type CreatePostCommentCommand struct {
@@ -315,8 +326,12 @@ func (u *CommentUsecase) Update(
 	actor Actor,
 	command UpdateCommentCommand,
 ) (*domain.Comment, error) {
-	if err := u.checkModifiable(actor, command.SubjectType, command.CommentID); err != nil {
+	existing, err := u.findModifiableComment(actor, command.SubjectType, command.CommentID)
+	if err != nil {
 		return nil, err
+	}
+	if !existing.CanEditContent() {
+		return nil, Conflict(CodeCommentNotEditable, "只有已发布的评论可以编辑")
 	}
 	if err := u.checkContent(command.Content); err != nil {
 		return nil, err
@@ -326,7 +341,9 @@ func (u *CommentUsecase) Update(
 	case err == nil:
 		return comment, nil
 	case errors.Is(err, repository.ErrNotFound):
-		return nil, NotFound(CodeCommentNotFound, "评论不存在")
+		// The comment existed and was editable above; the conditional update
+		// failed because it changed or disappeared before the write.
+		return nil, Conflict(CodeCommentConflict, "评论数据已变化，请刷新后重试")
 	default:
 		return nil, fmt.Errorf("comment.update: %w", err)
 	}
@@ -338,7 +355,7 @@ type DeleteCommentCommand struct {
 }
 
 func (u *CommentUsecase) Delete(actor Actor, command DeleteCommentCommand) error {
-	if err := u.checkModifiable(actor, command.SubjectType, command.CommentID); err != nil {
+	if _, err := u.findModifiableComment(actor, command.SubjectType, command.CommentID); err != nil {
 		return err
 	}
 	err := u.commentRepo.SetStatus(command.SubjectType, command.CommentID, domain.CommentStatusDeleted)
@@ -361,6 +378,9 @@ type SetCommentStatusCommand struct {
 func (u *CommentUsecase) SetStatus(actor Actor, command SetCommentStatusCommand) error {
 	if err := checkCommentAdmin(actor); err != nil {
 		return err
+	}
+	if !command.Status.Valid() {
+		return Invalid(CodeCommentStatusInvalid, "评论状态无效")
 	}
 	err := u.commentRepo.SetStatus(command.SubjectType, command.CommentID, command.Status)
 	switch {

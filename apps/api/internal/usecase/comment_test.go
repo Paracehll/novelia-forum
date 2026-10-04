@@ -335,10 +335,25 @@ func TestCommentRepositoryErrors(t *testing.T) {
 	}
 }
 
-type missingPostRepository struct{ repository.PostRepository }
+type postExistenceStub struct {
+	exists bool
+	err    error
+}
 
-func (missingPostRepository) Find(int64, bool) (*repository.PostDetails, error) {
-	return nil, repository.ErrNotFound
+func (s postExistenceStub) ExistsPublished(int64) (bool, error) {
+	return s.exists, s.err
+}
+
+func TestCommentPublishedPostCheck(t *testing.T) {
+	u := NewCommentUsecase(nil, postExistenceStub{exists: true}, nil, nil)
+	if err := u.checkSubjectExist(domain.CommentSubjectPost, "42"); err != nil {
+		t.Fatalf("published post rejected: %v", err)
+	}
+	cause := errors.New("storage unavailable")
+	u = NewCommentUsecase(nil, postExistenceStub{err: cause}, nil, nil)
+	if err := u.checkSubjectExist(domain.CommentSubjectPost, "42"); !errors.Is(err, cause) {
+		t.Fatalf("storage error lost: %v", err)
+	}
 }
 
 func TestCommentReadSubjectChecks(t *testing.T) {
@@ -349,7 +364,7 @@ func TestCommentReadSubjectChecks(t *testing.T) {
 	// Unimplemented comment queries panic if a missing post reaches the repository.
 	missing := NewCommentUsecase(
 		&struct{ repository.CommentRepository }{},
-		missingPostRepository{},
+		postExistenceStub{},
 		nil,
 		checker,
 	)

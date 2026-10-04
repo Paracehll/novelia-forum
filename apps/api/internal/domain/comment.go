@@ -21,6 +21,10 @@ const (
 	CommentStatusDeleted
 )
 
+func (s CommentStatus) Valid() bool {
+	return s == CommentStatusPublished || s == CommentStatusHidden || s == CommentStatusDeleted
+}
+
 type Comment struct {
 	ID             int64
 	SubjectType    CommentSubjectType
@@ -32,6 +36,11 @@ type Comment struct {
 	Status         CommentStatus
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
+}
+
+// CanEditContent defines the state policy independently of the caller's permissions.
+func (c Comment) CanEditContent() bool {
+	return c.Status == CommentStatusPublished
 }
 
 type CommentThreadPreview struct {

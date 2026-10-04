@@ -95,6 +95,54 @@ func (r *editableCommentRepository) SetStatus(_ domain.CommentSubjectType, _ int
 	return nil
 }
 
+func TestCommentEditingStateResponses(t *testing.T) {
+	for _, route := range []struct {
+		name, path string
+		external   bool
+	}{
+		{"post", "/7", false},
+		{"external", "/novel/7", true},
+	} {
+		for _, role := range []string{"member", "admin"} {
+			for _, status := range []domain.CommentStatus{domain.CommentStatusPublished, domain.CommentStatusHidden, domain.CommentStatusDeleted, 99} {
+				t.Run(route.name+"/"+role+"/"+strconv.Itoa(int(status)), func(t *testing.T) {
+					repo := &editableCommentRepository{comment: domain.Comment{
+						ID: 7, SubjectKey: "42", AuthorID: 1, Content: "original", Status: status, CreatedAt: time.Now(),
+					}}
+					u := usecase.NewCommentUsecase(repo, nil, nil, handlerSubjectResolver{valid: true, exists: true})
+					router := chi.NewRouter()
+					if route.external {
+						NewExternalCommentHandler(u).RegisterRoutes(router)
+					} else {
+						NewCommentHandler(u).RegisterRoutes(router)
+					}
+					token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+						"sub": "tester", "uid": 1, "role": role,
+					}).SignedString([]byte(httpx.AccessTokenSecret))
+					if err != nil {
+						t.Fatal(err)
+					}
+					request := httptest.NewRequest(http.MethodPatch, route.path, strings.NewReader(`{"content":"updated"}`))
+					request.Header.Set("Authorization", "Bearer "+token)
+					request.Header.Set("Content-Type", "application/json")
+					recorder := httptest.NewRecorder()
+					router.ServeHTTP(recorder, request)
+					wantStatus := http.StatusConflict
+					if status == domain.CommentStatusPublished {
+						wantStatus = http.StatusOK
+					}
+					if recorder.Code != wantStatus || repo.updated != (status == domain.CommentStatusPublished) {
+						t.Fatalf("status=%d want=%d updated=%t body=%s", recorder.Code, wantStatus, repo.updated, recorder.Body.String())
+					}
+					if wantStatus == http.StatusConflict && recorder.Body.String() != "只有已发布的评论可以编辑" {
+						t.Fatalf("unexpected state error: %q", recorder.Body.String())
+					}
+				})
+			}
+		}
+	}
+}
+
 func TestAdminCanEditCommentAfterWindow(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
