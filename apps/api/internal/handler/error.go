@@ -25,7 +25,7 @@ func transportError(err error) error {
 		status = http.StatusNotFound
 	case usecase.KindConflict:
 		status = http.StatusConflict
-	case usecase.KindForbidden:
+	case usecase.KindPermissionDenied:
 		status = http.StatusForbidden
 	default:
 		return err

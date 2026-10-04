@@ -15,7 +15,7 @@ func TestAppErrorConstructors(t *testing.T) {
 		{"invalid", Invalid, KindInvalid},
 		{"not found", NotFound, KindNotFound},
 		{"conflict", Conflict, KindConflict},
-		{"forbidden", Forbidden, KindForbidden},
+		{"permission denied", PermissionDenied, KindPermissionDenied},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.make("test.code", "测试消息")

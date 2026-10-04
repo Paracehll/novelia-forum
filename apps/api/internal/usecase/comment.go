@@ -70,7 +70,7 @@ type ListAdminCommentsQuery struct {
 
 func checkCommentAdmin(actor Actor) error {
 	if !actor.IsAdmin {
-		return Forbidden(CodeCommentAdminRequired, "需要管理员权限")
+		return PermissionDenied(CodeCommentAdminRequired, "需要管理员权限")
 	}
 	return nil
 }
@@ -207,10 +207,10 @@ func (u *CommentUsecase) checkModifiable(actor Actor, subjectType domain.Comment
 		return fmt.Errorf("comment.find: %w", err)
 	}
 	if comment.AuthorID != actor.UserID && !actor.IsAdmin {
-		return Forbidden(CodeCommentNotOwner, "只能修改自己的评论")
+		return PermissionDenied(CodeCommentNotOwner, "只能修改自己的评论")
 	}
 	if !actor.IsAdmin && time.Now().After(comment.CreatedAt.Add(20*time.Minute)) {
-		return Forbidden(CodeCommentEditExpired, "评论只能在发布后 20 分钟内编辑或删除")
+		return PermissionDenied(CodeCommentEditExpired, "评论只能在发布后 20 分钟内编辑或删除")
 	}
 	return nil
 }

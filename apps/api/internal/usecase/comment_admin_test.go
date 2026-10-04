@@ -78,7 +78,7 @@ func TestCommentAdminPermissions(t *testing.T) {
 					return
 				}
 				var appErr *AppError
-				if !errors.As(err, &appErr) || appErr.Kind != KindForbidden || appErr.Code != CodeCommentAdminRequired || repo.calls != 0 {
+				if !errors.As(err, &appErr) || appErr.Kind != KindPermissionDenied || appErr.Code != CodeCommentAdminRequired || repo.calls != 0 {
 					t.Fatalf("err=%v calls=%d", err, repo.calls)
 				}
 			})

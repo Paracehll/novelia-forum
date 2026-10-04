@@ -18,7 +18,7 @@ func TestCommentErrorResponses(t *testing.T) {
 		message string
 	}{
 		{usecase.Invalid("test.invalid", "参数无效"), http.StatusBadRequest, "参数无效"},
-		{usecase.Forbidden("test.forbidden", "无权操作"), http.StatusForbidden, "无权操作"},
+		{usecase.PermissionDenied("test.permission_denied", "无权操作"), http.StatusForbidden, "无权操作"},
 		{usecase.NotFound("test.not_found", "资源不存在"), http.StatusNotFound, "资源不存在"},
 		{usecase.Conflict("test.conflict", "资源冲突"), http.StatusConflict, "资源冲突"},
 		{fmt.Errorf("comment.check_subject: %w", errors.New("upstream unavailable")), http.StatusInternalServerError, "服务器内部错误"},

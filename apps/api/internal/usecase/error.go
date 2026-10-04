@@ -4,10 +4,10 @@ package usecase
 type ErrorKind string
 
 const (
-	KindInvalid   ErrorKind = "invalid"
-	KindNotFound  ErrorKind = "not_found"
-	KindConflict  ErrorKind = "conflict"
-	KindForbidden ErrorKind = "forbidden"
+	KindInvalid          ErrorKind = "invalid"
+	KindNotFound         ErrorKind = "not_found"
+	KindConflict         ErrorKind = "conflict"
+	KindPermissionDenied ErrorKind = "permission_denied"
 )
 
 // AppError describes an expected application failure.
@@ -32,8 +32,8 @@ func Conflict(code, message string) *AppError {
 	return &AppError{Kind: KindConflict, Code: code, Message: message}
 }
 
-func Forbidden(code, message string) *AppError {
-	return &AppError{Kind: KindForbidden, Code: code, Message: message}
+func PermissionDenied(code, message string) *AppError {
+	return &AppError{Kind: KindPermissionDenied, Code: code, Message: message}
 }
 
 func (e *AppError) Error() string {
