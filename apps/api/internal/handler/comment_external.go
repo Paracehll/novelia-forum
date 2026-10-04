@@ -100,7 +100,7 @@ func (h *externalCommentHandler) list(w http.ResponseWriter, r *http.Request) er
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	total, items, err := h.commentUsecase.ListRoots(commentActor(principal), subjectType, subjectKey, pagination.Limit, pagination.Offset)
+	total, items, err := h.commentUsecase.List(commentActor(principal), subjectType, subjectKey, pagination.Limit, pagination.Offset)
 	if err != nil {
 		return transportError(err)
 	}

@@ -363,7 +363,7 @@ func (h *postHandler) listComments(w http.ResponseWriter, r *http.Request) error
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	total, items, err := h.commentUsecase.ListRoots(
+	total, items, err := h.commentUsecase.List(
 		commentActor(principal),
 		repository.CommentSubjectPost,
 		repository.PostSubjectKey(postID),
@@ -433,7 +433,7 @@ func (h *postHandler) createComment(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	comment, err := h.commentUsecase.CreatePost(repository.CreateCommentInput{
+	comment, err := h.commentUsecase.Create(repository.CreateCommentInput{
 		SubjectKey:     repository.PostSubjectKey(postID),
 		RootID:         input.RootID,
 		Content:        input.Content,

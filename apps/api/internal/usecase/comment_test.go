@@ -79,7 +79,7 @@ func TestCommentContentValidation(t *testing.T) {
 				var err error
 				switch operation {
 				case "create post":
-					_, err = u.CreatePost(input)
+					_, err = u.Create(input)
 				case "create external":
 					_, err = u.CreateExternal(context.Background(), "novel", input)
 				default:
@@ -237,7 +237,7 @@ func TestCommentRepositoryErrors(t *testing.T) {
 		storageError error
 	}{
 		{"comment.create_post", func(u *CommentUsecase) error {
-			_, err := u.CreatePost(repository.CreateCommentInput{SubjectKey: "42", Content: "body"})
+			_, err := u.Create(repository.CreateCommentInput{SubjectKey: "42", Content: "body"})
 			return err
 		}, CodeCommentSubjectNotFound, repository.ErrNotFound},
 		{"comment.create_external", func(u *CommentUsecase) error {
@@ -288,7 +288,7 @@ func TestCommentReadSubjectChecks(t *testing.T) {
 		if replies {
 			_, _, err = missing.ListReplies(Actor{}, repository.CommentSubjectPost, "42", 7, 20, 0)
 		} else {
-			_, _, err = missing.ListRoots(Actor{}, repository.CommentSubjectPost, "42", 20, 0)
+			_, _, err = missing.List(Actor{}, repository.CommentSubjectPost, "42", 20, 0)
 		}
 		if !isAppErrorCode(err, CodeCommentSubjectNotFound) {
 			t.Fatalf("expected missing post, got %v", err)
@@ -296,7 +296,7 @@ func TestCommentReadSubjectChecks(t *testing.T) {
 		if replies {
 			_, _, err = external.ListReplies(Actor{}, repository.CommentSubjectNovel, "deleted", 7, 20, 0)
 		} else {
-			_, _, err = external.ListRoots(Actor{}, repository.CommentSubjectNovel, "deleted", 20, 0)
+			_, _, err = external.List(Actor{}, repository.CommentSubjectNovel, "deleted", 20, 0)
 		}
 		if err != nil {
 			t.Fatal(err)
@@ -326,7 +326,7 @@ func TestCommentCreationStorageFailures(t *testing.T) {
 				if external {
 					_, err = u.CreateExternal(context.Background(), "novel", input)
 				} else {
-					_, err = u.CreatePost(input)
+					_, err = u.Create(input)
 				}
 				if !isAppErrorCode(err, tc.wantCode) {
 					t.Fatalf("got %v, want code %s", err, tc.wantCode)
@@ -346,7 +346,7 @@ func TestCommentListContentVisibility(t *testing.T) {
 				if !actor.IsAdmin && status != repository.StatusPublished {
 					want.Content = ""
 				}
-				total, roots, err := u.ListRoots(actor, repository.CommentSubjectNovel, "book", 20, 0)
+				total, roots, err := u.List(actor, repository.CommentSubjectNovel, "book", 20, 0)
 				if err != nil || total != 1 || len(roots) != 1 {
 					t.Fatalf("roots=%+v total=%d err=%v", roots, total, err)
 				}
