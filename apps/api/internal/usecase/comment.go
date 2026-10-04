@@ -236,31 +236,12 @@ func (u *CommentUsecase) Create(actor Actor, command CreatePostCommentCommand) (
 	if err := u.checkContent(command.Content); err != nil {
 		return nil, err
 	}
-	input := domain.Comment{
-		SubjectType:    domain.CommentSubjectPost,
-		SubjectKey:     domain.PostCommentSubjectKey(command.PostID),
-		RootID:         command.RootID,
-		Content:        command.Content,
-		AuthorID:       actor.UserID,
-		AuthorUsername: actor.Username,
-	}
-	comment, err := u.commentRepo.Create(input)
-	switch {
-	case err == nil:
-		return comment, nil
-	case errors.Is(err, repository.ErrNotFound):
-		return nil, NotFound(CodeCommentSubjectNotFound, "评论所属资源不存在")
-	case errors.Is(err, repository.ErrCommentsLocked):
-		return nil, Conflict(CodeCommentLocked, "评论区已锁定")
-	case errors.Is(err, repository.ErrCommentRootNotFound):
-		return nil, NotFound(CodeCommentRootNotFound, "根评论不存在")
-	case errors.Is(err, repository.ErrInvalidCommentRoot):
-		return nil, Invalid(CodeCommentRootInvalid, "根评论无效")
-	case errors.Is(err, repository.ErrConflict):
-		return nil, Conflict(CodeCommentConflict, "评论数据冲突")
-	default:
-		return nil, fmt.Errorf("comment.create_post: %w", err)
-	}
+	return u.createComment(actor, domain.Comment{
+		SubjectType: domain.CommentSubjectPost,
+		SubjectKey:  domain.PostCommentSubjectKey(command.PostID),
+		RootID:      command.RootID,
+		Content:     command.Content,
+	}, "comment.create_post")
 }
 
 type CreateExternalCommentCommand struct {
@@ -293,18 +274,25 @@ func (u *CommentUsecase) CreateExternal(
 		return nil, NotFound(CodeCommentSubjectNotFound, "评论所属资源不存在")
 	}
 
-	input := domain.Comment{
-		SubjectType:    subjectType,
-		SubjectKey:     command.SubjectKey,
-		RootID:         command.RootID,
-		Content:        command.Content,
-		AuthorID:       actor.UserID,
-		AuthorUsername: actor.Username,
-	}
+	return u.createComment(actor, domain.Comment{
+		SubjectType: subjectType,
+		SubjectKey:  command.SubjectKey,
+		RootID:      command.RootID,
+		Content:     command.Content,
+	}, "comment.create_external")
+}
+
+func (u *CommentUsecase) createComment(actor Actor, input domain.Comment, operation string) (*domain.Comment, error) {
+	input.AuthorID = actor.UserID
+	input.AuthorUsername = actor.Username
 	comment, err := u.commentRepo.Create(input)
 	switch {
 	case err == nil:
 		return comment, nil
+	case input.SubjectType == domain.CommentSubjectPost && errors.Is(err, repository.ErrNotFound):
+		return nil, NotFound(CodeCommentSubjectNotFound, "评论所属资源不存在")
+	case input.SubjectType == domain.CommentSubjectPost && errors.Is(err, repository.ErrCommentsLocked):
+		return nil, Conflict(CodeCommentLocked, "评论区已锁定")
 	case errors.Is(err, repository.ErrCommentRootNotFound):
 		return nil, NotFound(CodeCommentRootNotFound, "根评论不存在")
 	case errors.Is(err, repository.ErrInvalidCommentRoot):
@@ -312,7 +300,7 @@ func (u *CommentUsecase) CreateExternal(
 	case errors.Is(err, repository.ErrConflict):
 		return nil, Conflict(CodeCommentConflict, "评论数据冲突")
 	default:
-		return nil, fmt.Errorf("comment.create_external: %w", err)
+		return nil, fmt.Errorf("%s: %w", operation, err)
 	}
 }
 

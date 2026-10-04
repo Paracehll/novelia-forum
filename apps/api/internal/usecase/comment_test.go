@@ -407,10 +407,13 @@ func TestCommentCreationStorageFailures(t *testing.T) {
 			name     string
 			storage  error
 			wantCode string
+			postOnly bool
 		}{
-			{"missing root", repository.ErrCommentRootNotFound, CodeCommentRootNotFound},
-			{"invalid root", repository.ErrInvalidCommentRoot, CodeCommentRootInvalid},
-			{"conflict", repository.ErrConflict, CodeCommentConflict},
+			{"missing root", repository.ErrCommentRootNotFound, CodeCommentRootNotFound, false},
+			{"invalid root", repository.ErrInvalidCommentRoot, CodeCommentRootInvalid, false},
+			{"conflict", repository.ErrConflict, CodeCommentConflict, false},
+			{"missing post", repository.ErrNotFound, CodeCommentSubjectNotFound, true},
+			{"locked post", repository.ErrCommentsLocked, CodeCommentLocked, true},
 		} {
 			t.Run(fmt.Sprintf("external=%t/%s", external, tc.name), func(t *testing.T) {
 				u := NewCommentUsecase(failingCommentRepository{err: fmt.Errorf("create: %w", tc.storage)}, nil, nil, checker)
@@ -422,6 +425,13 @@ func TestCommentCreationStorageFailures(t *testing.T) {
 					})
 				} else {
 					_, err = u.Create(Actor{}, CreatePostCommentCommand{PostID: 42, RootID: &rootID, Content: "reply"})
+				}
+				if external && tc.postOnly {
+					var appErr *AppError
+					if !errors.Is(err, tc.storage) || errors.As(err, &appErr) || !strings.Contains(err.Error(), "comment.create_external") {
+						t.Fatalf("unexpected external storage failure mapping: %v", err)
+					}
+					return
 				}
 				if !isAppErrorCode(err, tc.wantCode) {
 					t.Fatalf("got %v, want code %s", err, tc.wantCode)
