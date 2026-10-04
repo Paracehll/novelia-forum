@@ -10,7 +10,6 @@ import (
 
 	"forum/internal/domain"
 	"forum/internal/repository"
-	"forum/internal/subject"
 )
 
 type commentRepoStub struct {
@@ -45,10 +44,32 @@ func (r *commentRepoStub) ListReplies(domain.CommentSubjectType, string, int64, 
 	return 1, []domain.Comment{r.comment}, nil
 }
 
-type subjectCheckFunc func(context.Context, string, string) (domain.CommentSubjectType, error)
+type subjectCheckFunc func(context.Context, string, string) bool
 
-func (f subjectCheckFunc) Check(ctx context.Context, kind, key string) (domain.CommentSubjectType, error) {
+func (f subjectCheckFunc) Type(kind string) (domain.CommentSubjectType, bool) {
+	return domain.CommentSubjectNovel, kind == "novel"
+}
+func (f subjectCheckFunc) Valid(kind, _ string) bool { return kind == "novel" }
+func (f subjectCheckFunc) Check(ctx context.Context, kind, key string) bool {
 	return f(ctx, kind, key)
+}
+
+type subjectResolverStub struct {
+	supported bool
+	valid     bool
+	exists    bool
+	checks    *int
+}
+
+func (s subjectResolverStub) Type(string) (domain.CommentSubjectType, bool) {
+	return domain.CommentSubjectNovel, s.supported
+}
+func (s subjectResolverStub) Valid(string, string) bool { return s.valid }
+func (s subjectResolverStub) Check(context.Context, string, string) bool {
+	if s.checks != nil {
+		*s.checks++
+	}
+	return s.exists
 }
 
 func isAppErrorCode(err error, code string) bool {
@@ -73,9 +94,9 @@ func TestCommentContentValidation(t *testing.T) {
 			t.Run(operation+"/"+tc.name, func(t *testing.T) {
 				repo := &commentRepoStub{comment: domain.Comment{AuthorID: 1, CreatedAt: time.Now()}}
 				checks := 0
-				checker := subjectCheckFunc(func(context.Context, string, string) (domain.CommentSubjectType, error) {
+				checker := subjectCheckFunc(func(context.Context, string, string) bool {
 					checks++
-					return domain.CommentSubjectNovel, nil
+					return true
 				})
 				u := NewCommentUsecase(repo, nil, nil, checker)
 				actor := Actor{UserID: 1, Username: "tester"}
@@ -182,39 +203,41 @@ func TestPostCommentCreationUsesActor(t *testing.T) {
 }
 
 func TestExternalCommentChecksBeforeWrite(t *testing.T) {
-	upstreamErr := errors.New("upstream unavailable")
 	for _, tc := range []struct {
 		name      string
-		err       error
+		supported bool
+		valid     bool
+		exists    bool
 		wantCode  string
-		wantCause error
 	}{
-		{"exists", nil, "", nil},
-		{"missing", subject.ErrNotFound, CodeCommentSubjectNotFound, nil},
-		{"invalid", subject.ErrInvalid, CodeCommentSubjectKeyInvalid, nil},
-		{"unsupported", subject.ErrUnsupported, CodeCommentSubjectTypeInvalid, nil},
-		{"unavailable", upstreamErr, "", upstreamErr},
+		{"exists", true, true, true, ""},
+		{"missing", true, true, false, CodeCommentSubjectNotFound},
+		{"invalid", true, false, false, CodeCommentSubjectKeyInvalid},
+		{"unsupported", false, false, false, CodeCommentSubjectTypeInvalid},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &commentRepoStub{}
 			checks := 0
-			checker := subjectCheckFunc(func(ctx context.Context, kind, key string) (domain.CommentSubjectType, error) {
-				checks++
-				if kind != "novel" || key != "web-syosetu-n1234" {
-					t.Fatalf("unexpected subject: %s/%s", kind, key)
-				}
-				return domain.CommentSubjectNovel, tc.err
-			})
+			checker := subjectResolverStub{
+				supported: tc.supported,
+				valid:     tc.valid,
+				exists:    tc.exists,
+				checks:    &checks,
+			}
 			u := NewCommentUsecase(repo, nil, nil, checker)
 			actor := Actor{UserID: 1, Username: "tester"}
 			command := CreateExternalCommentCommand{
 				Kind: "novel", SubjectKey: "web-syosetu-n1234", Content: "body",
 			}
 			_, err := u.CreateExternal(context.Background(), actor, command)
-			if checks != 1 {
-				t.Fatalf("checks=%d", checks)
+			wantChecks := 0
+			if tc.supported && tc.valid {
+				wantChecks = 1
 			}
-			if tc.wantCode == "" && tc.wantCause == nil {
+			if checks != wantChecks {
+				t.Fatalf("checks=%d want=%d", checks, wantChecks)
+			}
+			if tc.wantCode == "" {
 				if err != nil || repo.writes != 1 ||
 					repo.input.SubjectType != domain.CommentSubjectNovel ||
 					repo.input.AuthorID != actor.UserID ||
@@ -228,9 +251,6 @@ func TestExternalCommentChecksBeforeWrite(t *testing.T) {
 			}
 			if tc.wantCode != "" && !isAppErrorCode(err, tc.wantCode) {
 				t.Fatalf("got %v, want code %s", err, tc.wantCode)
-			}
-			if tc.wantCause != nil && !errors.Is(err, tc.wantCause) {
-				t.Fatalf("got %v, want cause %v", err, tc.wantCause)
 			}
 		})
 	}
@@ -250,8 +270,8 @@ func (r failingCommentRepository) ListReplies(domain.CommentSubjectType, string,
 }
 
 func TestCommentRepositoryErrors(t *testing.T) {
-	checker := subjectCheckFunc(func(context.Context, string, string) (domain.CommentSubjectType, error) {
-		return domain.CommentSubjectNovel, nil
+	checker := subjectCheckFunc(func(context.Context, string, string) bool {
+		return true
 	})
 	for _, tc := range []struct {
 		name         string
@@ -298,9 +318,9 @@ func (missingPostRepository) Find(int64, bool) (*repository.PostDetails, error) 
 }
 
 func TestCommentReadSubjectChecks(t *testing.T) {
-	checker := subjectCheckFunc(func(context.Context, string, string) (domain.CommentSubjectType, error) {
+	checker := subjectCheckFunc(func(context.Context, string, string) bool {
 		t.Fatal("reads must not check external resources")
-		return 0, nil
+		return false
 	})
 	// Unimplemented comment queries panic if a missing post reaches the repository.
 	missing := NewCommentUsecase(
@@ -340,8 +360,8 @@ func TestCommentReadSubjectChecks(t *testing.T) {
 }
 
 func TestCommentCreationStorageFailures(t *testing.T) {
-	checker := subjectCheckFunc(func(context.Context, string, string) (domain.CommentSubjectType, error) {
-		return domain.CommentSubjectNovel, nil
+	checker := subjectCheckFunc(func(context.Context, string, string) bool {
+		return true
 	})
 	for _, external := range []bool{false, true} {
 		for _, tc := range []struct {

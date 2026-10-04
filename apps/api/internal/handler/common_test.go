@@ -64,7 +64,8 @@ func TestDomainFilterRejectsWrites(t *testing.T) {
 			posts := &writePostRepository{}
 			comments := &domainCommentRepository{}
 			router := chi.NewRouter()
-			commentUsecase := usecase.NewCommentUsecase(comments, posts, domains, nil)
+			resolver := handlerSubjectResolver{valid: true, exists: true}
+			commentUsecase := usecase.NewCommentUsecase(comments, posts, domains, resolver)
 			postHandler := NewPostHandler(posts, noFavoriteRepository{}, commentUsecase, domains)
 			router.Route("/post", postHandler.RegisterRoutes)
 			router.Route("/comment", NewCommentHandler(commentUsecase).RegisterRoutes)

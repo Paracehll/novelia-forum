@@ -11,7 +11,6 @@ import (
 	"forum/internal/domain"
 	"forum/internal/domainfilter"
 	"forum/internal/repository"
-	"forum/internal/subject"
 )
 
 const (
@@ -30,24 +29,32 @@ const (
 	CodeCommentDomainInvalid      = "comment.domain_invalid"
 )
 
+// SubjectResolver is the application-facing view of the external subject
+// registry. Concrete plugins own their validation and availability checks.
+type SubjectResolver interface {
+	Type(kind string) (domain.CommentSubjectType, bool)
+	Valid(kind, key string) bool
+	Check(ctx context.Context, kind, key string) bool
+}
+
 type CommentUsecase struct {
-	commentRepo    repository.CommentRepository
-	postRepo       repository.PostRepository
-	domainFilter   *domainfilter.Filter
-	subjectChecker subject.Checker
+	commentRepo     repository.CommentRepository
+	postRepo        repository.PostRepository
+	domainFilter    *domainfilter.Filter
+	subjectResolver SubjectResolver
 }
 
 func NewCommentUsecase(
 	commentRepo repository.CommentRepository,
 	postRepo repository.PostRepository,
 	domainFilter *domainfilter.Filter,
-	subjectChecker subject.Checker,
+	subjectResolver SubjectResolver,
 ) *CommentUsecase {
 	return &CommentUsecase{
-		commentRepo:    commentRepo,
-		postRepo:       postRepo,
-		domainFilter:   domainFilter,
-		subjectChecker: subjectChecker,
+		commentRepo:     commentRepo,
+		postRepo:        postRepo,
+		domainFilter:    domainFilter,
+		subjectResolver: subjectResolver,
 	}
 }
 
@@ -249,18 +256,15 @@ func (u *CommentUsecase) CreateExternal(
 	if err := u.checkContent(command.Content); err != nil {
 		return nil, err
 	}
-	subjectType, err := u.subjectChecker.Check(ctx, command.Kind, command.SubjectKey)
+	subjectType, err := u.externalSubjectType(command.Kind)
 	if err != nil {
-		switch {
-		case errors.Is(err, subject.ErrUnsupported):
-			return nil, Invalid(CodeCommentSubjectTypeInvalid, "不支持的外部资源类型")
-		case errors.Is(err, subject.ErrNotFound):
-			return nil, NotFound(CodeCommentSubjectNotFound, "评论所属资源不存在")
-		case errors.Is(err, subject.ErrInvalid):
-			return nil, Invalid(CodeCommentSubjectKeyInvalid, "subjectKey 格式无效")
-		default:
-			return nil, fmt.Errorf("comment.check_subject: %w", err)
-		}
+		return nil, err
+	}
+	if !u.subjectResolver.Valid(command.Kind, command.SubjectKey) {
+		return nil, Invalid(CodeCommentSubjectKeyInvalid, "subjectKey 格式无效")
+	}
+	if !u.subjectResolver.Check(ctx, command.Kind, command.SubjectKey) {
+		return nil, NotFound(CodeCommentSubjectNotFound, "评论所属资源不存在")
 	}
 
 	input := domain.Comment{
@@ -360,4 +364,118 @@ func (u *CommentUsecase) DeleteAllByAuthor(command DeleteCommentsByAuthorCommand
 		return fmt.Errorf("comment.delete_by_author: %w", err)
 	}
 	return nil
+}
+
+func (u *CommentUsecase) externalSubjectType(kind string) (domain.CommentSubjectType, error) {
+	if u.subjectResolver == nil {
+		return 0, Invalid(CodeCommentSubjectTypeInvalid, "不支持的外部资源类型")
+	}
+	subjectType, ok := u.subjectResolver.Type(kind)
+	if !ok {
+		return 0, Invalid(CodeCommentSubjectTypeInvalid, "不支持的外部资源类型")
+	}
+	return subjectType, nil
+}
+
+type ListExternalCommentsQuery struct {
+	Kind       string
+	SubjectKey string
+	Limit      int64
+	Offset     int64
+}
+
+func (u *CommentUsecase) ListExternal(
+	actor Actor,
+	query ListExternalCommentsQuery,
+) (int64, []domain.CommentThreadPreview, error) {
+	subjectType, err := u.externalSubjectType(query.Kind)
+	if err != nil {
+		return 0, nil, err
+	}
+	return u.List(actor, ListCommentsQuery{
+		SubjectType: subjectType,
+		SubjectKey:  query.SubjectKey,
+		Limit:       query.Limit,
+		Offset:      query.Offset,
+	})
+}
+
+type ListExternalCommentRepliesQuery struct {
+	Kind       string
+	SubjectKey string
+	RootID     int64
+	Limit      int64
+	Offset     int64
+}
+
+func (u *CommentUsecase) ListExternalReplies(
+	actor Actor,
+	query ListExternalCommentRepliesQuery,
+) (int64, []domain.Comment, error) {
+	subjectType, err := u.externalSubjectType(query.Kind)
+	if err != nil {
+		return 0, nil, err
+	}
+	return u.ListReplies(actor, ListCommentRepliesQuery{
+		SubjectType: subjectType,
+		SubjectKey:  query.SubjectKey,
+		RootID:      query.RootID,
+		Limit:       query.Limit,
+		Offset:      query.Offset,
+	})
+}
+
+type UpdateExternalCommentCommand struct {
+	Kind      string
+	CommentID int64
+	Content   string
+}
+
+func (u *CommentUsecase) UpdateExternal(
+	actor Actor,
+	command UpdateExternalCommentCommand,
+) (*domain.Comment, error) {
+	subjectType, err := u.externalSubjectType(command.Kind)
+	if err != nil {
+		return nil, err
+	}
+	return u.Update(actor, UpdateCommentCommand{
+		SubjectType: subjectType,
+		CommentID:   command.CommentID,
+		Content:     command.Content,
+	})
+}
+
+type DeleteExternalCommentCommand struct {
+	Kind      string
+	CommentID int64
+}
+
+func (u *CommentUsecase) DeleteExternal(actor Actor, command DeleteExternalCommentCommand) error {
+	subjectType, err := u.externalSubjectType(command.Kind)
+	if err != nil {
+		return err
+	}
+	return u.Delete(actor, DeleteCommentCommand{
+		SubjectType: subjectType,
+		CommentID:   command.CommentID,
+	})
+}
+
+type SetExternalCommentStatusCommand struct {
+	Kind      string
+	CommentID int64
+	Status    domain.CommentStatus
+}
+
+func (u *CommentUsecase) SetExternalStatus(command SetExternalCommentStatusCommand) error {
+	subjectType, err := u.externalSubjectType(command.Kind)
+	if err != nil {
+		return err
+	}
+	return u.SetStatus(SetCommentStatusCommand{
+		SubjectType: subjectType,
+		CommentID:   command.CommentID,
+		Status:      command.Status,
+	})
 }

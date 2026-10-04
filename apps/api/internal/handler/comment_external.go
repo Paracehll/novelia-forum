@@ -1,13 +1,11 @@
 package handler
 
 import (
-	"errors"
 	"net/http"
 	"time"
 
 	"forum/internal/domain"
 	"forum/internal/httpx"
-	"forum/internal/subject"
 	"forum/internal/usecase"
 
 	"github.com/go-chi/chi/v5"
@@ -87,10 +85,6 @@ func externalCommentSubjectKey(r *http.Request) (string, error) {
 }
 
 func (h *externalCommentHandler) list(w http.ResponseWriter, r *http.Request) error {
-	subjectType, ok := subject.TypeID(chi.URLParam(r, "type"))
-	if !ok {
-		return httpx.BadRequest("不支持的外部资源类型")
-	}
 	subjectKey, err := externalCommentSubjectKey(r)
 	if err != nil {
 		return err
@@ -100,11 +94,11 @@ func (h *externalCommentHandler) list(w http.ResponseWriter, r *http.Request) er
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	total, items, err := h.commentUsecase.List(commentActor(principal), usecase.ListCommentsQuery{
-		SubjectType: subjectType,
-		SubjectKey:  subjectKey,
-		Limit:       pagination.Limit,
-		Offset:      pagination.Offset,
+	total, items, err := h.commentUsecase.ListExternal(commentActor(principal), usecase.ListExternalCommentsQuery{
+		Kind:       chi.URLParam(r, "type"),
+		SubjectKey: subjectKey,
+		Limit:      pagination.Limit,
+		Offset:     pagination.Offset,
 	})
 	if err != nil {
 		return transportError(err)
@@ -118,10 +112,6 @@ func (h *externalCommentHandler) list(w http.ResponseWriter, r *http.Request) er
 }
 
 func (h *externalCommentHandler) listReplies(w http.ResponseWriter, r *http.Request) error {
-	subjectType, ok := subject.TypeID(chi.URLParam(r, "type"))
-	if !ok {
-		return httpx.BadRequest("不支持的外部资源类型")
-	}
 	subjectKey, err := externalCommentSubjectKey(r)
 	if err != nil {
 		return err
@@ -135,14 +125,14 @@ func (h *externalCommentHandler) listReplies(w http.ResponseWriter, r *http.Requ
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	total, items, err := h.commentUsecase.ListReplies(
+	total, items, err := h.commentUsecase.ListExternalReplies(
 		commentActor(principal),
-		usecase.ListCommentRepliesQuery{
-			SubjectType: subjectType,
-			SubjectKey:  subjectKey,
-			RootID:      rootID,
-			Limit:       pagination.Limit,
-			Offset:      pagination.Offset,
+		usecase.ListExternalCommentRepliesQuery{
+			Kind:       chi.URLParam(r, "type"),
+			SubjectKey: subjectKey,
+			RootID:     rootID,
+			Limit:      pagination.Limit,
+			Offset:     pagination.Offset,
 		},
 	)
 	if err != nil {
@@ -160,16 +150,6 @@ func (h *externalCommentHandler) create(w http.ResponseWriter, r *http.Request) 
 	subjectKey, err := externalCommentSubjectKey(r)
 	if err != nil {
 		return err
-	}
-	if err := subject.ValidateKey(chi.URLParam(r, "type"), subjectKey); err != nil {
-		switch {
-		case errors.Is(err, subject.ErrUnsupported):
-			return httpx.BadRequest("不支持的外部资源类型")
-		case errors.Is(err, subject.ErrInvalid):
-			return httpx.BadRequest("subjectKey 格式无效")
-		default:
-			return err
-		}
 	}
 	input, err := httpx.Body[commentInput](r)
 	if err != nil {
@@ -193,17 +173,8 @@ func (h *externalCommentHandler) create(w http.ResponseWriter, r *http.Request) 
 	return nil
 }
 
-func externalCommentParams(r *http.Request) (domain.CommentSubjectType, int64, error) {
-	subjectType, ok := subject.TypeID(chi.URLParam(r, "type"))
-	if !ok {
-		return 0, 0, httpx.BadRequest("不支持的外部资源类型")
-	}
-	id, err := externalCommentID(r)
-	return subjectType, id, err
-}
-
 func (h *externalCommentHandler) update(w http.ResponseWriter, r *http.Request) error {
-	subjectType, id, err := externalCommentParams(r)
+	id, err := externalCommentID(r)
 	if err != nil {
 		return err
 	}
@@ -215,10 +186,10 @@ func (h *externalCommentHandler) update(w http.ResponseWriter, r *http.Request) 
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	comment, err := h.commentUsecase.Update(commentActor(principal), usecase.UpdateCommentCommand{
-		SubjectType: subjectType,
-		CommentID:   id,
-		Content:     input.Content,
+	comment, err := h.commentUsecase.UpdateExternal(commentActor(principal), usecase.UpdateExternalCommentCommand{
+		Kind:      chi.URLParam(r, "type"),
+		CommentID: id,
+		Content:   input.Content,
 	})
 	if err != nil {
 		return transportError(err)
@@ -228,14 +199,14 @@ func (h *externalCommentHandler) update(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *externalCommentHandler) delete(w http.ResponseWriter, r *http.Request) error {
-	subjectType, id, err := externalCommentParams(r)
+	id, err := externalCommentID(r)
 	if err != nil {
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.commentUsecase.Delete(commentActor(principal), usecase.DeleteCommentCommand{
-		SubjectType: subjectType,
-		CommentID:   id,
+	if err := h.commentUsecase.DeleteExternal(commentActor(principal), usecase.DeleteExternalCommentCommand{
+		Kind:      chi.URLParam(r, "type"),
+		CommentID: id,
 	}); err != nil {
 		return transportError(err)
 	}
@@ -244,10 +215,6 @@ func (h *externalCommentHandler) delete(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *externalCommentHandler) setStatus(w http.ResponseWriter, r *http.Request) error {
-	subjectType, ok := subject.TypeID(chi.URLParam(r, "type"))
-	if !ok {
-		return httpx.BadRequest("不支持的外部资源类型")
-	}
 	id, err := externalCommentID(r)
 	if err != nil {
 		return err
@@ -260,10 +227,10 @@ func (h *externalCommentHandler) setStatus(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		return err
 	}
-	if err := h.commentUsecase.SetStatus(usecase.SetCommentStatusCommand{
-		SubjectType: subjectType,
-		CommentID:   id,
-		Status:      status,
+	if err := h.commentUsecase.SetExternalStatus(usecase.SetExternalCommentStatusCommand{
+		Kind:      chi.URLParam(r, "type"),
+		CommentID: id,
+		Status:    status,
 	}); err != nil {
 		return transportError(err)
 	}

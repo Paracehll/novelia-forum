@@ -51,9 +51,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	subjects := subject.NewHTTPChecker()
-	if subjects == nil {
-		slog.Error("Subject checker is not configured")
+	subjects, err := subject.NewRegistry(subject.Novel())
+	if err != nil {
+		slog.Error("Configure subject plugins failed", "error", err)
 		os.Exit(1)
 	}
 

@@ -39,7 +39,8 @@ func (r *listingCommentRepository) ListReplies(_ domain.CommentSubjectType, subj
 func TestExternalCommentRepliesArePaginatedSeparately(t *testing.T) {
 	repo := &listingCommentRepository{rootID: 7}
 	router := chi.NewRouter()
-	NewExternalCommentHandler(usecase.NewCommentUsecase(repo, nil, nil, nil)).RegisterRoutes(router)
+	resolver := handlerSubjectResolver{valid: true, exists: true}
+	NewExternalCommentHandler(usecase.NewCommentUsecase(repo, nil, nil, resolver)).RegisterRoutes(router)
 
 	for _, tc := range []struct {
 		path           string
@@ -150,7 +151,8 @@ func TestAdminCanModifyExternalCommentAfterWindow(t *testing.T) {
 				AuthorID: 1, CreatedAt: time.Now().Add(-21 * time.Minute),
 			}}
 			router := chi.NewRouter()
-			NewExternalCommentHandler(usecase.NewCommentUsecase(repo, nil, nil, nil)).RegisterRoutes(router)
+			resolver := handlerSubjectResolver{valid: true, exists: true}
+			NewExternalCommentHandler(usecase.NewCommentUsecase(repo, nil, nil, resolver)).RegisterRoutes(router)
 			token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 				"sub": "tester", "uid": 1, "role": tc.role,
 			}).SignedString([]byte(httpx.AccessTokenSecret))
@@ -287,12 +289,17 @@ func TestInvalidCommentRequestsStopBeforeUsecase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A nil usecase makes any accidental call past parameter validation fail.
+	// Nil usecases make accidental calls past handler-only validation fail. The
+	// external routes use a real usecase because subject rules live there.
 	router := chi.NewRouter()
 	router.Route("/post", NewPostHandler(nil, nil, nil, nil).RegisterRoutes)
 	router.Route("/comment", NewCommentHandler(nil).RegisterRoutes)
 	router.Route("/admin/comment", NewCommentHandler(nil).RegisterAdminRoutes)
-	router.Route("/external", NewExternalCommentHandler(nil).RegisterRoutes)
+	externalComments := usecase.NewCommentUsecase(
+		&domainCommentRepository{}, nil, nil,
+		handlerSubjectResolver{valid: true, exists: true},
+	)
+	router.Route("/external", NewExternalCommentHandler(externalComments).RegisterRoutes)
 	for _, tc := range []struct{ method, path, body string }{
 		{http.MethodPost, "/post/42/comment", `{"content":"评论","rootId":0}`},
 		{http.MethodPut, "/admin/comment/7/status", `{"status":"invalid"}`},
@@ -330,7 +337,8 @@ func TestInvalidCommentContentResponses(t *testing.T) {
 		for _, content := range []string{"", " \n\t", strings.Repeat("字", 1001)} {
 			t.Run(route.method+route.path+"/"+strconv.Itoa(len(content)), func(t *testing.T) {
 				repo := &domainCommentRepository{}
-				comments := usecase.NewCommentUsecase(repo, nil, nil, nil)
+				resolver := handlerSubjectResolver{valid: true, exists: true}
+				comments := usecase.NewCommentUsecase(repo, nil, nil, resolver)
 				router := chi.NewRouter()
 				router.Route("/post", NewPostHandler(nil, nil, comments, nil).RegisterRoutes)
 				router.Route("/comment", NewCommentHandler(comments).RegisterRoutes)
@@ -344,7 +352,7 @@ func TestInvalidCommentContentResponses(t *testing.T) {
 				request.Header.Set("Authorization", "Bearer "+token)
 				response := httptest.NewRecorder()
 				router.ServeHTTP(response, request)
-				if response.Code != http.StatusBadRequest || response.Body.String() != "content 不能为空且不能超过 1000 字" || repo.written {
+				if response.Code != http.StatusBadRequest || response.Body.String() != "评论内容不能为空且不能超过 1000 字" || repo.written {
 					t.Fatalf("status=%d body=%q written=%v", response.Code, response.Body.String(), repo.written)
 				}
 			})
