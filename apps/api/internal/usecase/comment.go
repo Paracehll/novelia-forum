@@ -142,13 +142,9 @@ func (u *CommentUsecase) List(
 	}
 	if !actor.IsAdmin {
 		for i := range items {
-			if items[i].Root.Status != domain.CommentStatusPublished {
-				items[i].Root.Content = ""
-			}
+			redactUnpublishedContent(&items[i].Root)
 			for j := range items[i].Replies {
-				if items[i].Replies[j].Status != domain.CommentStatusPublished {
-					items[i].Replies[j].Content = ""
-				}
+				redactUnpublishedContent(&items[i].Replies[j])
 			}
 		}
 	}
@@ -181,12 +177,16 @@ func (u *CommentUsecase) ListReplies(
 	}
 	if !actor.IsAdmin {
 		for i := range items {
-			if items[i].Status != domain.CommentStatusPublished {
-				items[i].Content = ""
-			}
+			redactUnpublishedContent(&items[i])
 		}
 	}
 	return total, items, nil
+}
+
+func redactUnpublishedContent(comment *domain.Comment) {
+	if comment.Status != domain.CommentStatusPublished {
+		comment.Content = ""
+	}
 }
 
 func (u *CommentUsecase) checkContent(content string) error {
