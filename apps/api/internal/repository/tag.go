@@ -10,6 +10,7 @@ import (
 	"forum/internal/domain"
 
 	. "github.com/go-jet/jet/v2/postgres"
+	"github.com/go-jet/jet/v2/qrm"
 )
 
 type Tag = domain.Tag
@@ -60,12 +61,18 @@ func (r *tagRepository) ListActive(ctx context.Context) ([]Tag, error) {
 }
 
 func (r *tagRepository) ListForPost(ctx context.Context, postID int64) ([]Tag, error) {
+	return listPostTags(ctx, r.db, postID)
+}
+
+// listPostTags also accepts a transaction so writes can assemble their result
+// before committing, without reading through a separate database connection.
+func listPostTags(ctx context.Context, db qrm.DB, postID int64) ([]Tag, error) {
 	stmt := SELECT(table.Tag.AllColumns).
 		FROM(table.Tag.INNER_JOIN(table.PostTag, table.Tag.ID.EQ(table.PostTag.TagID))).
 		WHERE(table.PostTag.PostID.EQ(Int64(postID))).
 		ORDER_BY(table.Tag.SortOrder.ASC(), table.Tag.ID.ASC())
 	var dest []model.Tag
-	if err := stmt.QueryContext(ctx, r.db, &dest); err != nil {
+	if err := stmt.QueryContext(ctx, db, &dest); err != nil {
 		return nil, storageError(err, "tag.ListForPost")
 	}
 	return tagsFromModels(dest), nil

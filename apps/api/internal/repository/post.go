@@ -290,14 +290,14 @@ func (r *postRepository) Create(ctx context.Context, input CreatePostInput) (res
 	if err := replacePostTags(ctx, tx, record.ID, record.CategoryID, input.TagIDs); err != nil {
 		return nil, err
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	tags, err := r.tagRepo.ListForPost(ctx, record.ID)
+	tags, err := listPostTags(ctx, tx, record.ID)
 	if err != nil {
 		return nil, err
 	}
 	post := postFromModel(record, tags)
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
 	return &post, nil
 }
 
@@ -355,14 +355,14 @@ func (r *postRepository) Update(
 	if err := replacePostTags(ctx, tx, id, input.CategoryID, input.TagIDs); err != nil {
 		return nil, err
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	tags, err := r.tagRepo.ListForPost(ctx, id)
+	tags, err := listPostTags(ctx, tx, id)
 	if err != nil {
 		return nil, err
 	}
 	post := postFromModel(record, tags)
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
 	return &post, nil
 }
 
