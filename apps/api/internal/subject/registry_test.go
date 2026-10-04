@@ -2,6 +2,7 @@ package subject
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -103,8 +104,17 @@ func TestNovelCheckTimeoutAndCancellation(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if exists, err := registry.Check(ctx, "novel", "web-syosetu-n1234"); exists || err != ErrCheckFailed {
+	if exists, err := registry.Check(ctx, "novel", "web-syosetu-n1234"); exists || !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancellation result: exists=%t err=%v", exists, err)
+	}
+	deadlineCtx, deadlineCancel := context.WithDeadline(context.Background(), time.Time{})
+	defer deadlineCancel()
+	if exists, err := registry.Check(
+		deadlineCtx,
+		"novel",
+		"web-syosetu-n1234",
+	); exists || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("deadline result: exists=%t err=%v", exists, err)
 	}
 }
 

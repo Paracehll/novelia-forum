@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"forum/internal/httpx"
@@ -28,7 +29,11 @@ type capturingPostRepository struct {
 	limit, offset int64
 }
 
-func (r *capturingPostRepository) List(filter repository.PostFilter, limit, offset int64) (int64, []domain.PostListItem, error) {
+func (r *capturingPostRepository) List(
+	ctx context.Context,
+	filter repository.PostFilter,
+	limit, offset int64,
+) (int64, []domain.PostListItem, error) {
 	r.filter = filter
 	r.limit, r.offset = limit, offset
 	return 0, nil, nil
@@ -41,7 +46,7 @@ type postStatusRepository struct {
 	writes int
 }
 
-func (r *postStatusRepository) SetStatus(id int64, status domain.PostStatus) error {
+func (r *postStatusRepository) SetStatus(ctx context.Context, id int64, status domain.PostStatus) error {
 	r.id, r.status = id, status
 	r.writes++
 	return nil
@@ -216,7 +221,7 @@ func TestValidatePostTextLimits(t *testing.T) {
 		{"long content with padding", "标题", strings.Repeat("文", 20000) + " ", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := posts.Create(usecase.Actor{UserID: 1}, usecase.PostInput{
+			_, err := posts.Create(context.Background(), usecase.Actor{UserID: 1}, usecase.PostInput{
 				CategoryID: 1, Title: tc.title, Content: tc.content,
 			})
 			if (err != nil) != tc.wantErr {
@@ -238,7 +243,7 @@ func TestValidatePostTagLimit(t *testing.T) {
 		{"four tags", []int64{1, 2, 3, 4}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := posts.Create(usecase.Actor{UserID: 1}, usecase.PostInput{
+			_, err := posts.Create(context.Background(), usecase.Actor{UserID: 1}, usecase.PostInput{
 				CategoryID: 1, Title: "标题", Content: "正文", TagIDs: tc.tagIDs,
 			})
 			if (err != nil) != tc.wantErr {
@@ -248,7 +253,12 @@ func TestValidatePostTagLimit(t *testing.T) {
 	}
 }
 
-func (r listPostRepository) List(repository.PostFilter, int64, int64) (int64, []domain.PostListItem, error) {
+func (r listPostRepository) List(
+	context.Context,
+	repository.PostFilter,
+	int64,
+	int64,
+) (int64, []domain.PostListItem, error) {
 	return int64(len(r.items)), r.items, nil
 }
 
@@ -323,24 +333,28 @@ type writePostRepository struct {
 	written bool
 }
 
-func (r *writePostRepository) Find(int64, bool) (*domain.Post, error) {
+func (r *writePostRepository) Find(context.Context, int64, bool) (*domain.Post, error) {
 	return &domain.Post{ID: 42, AuthorID: 1}, nil
 }
 
-func (r *writePostRepository) Create(input repository.CreatePostInput) (*domain.Post, error) {
+func (r *writePostRepository) Create(ctx context.Context, input repository.CreatePostInput) (*domain.Post, error) {
 	r.written = true
 	return &domain.Post{ID: 42, CategoryID: input.CategoryID}, nil
 }
 
-func (r *writePostRepository) Update(id int64, input repository.UpdatePostInput) (*domain.Post, error) {
+func (r *writePostRepository) Update(
+	ctx context.Context,
+	id int64,
+	input repository.UpdatePostInput,
+) (*domain.Post, error) {
 	r.written = true
 	return &domain.Post{ID: id, CategoryID: input.CategoryID}, nil
 }
 
 type noFavoriteRepository struct{ repository.FavoriteRepository }
 
-func (noFavoriteRepository) Has(int64, int64) (bool, error) { return false, nil }
-func (noFavoriteRepository) ListPostIDs(int64, []int64) (map[int64]bool, error) {
+func (noFavoriteRepository) Has(context.Context, int64, int64) (bool, error) { return false, nil }
+func (noFavoriteRepository) ListPostIDs(context.Context, int64, []int64) (map[int64]bool, error) {
 	return map[int64]bool{}, nil
 }
 
@@ -413,11 +427,11 @@ type deletePostRepository struct {
 	deleted bool
 }
 
-func (r *deletePostRepository) Find(int64, bool) (*domain.Post, error) {
+func (r *deletePostRepository) Find(context.Context, int64, bool) (*domain.Post, error) {
 	return &r.post, nil
 }
 
-func (r *deletePostRepository) SetStatus(id int64, status domain.PostStatus) error {
+func (r *deletePostRepository) SetStatus(ctx context.Context, id int64, status domain.PostStatus) error {
 	r.deleted = true
 	if id != r.post.ID || status != domain.PostStatusDeleted {
 		return fmt.Errorf("unexpected post status update: id=%d status=%d", id, status)

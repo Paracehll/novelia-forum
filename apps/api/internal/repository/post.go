@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"forum/.gen/main/public/model"
 	"forum/.gen/main/public/table"
@@ -45,14 +46,14 @@ type UpdatePostInput struct {
 }
 
 type PostRepository interface {
-	List(filter PostFilter, limit, offset int64) (int64, []domain.PostListItem, error)
-	Find(id int64, incrementViews bool) (*domain.Post, error)
-	ExistsPublished(id int64) (bool, error)
-	Create(input CreatePostInput) (*domain.Post, error)
-	Update(id int64, input UpdatePostInput) (*domain.Post, error)
-	SetStatus(id int64, status domain.PostStatus) error
-	SetCommentsLocked(id int64, locked bool) error
-	SetPinOrder(id int64, pinOrder *int32) error
+	List(ctx context.Context, filter PostFilter, limit, offset int64) (int64, []domain.PostListItem, error)
+	Find(ctx context.Context, id int64, incrementViews bool) (*domain.Post, error)
+	ExistsPublished(ctx context.Context, id int64) (bool, error)
+	Create(ctx context.Context, input CreatePostInput) (*domain.Post, error)
+	Update(ctx context.Context, id int64, input UpdatePostInput) (*domain.Post, error)
+	SetStatus(ctx context.Context, id int64, status domain.PostStatus) error
+	SetCommentsLocked(ctx context.Context, id int64, locked bool) error
+	SetPinOrder(ctx context.Context, id int64, pinOrder *int32) error
 }
 
 type postRepository struct {
@@ -168,13 +169,17 @@ func postOrderBy(sort string) []OrderByClause {
 	}
 }
 
-func (r *postRepository) List(filter PostFilter, limit, offset int64) (total int64, items []domain.PostListItem, err error) {
+func (r *postRepository) List(
+	ctx context.Context,
+	filter PostFilter,
+	limit, offset int64,
+) (total int64, items []domain.PostListItem, err error) {
 	defer func() { err = storageError(err, "post.List") }()
 	condition := filter.condition()
 	from := postFrom(filter)
 	countStmt := SELECT(COUNT(STAR)).FROM(from).WHERE(condition)
 	var count struct{ Count int64 }
-	if err := countStmt.Query(r.db, &count); err != nil {
+	if err := countStmt.QueryContext(ctx, r.db, &count); err != nil {
 		return 0, nil, err
 	}
 
@@ -190,14 +195,14 @@ func (r *postRepository) List(filter PostFilter, limit, offset int64) (total int
 		LIMIT(limit).
 		OFFSET(offset)
 	var records []model.Post
-	if err := stmt.Query(r.db, &records); err != nil {
+	if err := stmt.QueryContext(ctx, r.db, &records); err != nil {
 		return 0, nil, err
 	}
 	postIDs := make([]int64, len(records))
 	for i, record := range records {
 		postIDs[i] = record.ID
 	}
-	tagsByPostID, err := r.tagRepo.ListForPosts(postIDs)
+	tagsByPostID, err := r.tagRepo.ListForPosts(ctx, postIDs)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -208,19 +213,23 @@ func (r *postRepository) List(filter PostFilter, limit, offset int64) (total int
 	return count.Count, dest, nil
 }
 
-func (r *postRepository) ExistsPublished(id int64) (exists bool, err error) {
+func (r *postRepository) ExistsPublished(ctx context.Context, id int64) (exists bool, err error) {
 	defer func() { err = storageError(err, "post.ExistsPublished") }()
 	var result struct{ Exists bool }
 	stmt := SELECT(EXISTS(SELECT(table.Post.ID).
 		FROM(table.Post).
 		WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(int16(domain.PostStatusPublished)))))).AS("Exists"))
-	if err := stmt.Query(r.db, &result); err != nil {
+	if err := stmt.QueryContext(ctx, r.db, &result); err != nil {
 		return false, err
 	}
 	return result.Exists, nil
 }
 
-func (r *postRepository) Find(id int64, incrementViews bool) (result *domain.Post, err error) {
+func (r *postRepository) Find(
+	ctx context.Context,
+	id int64,
+	incrementViews bool,
+) (result *domain.Post, err error) {
 	defer func() { err = storageError(err, "post.Find") }()
 	var dest model.Post
 	if incrementViews {
@@ -228,17 +237,17 @@ func (r *postRepository) Find(id int64, incrementViews bool) (result *domain.Pos
 			SET(table.Post.ViewsCount.ADD(Int32(1))).
 			WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(int16(domain.PostStatusPublished))))).
 			RETURNING(table.Post.AllColumns)
-		err = stmt.Query(r.db, &dest)
+		err = stmt.QueryContext(ctx, r.db, &dest)
 	} else {
 		stmt := SELECT(table.Post.AllColumns).
 			FROM(table.Post).
 			WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(int16(domain.PostStatusPublished)))))
-		err = stmt.Query(r.db, &dest)
+		err = stmt.QueryContext(ctx, r.db, &dest)
 	}
 	if err != nil {
 		return nil, err
 	}
-	tags, err := r.tagRepo.ListForPost(id)
+	tags, err := r.tagRepo.ListForPost(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -246,12 +255,12 @@ func (r *postRepository) Find(id int64, incrementViews bool) (result *domain.Pos
 	return &post, nil
 }
 
-func (r *postRepository) Create(input CreatePostInput) (result *domain.Post, err error) {
+func (r *postRepository) Create(ctx context.Context, input CreatePostInput) (result *domain.Post, err error) {
 	defer func() { err = storageError(err, "post.Create") }()
 	if _, ok := forumcategory.FindByID(input.CategoryID); !ok {
 		return nil, ErrInvalidCategory
 	}
-	tx, err := r.db.Begin()
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -275,16 +284,16 @@ func (r *postRepository) Create(input CreatePostInput) (result *domain.Post, err
 	).
 		MODEL(record).
 		RETURNING(table.Post.AllColumns)
-	if err := insert.Query(tx, &record); err != nil {
+	if err := insert.QueryContext(ctx, tx, &record); err != nil {
 		return nil, err
 	}
-	if err := replacePostTags(tx, record.ID, record.CategoryID, input.TagIDs); err != nil {
+	if err := replacePostTags(ctx, tx, record.ID, record.CategoryID, input.TagIDs); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	tags, err := r.tagRepo.ListForPost(record.ID)
+	tags, err := r.tagRepo.ListForPost(ctx, record.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -292,9 +301,9 @@ func (r *postRepository) Create(input CreatePostInput) (result *domain.Post, err
 	return &post, nil
 }
 
-func replacePostTags(db qrm.DB, postID, categoryID int64, tagIDs []int64) error {
+func replacePostTags(ctx context.Context, db qrm.DB, postID, categoryID int64, tagIDs []int64) error {
 	deleteStmt := table.PostTag.DELETE().WHERE(table.PostTag.PostID.EQ(Int64(postID)))
-	if _, err := deleteStmt.Exec(db); err != nil {
+	if _, err := deleteStmt.ExecContext(ctx, db); err != nil {
 		return err
 	}
 	if len(tagIDs) == 0 {
@@ -306,7 +315,7 @@ func replacePostTags(db qrm.DB, postID, categoryID int64, tagIDs []int64) error 
 			AND(table.Tag.IsActive.IS_TRUE()).
 			AND(table.Tag.ID.IN(integerExpressions(tagIDs)...)))
 	var valid []Tag
-	if err := validStmt.Query(db, &valid); err != nil {
+	if err := validStmt.QueryContext(ctx, db, &valid); err != nil {
 		return err
 	}
 	if len(valid) != len(tagIDs) {
@@ -317,16 +326,20 @@ func replacePostTags(db qrm.DB, postID, categoryID int64, tagIDs []int64) error 
 		links[i] = model.PostTag{PostID: postID, TagID: tag.ID}
 	}
 	insertStmt := table.PostTag.INSERT(table.PostTag.PostID, table.PostTag.TagID).MODELS(links)
-	_, err := insertStmt.Exec(db)
+	_, err := insertStmt.ExecContext(ctx, db)
 	return err
 }
 
-func (r *postRepository) Update(id int64, input UpdatePostInput) (result *domain.Post, err error) {
+func (r *postRepository) Update(
+	ctx context.Context,
+	id int64,
+	input UpdatePostInput,
+) (result *domain.Post, err error) {
 	defer func() { err = storageError(err, "post.Update") }()
 	if _, ok := forumcategory.FindByID(input.CategoryID); !ok {
 		return nil, ErrInvalidCategory
 	}
-	tx, err := r.db.Begin()
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -336,16 +349,16 @@ func (r *postRepository) Update(id int64, input UpdatePostInput) (result *domain
 		WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(int16(domain.PostStatusPublished))))).
 		RETURNING(table.Post.AllColumns)
 	var record model.Post
-	if err := stmt.Query(tx, &record); err != nil {
+	if err := stmt.QueryContext(ctx, tx, &record); err != nil {
 		return nil, err
 	}
-	if err := replacePostTags(tx, id, input.CategoryID, input.TagIDs); err != nil {
+	if err := replacePostTags(ctx, tx, id, input.CategoryID, input.TagIDs); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	tags, err := r.tagRepo.ListForPost(id)
+	tags, err := r.tagRepo.ListForPost(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -353,32 +366,32 @@ func (r *postRepository) Update(id int64, input UpdatePostInput) (result *domain
 	return &post, nil
 }
 
-func (r *postRepository) SetStatus(id int64, status domain.PostStatus) (err error) {
+func (r *postRepository) SetStatus(ctx context.Context, id int64, status domain.PostStatus) (err error) {
 	defer func() { err = storageError(err, "post.SetStatus") }()
 	stmt := table.Post.UPDATE(table.Post.Status, table.Post.UpdatedAt).
 		SET(Int16(int16(status)), TimestampzT(time.Now())).
 		WHERE(table.Post.ID.EQ(Int64(id)))
-	return execPostUpdate(r.db, stmt)
+	return execPostUpdate(ctx, r.db, stmt)
 }
 
-func (r *postRepository) SetCommentsLocked(id int64, locked bool) (err error) {
+func (r *postRepository) SetCommentsLocked(ctx context.Context, id int64, locked bool) (err error) {
 	defer func() { err = storageError(err, "post.SetCommentsLocked") }()
 	stmt := table.Post.UPDATE(table.Post.CommentsLocked, table.Post.UpdatedAt).
 		SET(Bool(locked), TimestampzT(time.Now())).
 		WHERE(table.Post.ID.EQ(Int64(id)))
-	return execPostUpdate(r.db, stmt)
+	return execPostUpdate(ctx, r.db, stmt)
 }
 
-func (r *postRepository) SetPinOrder(id int64, pinOrder *int32) (err error) {
+func (r *postRepository) SetPinOrder(ctx context.Context, id int64, pinOrder *int32) (err error) {
 	defer func() { err = storageError(err, "post.SetPinOrder") }()
 	stmt := table.Post.UPDATE(table.Post.PinOrder, table.Post.UpdatedAt).
 		SET(pinOrder, TimestampzT(time.Now())).
 		WHERE(table.Post.ID.EQ(Int64(id)))
-	return execPostUpdate(r.db, stmt)
+	return execPostUpdate(ctx, r.db, stmt)
 }
 
-func execPostUpdate(db qrm.DB, stmt UpdateStatement) error {
-	result, err := stmt.Exec(db)
+func execPostUpdate(ctx context.Context, db qrm.DB, stmt UpdateStatement) error {
+	result, err := stmt.ExecContext(ctx, db)
 	if err != nil {
 		return err
 	}

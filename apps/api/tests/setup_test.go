@@ -3,11 +3,11 @@
 package tests
 
 import (
-	"forum/internal/infra"
-	"forum/internal/repository"
 	"context"
 	"database/sql"
 	"fmt"
+	"forum/internal/infra"
+	"forum/internal/repository"
 	"os"
 	"strconv"
 	"testing"

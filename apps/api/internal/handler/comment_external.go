@@ -91,6 +91,7 @@ func (h *externalCommentHandler) list(w http.ResponseWriter, r *http.Request) er
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
 	total, items, err := h.commentUsecase.ListExternal(
+		r.Context(),
 		actorFromPrincipal(principal),
 		usecase.ListExternalCommentsQuery{
 			Kind:       chi.URLParam(r, "type"),
@@ -125,6 +126,7 @@ func (h *externalCommentHandler) listReplies(w http.ResponseWriter, r *http.Requ
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
 	total, items, err := h.commentUsecase.ListExternalReplies(
+		r.Context(),
 		actorFromPrincipal(principal),
 		usecase.ListExternalCommentRepliesQuery{
 			Kind:       chi.URLParam(r, "type"),
@@ -190,6 +192,7 @@ func (h *externalCommentHandler) update(w http.ResponseWriter, r *http.Request) 
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
 	comment, err := h.commentUsecase.UpdateExternal(
+		r.Context(),
 		actorFromPrincipal(principal),
 		usecase.UpdateExternalCommentCommand{
 			Kind:      chi.URLParam(r, "type"),
@@ -211,6 +214,7 @@ func (h *externalCommentHandler) delete(w http.ResponseWriter, r *http.Request) 
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
 	if err := h.commentUsecase.DeleteExternal(
+		r.Context(),
 		actorFromPrincipal(principal),
 		usecase.DeleteExternalCommentCommand{
 			Kind:      chi.URLParam(r, "type"),
@@ -238,6 +242,7 @@ func (h *externalCommentHandler) setStatus(w http.ResponseWriter, r *http.Reques
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
 	if err := h.commentUsecase.SetExternalStatus(
+		r.Context(),
 		actorFromPrincipal(principal),
 		usecase.SetExternalCommentStatusCommand{
 			Kind:      chi.URLParam(r, "type"),

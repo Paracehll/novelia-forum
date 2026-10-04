@@ -3,6 +3,7 @@
 package tests
 
 import (
+	"context"
 	"errors"
 	forumcategory "forum/internal/category"
 	"forum/internal/domain"
@@ -13,7 +14,7 @@ import (
 func TestJetRepositories(t *testing.T) {
 	resetDatabase()
 	category, _ := forumcategory.FindByID(forumcategory.NovelID)
-	if _, err := postRepo.Create(repository.CreatePostInput{
+	if _, err := postRepo.Create(context.Background(), repository.CreatePostInput{
 		CategoryID: 999,
 		Title:      "无效分类",
 		Content:    "正文",
@@ -22,7 +23,7 @@ func TestJetRepositories(t *testing.T) {
 	}); !errors.Is(err, repository.ErrInvalidCategory) {
 		t.Fatalf("got %v, want ErrInvalidCategory", err)
 	}
-	tag, err := tagRepo.Create(category.ID, "公告", 1, 10, `{}`)
+	tag, err := tagRepo.Create(context.Background(), category.ID, "公告", 1, 10, `{}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,40 +31,47 @@ func TestJetRepositories(t *testing.T) {
 		t.Fatal("new tag is inactive")
 	}
 	otherCategory, _ := forumcategory.FindByID(forumcategory.AnnouncementsID)
-	if _, err := tagRepo.Update(otherCategory.ID, tag.ID, "跨分类更新", 2, 20); !repository.IsNotFound(err) {
+	if _, err := tagRepo.Update(
+		context.Background(),
+		otherCategory.ID,
+		tag.ID,
+		"跨分类更新",
+		2,
+		20,
+	); !repository.IsNotFound(err) {
 		t.Fatalf("cross-category update error = %v, want not found", err)
 	}
-	if err := tagRepo.SetActive(otherCategory.ID, tag.ID, false); !repository.IsNotFound(err) {
+	if err := tagRepo.SetActive(context.Background(), otherCategory.ID, tag.ID, false); !repository.IsNotFound(err) {
 		t.Fatalf("cross-category activation error = %v, want not found", err)
 	}
-	if err := tagRepo.SetActive(tag.CategoryID, tag.ID, false); err != nil {
+	if err := tagRepo.SetActive(context.Background(), tag.CategoryID, tag.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	tag, err = tagRepo.Update(tag.CategoryID, tag.ID, "公告", 2, 20)
+	tag, err = tagRepo.Update(context.Background(), tag.CategoryID, tag.ID, "公告", 2, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if tag.IsActive || tag.Color != 2 || tag.SortOrder != 20 {
 		t.Fatalf("unexpected updated tag: %#v", tag)
 	}
-	if err := tagRepo.SetActive(tag.CategoryID, tag.ID, true); err != nil {
+	if err := tagRepo.SetActive(context.Background(), tag.CategoryID, tag.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	inactiveTag, err := tagRepo.Create(category.ID, "停用标签", 3, 30, `{}`)
+	inactiveTag, err := tagRepo.Create(context.Background(), category.ID, "停用标签", 3, 30, `{}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := tagRepo.SetActive(inactiveTag.CategoryID, inactiveTag.ID, false); err != nil {
+	if err := tagRepo.SetActive(context.Background(), inactiveTag.CategoryID, inactiveTag.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	activeTags, err := tagRepo.ListActive()
+	activeTags, err := tagRepo.ListActive(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(activeTags) != 1 || activeTags[0].ID != tag.ID {
 		t.Fatalf("unexpected active tags: %#v", activeTags)
 	}
-	categoryTags, err := tagRepo.ListByCategory(category.ID)
+	categoryTags, err := tagRepo.ListByCategory(context.Background(), category.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +79,7 @@ func TestJetRepositories(t *testing.T) {
 		t.Fatalf("unexpected category tags: %#v", categoryTags)
 	}
 
-	post, err := postRepo.Create(repository.CreatePostInput{
+	post, err := postRepo.Create(context.Background(), repository.CreatePostInput{
 		CategoryID: category.ID,
 		Title:      "第一篇帖子", Content: "正文", AuthorID: 7, AuthorUsername: "alice",
 		TagIDs: []int64{tag.ID}, Attr: `{}`,
@@ -83,7 +91,7 @@ func TestJetRepositories(t *testing.T) {
 		t.Fatalf("unexpected tags: %#v", post.Tags)
 	}
 	const otherSubjectType = domain.CommentSubjectNovel
-	otherSubjectComment, err := commentRepo.Create(domain.Comment{
+	otherSubjectComment, err := commentRepo.Create(context.Background(), domain.Comment{
 		SubjectType:    otherSubjectType,
 		SubjectKey:     "novel:chapter-1",
 		Content:        "其他主体评论",
@@ -93,7 +101,13 @@ func TestJetRepositories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	otherTotal, otherComments, err := commentRepo.ListRoots(otherSubjectType, "novel:chapter-1", 20, 0)
+	otherTotal, otherComments, err := commentRepo.ListRoots(
+		context.Background(),
+		otherSubjectType,
+		"novel:chapter-1",
+		20,
+		0,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,10 +121,21 @@ func TestJetRepositories(t *testing.T) {
 	if commentsCount != 0 {
 		t.Fatalf("post comments count changed after creating a non-post comment: %d", commentsCount)
 	}
-	if err := commentRepo.SetStatus(otherSubjectType, otherSubjectComment.ID, domain.CommentStatusDeleted); err != nil {
+	if err := commentRepo.SetStatus(
+		context.Background(),
+		otherSubjectType,
+		otherSubjectComment.ID,
+		domain.CommentStatusDeleted,
+	); err != nil {
 		t.Fatal(err)
 	}
-	otherTotal, otherComments, err = commentRepo.ListRoots(otherSubjectType, "novel:chapter-1", 20, 0)
+	otherTotal, otherComments, err = commentRepo.ListRoots(
+		context.Background(),
+		otherSubjectType,
+		"novel:chapter-1",
+		20,
+		0,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +149,15 @@ func TestJetRepositories(t *testing.T) {
 		t.Fatalf("post comments count changed after moderating a non-post comment: %d", commentsCount)
 	}
 
-	total, posts, err := postRepo.List(repository.PostFilter{CategorySlug: category.Slug, TagIDs: []int64{tag.ID}}, 20, 0)
+	total, posts, err := postRepo.List(
+		context.Background(),
+		repository.PostFilter{
+			CategorySlug: category.Slug,
+			TagIDs:       []int64{tag.ID},
+		},
+		20,
+		0,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +165,7 @@ func TestJetRepositories(t *testing.T) {
 		t.Fatalf("unexpected posts: total=%d items=%d", total, len(posts))
 	}
 
-	viewed, err := postRepo.Find(post.ID, true)
+	viewed, err := postRepo.Find(context.Background(), post.ID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +176,7 @@ func TestJetRepositories(t *testing.T) {
 		t.Fatalf("views count = %d", viewed.ViewsCount)
 	}
 
-	root, err := commentRepo.Create(domain.Comment{
+	root, err := commentRepo.Create(context.Background(), domain.Comment{
 		SubjectType:    domain.CommentSubjectPost,
 		SubjectKey:     domain.PostCommentSubjectKey(post.ID),
 		Content:        "评论",
@@ -163,7 +196,7 @@ func TestJetRepositories(t *testing.T) {
 	if commentAttr != "{}" {
 		t.Fatalf("comment attr = %q, want repository default", commentAttr)
 	}
-	_, err = commentRepo.Create(domain.Comment{
+	_, err = commentRepo.Create(context.Background(), domain.Comment{
 		SubjectType:    domain.CommentSubjectPost,
 		SubjectKey:     domain.PostCommentSubjectKey(post.ID),
 		RootID:         &root.ID,
@@ -174,14 +207,27 @@ func TestJetRepositories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	commentTotal, comments, err := commentRepo.ListRoots(domain.CommentSubjectPost, domain.PostCommentSubjectKey(post.ID), 20, 0)
+	commentTotal, comments, err := commentRepo.ListRoots(
+		context.Background(),
+		domain.CommentSubjectPost,
+		domain.PostCommentSubjectKey(post.ID),
+		20,
+		0,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if commentTotal != 1 || len(comments) != 1 || comments[0].ReplyCount != 1 {
 		t.Fatalf("unexpected comments: total=%d items=%d", commentTotal, len(comments))
 	}
-	replyTotal, replies, err := commentRepo.ListReplies(domain.CommentSubjectPost, domain.PostCommentSubjectKey(post.ID), root.ID, 20, 0)
+	replyTotal, replies, err := commentRepo.ListReplies(
+		context.Background(),
+		domain.CommentSubjectPost,
+		domain.PostCommentSubjectKey(post.ID),
+		root.ID,
+		20,
+		0,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,24 +235,24 @@ func TestJetRepositories(t *testing.T) {
 		t.Fatalf("unexpected replies: total=%d items=%#v", replyTotal, replies)
 	}
 
-	if err := favoriteRepo.Set(post.ID, 7, true); err != nil {
+	if err := favoriteRepo.Set(context.Background(), post.ID, 7, true); err != nil {
 		t.Fatal(err)
 	}
-	favorited, err := favoriteRepo.Has(post.ID, 7)
+	favorited, err := favoriteRepo.Has(context.Background(), post.ID, 7)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !favorited {
 		t.Fatal("favorite was not found after insertion")
 	}
-	favoriteIDs, err := favoriteRepo.ListPostIDs(7, []int64{post.ID})
+	favoriteIDs, err := favoriteRepo.ListPostIDs(context.Background(), 7, []int64{post.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !favoriteIDs[post.ID] {
 		t.Fatal("favorite post ID was not returned")
 	}
-	favoriteTotal, _, err := postRepo.List(repository.PostFilter{FavoriteUserID: 7}, 20, 0)
+	favoriteTotal, _, err := postRepo.List(context.Background(), repository.PostFilter{FavoriteUserID: 7}, 20, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,10 +260,10 @@ func TestJetRepositories(t *testing.T) {
 		t.Fatalf("favorite total = %d", favoriteTotal)
 	}
 
-	if err := postRepo.SetCommentsLocked(post.ID, true); err != nil {
+	if err := postRepo.SetCommentsLocked(context.Background(), post.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	_, err = commentRepo.Create(domain.Comment{
+	_, err = commentRepo.Create(context.Background(), domain.Comment{
 		SubjectType:    domain.CommentSubjectPost,
 		SubjectKey:     domain.PostCommentSubjectKey(post.ID),
 		Content:        "blocked",
@@ -228,17 +274,30 @@ func TestJetRepositories(t *testing.T) {
 		t.Fatalf("got %v, want ErrCommentsLocked", err)
 	}
 	for _, status := range []domain.CommentStatus{domain.CommentStatusHidden, domain.CommentStatusDeleted} {
-		if err := commentRepo.SetStatus(domain.CommentSubjectPost, root.ID, status); err != nil {
+		if err := commentRepo.SetStatus(context.Background(), domain.CommentSubjectPost, root.ID, status); err != nil {
 			t.Fatal(err)
 		}
-		total, items, err := commentRepo.ListRoots(domain.CommentSubjectPost, domain.PostCommentSubjectKey(post.ID), 1, 0)
+		total, items, err := commentRepo.ListRoots(
+			context.Background(),
+			domain.CommentSubjectPost,
+			domain.PostCommentSubjectKey(post.ID),
+			1,
+			0,
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if total != 1 || len(items) != 1 || items[0].Root.ID != root.ID || items[0].Root.Status != status || items[0].ReplyCount != 1 {
 			t.Fatalf("moderation changed root pagination: total=%d items=%#v", total, items)
 		}
-		replyTotal, replies, err := commentRepo.ListReplies(domain.CommentSubjectPost, domain.PostCommentSubjectKey(post.ID), root.ID, 1, 0)
+		replyTotal, replies, err := commentRepo.ListReplies(
+			context.Background(),
+			domain.CommentSubjectPost,
+			domain.PostCommentSubjectKey(post.ID),
+			root.ID,
+			1,
+			0,
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -247,11 +306,11 @@ func TestJetRepositories(t *testing.T) {
 		}
 	}
 	updatedCategory, _ := forumcategory.FindByID(forumcategory.FeedbackID)
-	updatedTag, err := tagRepo.Create(updatedCategory.ID, "建议", 4, 10, `{}`)
+	updatedTag, err := tagRepo.Create(context.Background(), updatedCategory.ID, "建议", 4, 10, `{}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated, err := postRepo.Update(post.ID, repository.UpdatePostInput{
+	updated, err := postRepo.Update(context.Background(), post.ID, repository.UpdatePostInput{
 		CategoryID: updatedCategory.ID,
 		Title:      "更新标题",
 		Content:    "更新正文",
@@ -267,7 +326,7 @@ func TestJetRepositories(t *testing.T) {
 		t.Fatalf("unexpected updated tags: %#v", updated.Tags)
 	}
 
-	if err := postRepo.SetStatus(post.ID, domain.PostStatusHidden); err != nil {
+	if err := postRepo.SetStatus(context.Background(), post.ID, domain.PostStatusHidden); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
@@ -281,7 +340,7 @@ func TestJetRepositories(t *testing.T) {
 		{"admin deleted", repository.PostFilter{Status: domain.PostStatusDeleted}, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			total, items, err := postRepo.List(tc.filter, 20, 0)
+			total, items, err := postRepo.List(context.Background(), tc.filter, 20, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -290,38 +349,43 @@ func TestJetRepositories(t *testing.T) {
 			}
 		})
 	}
-	if err := postRepo.SetStatus(post.ID, domain.PostStatusDeleted); err != nil {
+	if err := postRepo.SetStatus(context.Background(), post.ID, domain.PostStatusDeleted); err != nil {
 		t.Fatal(err)
 	}
-	deletedTotal, deletedPosts, err := postRepo.List(repository.PostFilter{Status: domain.PostStatusDeleted}, 20, 0)
+	deletedTotal, deletedPosts, err := postRepo.List(
+		context.Background(),
+		repository.PostFilter{Status: domain.PostStatusDeleted},
+		20,
+		0,
+	)
 	if err != nil || deletedTotal != 1 || len(deletedPosts) != 1 || deletedPosts[0].ID != post.ID {
 		t.Fatalf("deleted post filter: total=%d items=%#v err=%v", deletedTotal, deletedPosts, err)
 	}
-	if err := postRepo.SetStatus(post.ID, domain.PostStatusPublished); err != nil {
+	if err := postRepo.SetStatus(context.Background(), post.ID, domain.PostStatusPublished); err != nil {
 		t.Fatal(err)
 	}
-	if err := postRepo.SetCommentsLocked(post.ID, true); err != nil {
+	if err := postRepo.SetCommentsLocked(context.Background(), post.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	pinOrder := int32(0)
-	if err := postRepo.SetPinOrder(post.ID, &pinOrder); err != nil {
+	if err := postRepo.SetPinOrder(context.Background(), post.ID, &pinOrder); err != nil {
 		t.Fatal(err)
 	}
-	moderated, err := postRepo.Find(post.ID, false)
+	moderated, err := postRepo.Find(context.Background(), post.ID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !moderated.CommentsLocked || moderated.PinOrder == nil || *moderated.PinOrder != pinOrder {
 		t.Fatalf("unexpected post subresources: %#v", moderated)
 	}
-	if err := postRepo.SetCommentsLocked(post.ID, false); err != nil {
+	if err := postRepo.SetCommentsLocked(context.Background(), post.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	if err := postRepo.SetPinOrder(post.ID, nil); err != nil {
+	if err := postRepo.SetPinOrder(context.Background(), post.ID, nil); err != nil {
 		t.Fatal(err)
 	}
 
-	secondPost, err := postRepo.Create(repository.CreatePostInput{
+	secondPost, err := postRepo.Create(context.Background(), repository.CreatePostInput{
 		CategoryID: category.ID,
 		Title:      "CaseSensitiveTitle", Content: "用于排序", AuthorID: 8, AuthorUsername: "bob",
 		Attr: `{}`,
@@ -329,7 +393,12 @@ func TestJetRepositories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, newestPosts, err := postRepo.List(repository.PostFilter{Sort: repository.PostSortNewest}, 20, 0)
+	_, newestPosts, err := postRepo.List(
+		context.Background(),
+		repository.PostFilter{Sort: repository.PostSortNewest},
+		20,
+		0,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,21 +411,38 @@ func TestJetRepositories(t *testing.T) {
 	if len(newestPosts[1].Tags) != 1 || newestPosts[1].Tags[0].ID != updatedTag.ID {
 		t.Fatalf("unexpected batched tags: %#v", newestPosts[1].Tags)
 	}
-	_, viewedPosts, err := postRepo.List(repository.PostFilter{Sort: repository.PostSortViews}, 20, 0)
+	_, viewedPosts, err := postRepo.List(
+		context.Background(),
+		repository.PostFilter{Sort: repository.PostSortViews},
+		20,
+		0,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(viewedPosts) < 2 || viewedPosts[0].ID != post.ID {
 		t.Fatalf("unexpected views order: %#v", viewedPosts)
 	}
-	_, commentedPosts, err := postRepo.List(repository.PostFilter{Sort: repository.PostSortComments}, 20, 0)
+	_, commentedPosts, err := postRepo.List(
+		context.Background(),
+		repository.PostFilter{
+			Sort: repository.PostSortComments,
+		},
+		20,
+		0,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(commentedPosts) < 2 || commentedPosts[0].ID != post.ID {
 		t.Fatalf("unexpected comments order: %#v", commentedPosts)
 	}
-	searchTotal, searchedPosts, err := postRepo.List(repository.PostFilter{Search: "casesensitivetitle"}, 20, 0)
+	searchTotal, searchedPosts, err := postRepo.List(
+		context.Background(),
+		repository.PostFilter{Search: "casesensitivetitle"},
+		20,
+		0,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

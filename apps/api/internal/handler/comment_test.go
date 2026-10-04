@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -23,14 +24,24 @@ type listingCommentRepository struct {
 	rootID int64
 }
 
-func (r *listingCommentRepository) ListRoots(_ domain.CommentSubjectType, subjectKey string, limit, offset int64) (int64, []domain.CommentThreadPreview, error) {
+func (r *listingCommentRepository) ListRoots(
+	ctx context.Context,
+	_ domain.CommentSubjectType,
+	subjectKey string,
+	limit, offset int64,
+) (int64, []domain.CommentThreadPreview, error) {
 	return 1, []domain.CommentThreadPreview{{
 		Root:       domain.Comment{ID: r.rootID, SubjectKey: subjectKey, Content: "一级评论"},
 		ReplyCount: 2,
 	}}, nil
 }
 
-func (r *listingCommentRepository) ListReplies(_ domain.CommentSubjectType, subjectKey string, rootID, limit, offset int64) (int64, []domain.Comment, error) {
+func (r *listingCommentRepository) ListReplies(
+	ctx context.Context,
+	_ domain.CommentSubjectType,
+	subjectKey string,
+	rootID, limit, offset int64,
+) (int64, []domain.Comment, error) {
 	return 2, []domain.Comment{{
 		ID: 9, SubjectKey: subjectKey, RootID: &rootID, Content: "二级评论",
 	}}, nil
@@ -84,17 +95,31 @@ type editableCommentRepository struct {
 	deleted bool
 }
 
-func (r *editableCommentRepository) Find(domain.CommentSubjectType, int64) (*domain.Comment, error) {
+func (r *editableCommentRepository) Find(
+	context.Context,
+	domain.CommentSubjectType,
+	int64,
+) (*domain.Comment, error) {
 	return &r.comment, nil
 }
 
-func (r *editableCommentRepository) Update(_ domain.CommentSubjectType, _ int64, content string) (*domain.Comment, error) {
+func (r *editableCommentRepository) Update(
+	ctx context.Context,
+	_ domain.CommentSubjectType,
+	_ int64,
+	content string,
+) (*domain.Comment, error) {
 	r.updated = true
 	r.comment.Content = content
 	return &r.comment, nil
 }
 
-func (r *editableCommentRepository) SetStatus(_ domain.CommentSubjectType, _ int64, status domain.CommentStatus) error {
+func (r *editableCommentRepository) SetStatus(
+	ctx context.Context,
+	_ domain.CommentSubjectType,
+	_ int64,
+	status domain.CommentStatus,
+) error {
 	r.deleted = status == domain.CommentStatusDeleted
 	return nil
 }

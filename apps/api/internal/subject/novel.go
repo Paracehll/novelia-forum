@@ -38,6 +38,9 @@ func novelPlugin(client *http.Client, baseURL string) Plugin {
 			}
 			response, err := client.Do(req)
 			if err != nil {
+				if ctx.Err() != nil {
+					return false, ctx.Err()
+				}
 				return false, ErrCheckFailed
 			}
 			defer response.Body.Close()

@@ -42,7 +42,7 @@ type SubjectResolver interface {
 
 // PublishedPostReader provides only the visibility check needed by comment reads.
 type PublishedPostReader interface {
-	ExistsPublished(id int64) (bool, error)
+	ExistsPublished(ctx context.Context, id int64) (bool, error)
 }
 
 type CommentUsecase struct {
@@ -82,7 +82,11 @@ func checkCommentAdmin(actor Actor) error {
 	return nil
 }
 
-func (u *CommentUsecase) ListAdmin(actor Actor, query ListAdminCommentsQuery) (int64, []domain.Comment, error) {
+func (u *CommentUsecase) ListAdmin(
+	ctx context.Context,
+	actor Actor,
+	query ListAdminCommentsQuery,
+) (int64, []domain.Comment, error) {
 	if err := checkCommentAdmin(actor); err != nil {
 		return 0, nil, err
 	}
@@ -95,14 +99,18 @@ func (u *CommentUsecase) ListAdmin(actor Actor, query ListAdminCommentsQuery) (i
 		PostID:     query.PostID,
 		Status:     query.Status,
 	}
-	total, items, err := u.commentRepo.ListAdmin(filter, query.Limit, query.Offset)
+	total, items, err := u.commentRepo.ListAdmin(ctx, filter, query.Limit, query.Offset)
 	if err != nil {
 		return 0, nil, fmt.Errorf("comment.list_admin: %w", err)
 	}
 	return total, items, nil
 }
 
-func (u *CommentUsecase) checkSubjectExist(subjectType domain.CommentSubjectType, key string) error {
+func (u *CommentUsecase) checkSubjectExist(
+	ctx context.Context,
+	subjectType domain.CommentSubjectType,
+	key string,
+) error {
 	if subjectType != domain.CommentSubjectPost {
 		return nil
 	}
@@ -110,7 +118,7 @@ func (u *CommentUsecase) checkSubjectExist(subjectType domain.CommentSubjectType
 	if err != nil {
 		return fmt.Errorf("comment.check_post: %w", err)
 	}
-	exists, err := u.postRepo.ExistsPublished(id)
+	exists, err := u.postRepo.ExistsPublished(ctx, id)
 	if err != nil {
 		return fmt.Errorf("comment.check_post: %w", err)
 	}
@@ -128,13 +136,15 @@ type ListCommentsQuery struct {
 }
 
 func (u *CommentUsecase) List(
+	ctx context.Context,
 	actor Actor,
 	query ListCommentsQuery,
 ) (int64, []domain.CommentThreadPreview, error) {
-	if err := u.checkSubjectExist(query.SubjectType, query.SubjectKey); err != nil {
+	if err := u.checkSubjectExist(ctx, query.SubjectType, query.SubjectKey); err != nil {
 		return 0, nil, err
 	}
 	total, items, err := u.commentRepo.ListRoots(
+		ctx,
 		query.SubjectType, query.SubjectKey, query.Limit, query.Offset,
 	)
 	if err != nil {
@@ -160,13 +170,15 @@ type ListCommentRepliesQuery struct {
 }
 
 func (u *CommentUsecase) ListReplies(
+	ctx context.Context,
 	actor Actor,
 	query ListCommentRepliesQuery,
 ) (int64, []domain.Comment, error) {
-	if err := u.checkSubjectExist(query.SubjectType, query.SubjectKey); err != nil {
+	if err := u.checkSubjectExist(ctx, query.SubjectType, query.SubjectKey); err != nil {
 		return 0, nil, err
 	}
 	total, items, err := u.commentRepo.ListReplies(
+		ctx,
 		query.SubjectType, query.SubjectKey, query.RootID, query.Limit, query.Offset,
 	)
 	if errors.Is(err, repository.ErrNotFound) {
@@ -208,8 +220,13 @@ func (u *CommentUsecase) checkContent(content string) error {
 	}
 }
 
-func (u *CommentUsecase) findModifiableComment(actor Actor, subjectType domain.CommentSubjectType, id int64) (*domain.Comment, error) {
-	comment, err := u.commentRepo.Find(subjectType, id)
+func (u *CommentUsecase) findModifiableComment(
+	ctx context.Context,
+	actor Actor,
+	subjectType domain.CommentSubjectType,
+	id int64,
+) (*domain.Comment, error) {
+	comment, err := u.commentRepo.Find(ctx, subjectType, id)
 	switch {
 	case err == nil:
 	case errors.Is(err, repository.ErrNotFound):
@@ -232,11 +249,15 @@ type CreatePostCommentCommand struct {
 	Content string
 }
 
-func (u *CommentUsecase) Create(actor Actor, command CreatePostCommentCommand) (*domain.Comment, error) {
+func (u *CommentUsecase) Create(
+	ctx context.Context,
+	actor Actor,
+	command CreatePostCommentCommand,
+) (*domain.Comment, error) {
 	if err := u.checkContent(command.Content); err != nil {
 		return nil, err
 	}
-	return u.createComment(actor, domain.Comment{
+	return u.createComment(ctx, actor, domain.Comment{
 		SubjectType: domain.CommentSubjectPost,
 		SubjectKey:  domain.PostCommentSubjectKey(command.PostID),
 		RootID:      command.RootID,
@@ -274,7 +295,7 @@ func (u *CommentUsecase) CreateExternal(
 		return nil, NotFound(CodeCommentSubjectNotFound, "评论所属资源不存在")
 	}
 
-	return u.createComment(actor, domain.Comment{
+	return u.createComment(ctx, actor, domain.Comment{
 		SubjectType: subjectType,
 		SubjectKey:  command.SubjectKey,
 		RootID:      command.RootID,
@@ -282,10 +303,15 @@ func (u *CommentUsecase) CreateExternal(
 	}, "comment.create_external")
 }
 
-func (u *CommentUsecase) createComment(actor Actor, input domain.Comment, operation string) (*domain.Comment, error) {
+func (u *CommentUsecase) createComment(
+	ctx context.Context,
+	actor Actor,
+	input domain.Comment,
+	operation string,
+) (*domain.Comment, error) {
 	input.AuthorID = actor.UserID
 	input.AuthorUsername = actor.Username
-	comment, err := u.commentRepo.Create(input)
+	comment, err := u.commentRepo.Create(ctx, input)
 	switch {
 	case err == nil:
 		return comment, nil
@@ -311,10 +337,11 @@ type UpdateCommentCommand struct {
 }
 
 func (u *CommentUsecase) Update(
+	ctx context.Context,
 	actor Actor,
 	command UpdateCommentCommand,
 ) (*domain.Comment, error) {
-	existing, err := u.findModifiableComment(actor, command.SubjectType, command.CommentID)
+	existing, err := u.findModifiableComment(ctx, actor, command.SubjectType, command.CommentID)
 	if err != nil {
 		return nil, err
 	}
@@ -324,7 +351,7 @@ func (u *CommentUsecase) Update(
 	if err := u.checkContent(command.Content); err != nil {
 		return nil, err
 	}
-	comment, err := u.commentRepo.Update(command.SubjectType, command.CommentID, command.Content)
+	comment, err := u.commentRepo.Update(ctx, command.SubjectType, command.CommentID, command.Content)
 	switch {
 	case err == nil:
 		return comment, nil
@@ -342,11 +369,11 @@ type DeleteCommentCommand struct {
 	CommentID   int64
 }
 
-func (u *CommentUsecase) Delete(actor Actor, command DeleteCommentCommand) error {
-	if _, err := u.findModifiableComment(actor, command.SubjectType, command.CommentID); err != nil {
+func (u *CommentUsecase) Delete(ctx context.Context, actor Actor, command DeleteCommentCommand) error {
+	if _, err := u.findModifiableComment(ctx, actor, command.SubjectType, command.CommentID); err != nil {
 		return err
 	}
-	return u.setStatus(SetCommentStatusCommand{
+	return u.setStatus(ctx, SetCommentStatusCommand{
 		SubjectType: command.SubjectType,
 		CommentID:   command.CommentID,
 		Status:      domain.CommentStatusDeleted,
@@ -359,18 +386,18 @@ type SetCommentStatusCommand struct {
 	Status      domain.CommentStatus
 }
 
-func (u *CommentUsecase) SetStatus(actor Actor, command SetCommentStatusCommand) error {
+func (u *CommentUsecase) SetStatus(ctx context.Context, actor Actor, command SetCommentStatusCommand) error {
 	if err := checkCommentAdmin(actor); err != nil {
 		return err
 	}
 	if !command.Status.Valid() {
 		return Invalid(CodeCommentStatusInvalid, "评论状态无效")
 	}
-	return u.setStatus(command, "comment.set_status")
+	return u.setStatus(ctx, command, "comment.set_status")
 }
 
-func (u *CommentUsecase) setStatus(command SetCommentStatusCommand, operation string) error {
-	err := u.commentRepo.SetStatus(command.SubjectType, command.CommentID, command.Status)
+func (u *CommentUsecase) setStatus(ctx context.Context, command SetCommentStatusCommand, operation string) error {
+	err := u.commentRepo.SetStatus(ctx, command.SubjectType, command.CommentID, command.Status)
 	switch {
 	case err == nil:
 		return nil
@@ -385,11 +412,15 @@ type DeleteCommentsByAuthorCommand struct {
 	AuthorID int64
 }
 
-func (u *CommentUsecase) DeleteAllByAuthor(actor Actor, command DeleteCommentsByAuthorCommand) error {
+func (u *CommentUsecase) DeleteAllByAuthor(
+	ctx context.Context,
+	actor Actor,
+	command DeleteCommentsByAuthorCommand,
+) error {
 	if err := checkCommentAdmin(actor); err != nil {
 		return err
 	}
-	if err := u.commentRepo.DeleteAllByAuthor(command.AuthorID); err != nil {
+	if err := u.commentRepo.DeleteAllByAuthor(ctx, command.AuthorID); err != nil {
 		return fmt.Errorf("comment.delete_by_author: %w", err)
 	}
 	return nil
@@ -414,6 +445,7 @@ type ListExternalCommentsQuery struct {
 }
 
 func (u *CommentUsecase) ListExternal(
+	ctx context.Context,
 	actor Actor,
 	query ListExternalCommentsQuery,
 ) (int64, []domain.CommentThreadPreview, error) {
@@ -421,7 +453,7 @@ func (u *CommentUsecase) ListExternal(
 	if err != nil {
 		return 0, nil, err
 	}
-	return u.List(actor, ListCommentsQuery{
+	return u.List(ctx, actor, ListCommentsQuery{
 		SubjectType: subjectType,
 		SubjectKey:  query.SubjectKey,
 		Limit:       query.Limit,
@@ -438,6 +470,7 @@ type ListExternalCommentRepliesQuery struct {
 }
 
 func (u *CommentUsecase) ListExternalReplies(
+	ctx context.Context,
 	actor Actor,
 	query ListExternalCommentRepliesQuery,
 ) (int64, []domain.Comment, error) {
@@ -445,7 +478,7 @@ func (u *CommentUsecase) ListExternalReplies(
 	if err != nil {
 		return 0, nil, err
 	}
-	return u.ListReplies(actor, ListCommentRepliesQuery{
+	return u.ListReplies(ctx, actor, ListCommentRepliesQuery{
 		SubjectType: subjectType,
 		SubjectKey:  query.SubjectKey,
 		RootID:      query.RootID,
@@ -461,6 +494,7 @@ type UpdateExternalCommentCommand struct {
 }
 
 func (u *CommentUsecase) UpdateExternal(
+	ctx context.Context,
 	actor Actor,
 	command UpdateExternalCommentCommand,
 ) (*domain.Comment, error) {
@@ -468,7 +502,7 @@ func (u *CommentUsecase) UpdateExternal(
 	if err != nil {
 		return nil, err
 	}
-	return u.Update(actor, UpdateCommentCommand{
+	return u.Update(ctx, actor, UpdateCommentCommand{
 		SubjectType: subjectType,
 		CommentID:   command.CommentID,
 		Content:     command.Content,
@@ -480,12 +514,16 @@ type DeleteExternalCommentCommand struct {
 	CommentID int64
 }
 
-func (u *CommentUsecase) DeleteExternal(actor Actor, command DeleteExternalCommentCommand) error {
+func (u *CommentUsecase) DeleteExternal(
+	ctx context.Context,
+	actor Actor,
+	command DeleteExternalCommentCommand,
+) error {
 	subjectType, err := u.externalSubjectType(command.Kind)
 	if err != nil {
 		return err
 	}
-	return u.Delete(actor, DeleteCommentCommand{
+	return u.Delete(ctx, actor, DeleteCommentCommand{
 		SubjectType: subjectType,
 		CommentID:   command.CommentID,
 	})
@@ -497,7 +535,11 @@ type SetExternalCommentStatusCommand struct {
 	Status    domain.CommentStatus
 }
 
-func (u *CommentUsecase) SetExternalStatus(actor Actor, command SetExternalCommentStatusCommand) error {
+func (u *CommentUsecase) SetExternalStatus(
+	ctx context.Context,
+	actor Actor,
+	command SetExternalCommentStatusCommand,
+) error {
 	if err := checkCommentAdmin(actor); err != nil {
 		return err
 	}
@@ -505,7 +547,7 @@ func (u *CommentUsecase) SetExternalStatus(actor Actor, command SetExternalComme
 	if err != nil {
 		return err
 	}
-	return u.SetStatus(actor, SetCommentStatusCommand{
+	return u.SetStatus(ctx, actor, SetCommentStatusCommand{
 		SubjectType: subjectType,
 		CommentID:   command.CommentID,
 		Status:      command.Status,

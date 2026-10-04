@@ -13,7 +13,8 @@ import (
 var ErrCheckFailed = errors.New("subject check failed")
 
 // CheckFunc returns true for an existing subject, false for a missing subject,
-// and ErrCheckFailed when the check cannot be completed.
+// and ErrCheckFailed when the check cannot be completed. Request cancellation
+// and deadline errors are preserved so the transport can handle them separately.
 type CheckFunc func(context.Context, string) (bool, error)
 
 type Plugin struct {

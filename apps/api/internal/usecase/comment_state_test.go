@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -20,9 +21,25 @@ func TestCommentEditingStatePolicy(t *testing.T) {
 					var comment *domain.Comment
 					var err error
 					if external {
-						comment, err = u.UpdateExternal(actor, UpdateExternalCommentCommand{Kind: "novel", CommentID: 7, Content: "updated"})
+						comment, err = u.UpdateExternal(
+							context.Background(),
+							actor,
+							UpdateExternalCommentCommand{
+								Kind:      "novel",
+								CommentID: 7,
+								Content:   "updated",
+							},
+						)
 					} else {
-						comment, err = u.Update(actor, UpdateCommentCommand{SubjectType: domain.CommentSubjectPost, CommentID: 7, Content: "updated"})
+						comment, err = u.Update(
+							context.Background(),
+							actor,
+							UpdateCommentCommand{
+								SubjectType: domain.CommentSubjectPost,
+								CommentID:   7,
+								Content:     "updated",
+							},
+						)
 					}
 					if !actor.IsAdmin && actor.UserID != 1 {
 						if !isAppErrorCode(err, CodeCommentNotOwner) || comment != nil || repo.writes != 0 {
@@ -53,7 +70,14 @@ func TestCommentDeletingNonPublishedStateRemainsAllowed(t *testing.T) {
 				t.Run(fmt.Sprintf("type=%d/admin=%t/status=%d", subjectType, actor.IsAdmin, status), func(t *testing.T) {
 					repo := &commentRepoStub{comment: domain.Comment{ID: 7, AuthorID: 1, Status: status, CreatedAt: time.Now()}}
 					u := NewCommentUsecase(repo, nil, nil, nil)
-					if err := u.Delete(actor, DeleteCommentCommand{SubjectType: subjectType, CommentID: 7}); err != nil || repo.writes != 1 || repo.comment.Status != domain.CommentStatusDeleted {
+					if err := u.Delete(
+						context.Background(),
+						actor,
+						DeleteCommentCommand{
+							SubjectType: subjectType,
+							CommentID:   7,
+						},
+					); err != nil || repo.writes != 1 || repo.comment.Status != domain.CommentStatusDeleted {
 						t.Fatalf("err=%v writes=%d status=%d", err, repo.writes, repo.comment.Status)
 					}
 				})
@@ -67,14 +91,23 @@ type changingCommentRepoStub struct {
 	findErr, updateErr error
 }
 
-func (r *changingCommentRepoStub) Find(domain.CommentSubjectType, int64) (*domain.Comment, error) {
+func (r *changingCommentRepoStub) Find(
+	context.Context,
+	domain.CommentSubjectType,
+	int64,
+) (*domain.Comment, error) {
 	if r.findErr != nil {
 		return nil, r.findErr
 	}
 	return &r.comment, nil
 }
 
-func (r *changingCommentRepoStub) Update(domain.CommentSubjectType, int64, string) (*domain.Comment, error) {
+func (r *changingCommentRepoStub) Update(
+	context.Context,
+	domain.CommentSubjectType,
+	int64,
+	string,
+) (*domain.Comment, error) {
 	r.writes++
 	return nil, r.updateErr
 }
@@ -95,7 +128,11 @@ func TestCommentUpdateStorageFailures(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &changingCommentRepoStub{commentRepoStub: commentRepoStub{comment: domain.Comment{AuthorID: 1, CreatedAt: time.Now()}}, findErr: tc.findErr, updateErr: tc.updateErr}
 			u := NewCommentUsecase(repo, nil, nil, nil)
-			comment, err := u.Update(Actor{UserID: 1}, UpdateCommentCommand{CommentID: 7, Content: "updated"})
+			comment, err := u.Update(
+				context.Background(),
+				Actor{UserID: 1},
+				UpdateCommentCommand{CommentID: 7, Content: "updated"},
+			)
 			if comment != nil || err == nil || repo.writes != tc.wantWrites {
 				t.Fatalf("comment=%v err=%v writes=%d", comment, err, repo.writes)
 			}
@@ -120,13 +157,21 @@ func TestCommentAdminStatusValidation(t *testing.T) {
 			call func(*CommentUsecase, Actor) error
 		}{
 			{"set status", func(u *CommentUsecase, actor Actor) error {
-				return u.SetStatus(actor, SetCommentStatusCommand{CommentID: 7, Status: status})
+				return u.SetStatus(context.Background(), actor, SetCommentStatusCommand{CommentID: 7, Status: status})
 			}},
 			{"set external status", func(u *CommentUsecase, actor Actor) error {
-				return u.SetExternalStatus(actor, SetExternalCommentStatusCommand{Kind: "novel", CommentID: 7, Status: status})
+				return u.SetExternalStatus(
+					context.Background(),
+					actor,
+					SetExternalCommentStatusCommand{
+						Kind:      "novel",
+						CommentID: 7,
+						Status:    status,
+					},
+				)
 			}},
 			{"list", func(u *CommentUsecase, actor Actor) error {
-				_, _, err := u.ListAdmin(actor, ListAdminCommentsQuery{Status: &status})
+				_, _, err := u.ListAdmin(context.Background(), actor, ListAdminCommentsQuery{Status: &status})
 				return err
 			}},
 		} {

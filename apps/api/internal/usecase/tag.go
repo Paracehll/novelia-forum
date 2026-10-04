@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -36,8 +37,8 @@ type TagInput struct {
 	SortOrder  int32
 }
 
-func (u *TagUsecase) ListActive() ([]domain.Tag, error) {
-	tags, err := u.tagRepo.ListActive()
+func (u *TagUsecase) ListActive(ctx context.Context) ([]domain.Tag, error) {
+	tags, err := u.tagRepo.ListActive(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("tag.list_active: %w", err)
 	}
@@ -95,21 +96,21 @@ func tagError(err error, operation string) error {
 	return nil
 }
 
-func (u *TagUsecase) ListAdmin(actor Actor, query ListTagsQuery) ([]domain.Tag, error) {
+func (u *TagUsecase) ListAdmin(ctx context.Context, actor Actor, query ListTagsQuery) ([]domain.Tag, error) {
 	if err := checkTagAdmin(actor); err != nil {
 		return nil, err
 	}
 	if err := checkTagCategory(query.CategoryID); err != nil {
 		return nil, err
 	}
-	tags, err := u.tagRepo.ListByCategory(query.CategoryID)
+	tags, err := u.tagRepo.ListByCategory(ctx, query.CategoryID)
 	if err != nil {
 		return nil, fmt.Errorf("tag.list: %w", err)
 	}
 	return tags, nil
 }
 
-func (u *TagUsecase) Create(actor Actor, input TagInput) (*domain.Tag, error) {
+func (u *TagUsecase) Create(ctx context.Context, actor Actor, input TagInput) (*domain.Tag, error) {
 	if err := checkTagAdmin(actor); err != nil {
 		return nil, err
 	}
@@ -117,14 +118,14 @@ func (u *TagUsecase) Create(actor Actor, input TagInput) (*domain.Tag, error) {
 	if err != nil {
 		return nil, err
 	}
-	tag, err := u.tagRepo.Create(input.CategoryID, input.Name, input.Color, input.SortOrder, "{}")
+	tag, err := u.tagRepo.Create(ctx, input.CategoryID, input.Name, input.Color, input.SortOrder, "{}")
 	if err != nil {
 		return nil, tagError(err, "create")
 	}
 	return tag, nil
 }
 
-func (u *TagUsecase) Update(actor Actor, id int64, input TagInput) (*domain.Tag, error) {
+func (u *TagUsecase) Update(ctx context.Context, actor Actor, id int64, input TagInput) (*domain.Tag, error) {
 	if err := checkTagAdmin(actor); err != nil {
 		return nil, err
 	}
@@ -135,7 +136,7 @@ func (u *TagUsecase) Update(actor Actor, id int64, input TagInput) (*domain.Tag,
 	if err != nil {
 		return nil, err
 	}
-	tag, err := u.tagRepo.Update(input.CategoryID, id, input.Name, input.Color, input.SortOrder)
+	tag, err := u.tagRepo.Update(ctx, input.CategoryID, id, input.Name, input.Color, input.SortOrder)
 	if err != nil {
 		return nil, tagError(err, "update")
 	}
@@ -147,7 +148,7 @@ type SetTagActiveCommand struct {
 	Active         bool
 }
 
-func (u *TagUsecase) SetActive(actor Actor, command SetTagActiveCommand) error {
+func (u *TagUsecase) SetActive(ctx context.Context, actor Actor, command SetTagActiveCommand) error {
 	if err := checkTagAdmin(actor); err != nil {
 		return err
 	}
@@ -157,5 +158,5 @@ func (u *TagUsecase) SetActive(actor Actor, command SetTagActiveCommand) error {
 	if err := checkTagID(command.ID); err != nil {
 		return err
 	}
-	return tagError(u.tagRepo.SetActive(command.CategoryID, command.ID, command.Active), "set_active")
+	return tagError(u.tagRepo.SetActive(ctx, command.CategoryID, command.ID, command.Active), "set_active")
 }

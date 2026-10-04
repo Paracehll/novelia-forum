@@ -112,6 +112,7 @@ func (h *commentHandler) update(w http.ResponseWriter, r *http.Request) error {
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
 	comment, err := h.commentUsecase.Update(
+		r.Context(),
 		actorFromPrincipal(principal),
 		usecase.UpdateCommentCommand{
 			SubjectType: domain.CommentSubjectPost,
@@ -136,10 +137,15 @@ func (h *commentHandler) delete(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
-	if err := h.commentUsecase.Delete(actorFromPrincipal(principal), usecase.DeleteCommentCommand{
-		SubjectType: domain.CommentSubjectPost,
-		CommentID:   id,
-	}); err != nil {
+	err = h.commentUsecase.Delete(
+		r.Context(),
+		actorFromPrincipal(principal),
+		usecase.DeleteCommentCommand{
+			SubjectType: domain.CommentSubjectPost,
+			CommentID:   id,
+		},
+	)
+	if err != nil {
 		return transportError(err)
 	}
 	w.WriteHeader(http.StatusNoContent)

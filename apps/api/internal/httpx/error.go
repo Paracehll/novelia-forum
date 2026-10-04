@@ -1,6 +1,7 @@
 package httpx
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -79,8 +80,22 @@ func respondError(w http.ResponseWriter, r *http.Request, err error) {
 	var code int
 	var message string
 
+	// Drivers may return their own cancellation error rather than ctx.Err().
+	// Prefer the request context, and also recognize wrapped context errors.
+	if errors.Is(r.Context().Err(), context.Canceled) || errors.Is(err, context.Canceled) {
+		// 499 is the conventional client-closed-request status for access logs.
+		// Do not attempt to send an error body to a disconnected client.
+		slog.DebugContext(r.Context(), "Request canceled", "status", 499)
+		w.Header().Del("Content-Length")
+		w.WriteHeader(499)
+		return
+	}
 	var httpErr *HttpError
-	if errors.As(err, &httpErr) {
+	if errors.Is(r.Context().Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
+		code = http.StatusGatewayTimeout
+		message = "请求超时"
+		slog.WarnContext(r.Context(), "Request timed out", "status", code)
+	} else if errors.As(err, &httpErr) {
 		code = httpErr.StatusCode
 		message = httpErr.Message
 		if code >= http.StatusInternalServerError {

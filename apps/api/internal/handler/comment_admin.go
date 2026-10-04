@@ -38,6 +38,7 @@ func (h *commentHandler) setStatus(w http.ResponseWriter, r *http.Request) error
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
 	if err := h.commentUsecase.SetStatus(
+		r.Context(),
 		actorFromPrincipal(principal),
 		usecase.SetCommentStatusCommand{
 			SubjectType: domain.CommentSubjectPost,
@@ -58,6 +59,7 @@ func (h *commentHandler) deleteAllByAuthor(w http.ResponseWriter, r *http.Reques
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
 	if err := h.commentUsecase.DeleteAllByAuthor(
+		r.Context(),
 		actorFromPrincipal(principal),
 		usecase.DeleteCommentsByAuthorCommand{
 			AuthorID: authorID,
@@ -106,6 +108,7 @@ func (h *commentHandler) listAdmin(w http.ResponseWriter, r *http.Request) error
 	}
 	principal, _ := httpx.AuthenticatedPrincipal(r)
 	total, items, err := h.commentUsecase.ListAdmin(
+		r.Context(),
 		actorFromPrincipal(principal),
 		listQuery,
 	)

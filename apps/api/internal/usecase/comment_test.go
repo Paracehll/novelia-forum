@@ -19,28 +19,51 @@ type commentRepoStub struct {
 	input   domain.Comment
 }
 
-func (r *commentRepoStub) Find(domain.CommentSubjectType, int64) (*domain.Comment, error) {
+func (r *commentRepoStub) Find(context.Context, domain.CommentSubjectType, int64) (*domain.Comment, error) {
 	return &r.comment, nil
 }
-func (r *commentRepoStub) Update(_ domain.CommentSubjectType, _ int64, content string) (*domain.Comment, error) {
+func (r *commentRepoStub) Update(
+	ctx context.Context,
+	_ domain.CommentSubjectType,
+	_ int64,
+	content string,
+) (*domain.Comment, error) {
 	r.writes++
 	r.comment.Content = content
 	return &r.comment, nil
 }
-func (r *commentRepoStub) SetStatus(_ domain.CommentSubjectType, _ int64, status domain.CommentStatus) error {
+func (r *commentRepoStub) SetStatus(
+	ctx context.Context,
+	_ domain.CommentSubjectType,
+	_ int64,
+	status domain.CommentStatus,
+) error {
 	r.writes++
 	r.comment.Status = status
 	return nil
 }
-func (r *commentRepoStub) Create(input domain.Comment) (*domain.Comment, error) {
+func (r *commentRepoStub) Create(ctx context.Context, input domain.Comment) (*domain.Comment, error) {
 	r.writes++
 	r.input = input
 	return &r.comment, nil
 }
-func (r *commentRepoStub) ListRoots(domain.CommentSubjectType, string, int64, int64) (int64, []domain.CommentThreadPreview, error) {
+func (r *commentRepoStub) ListRoots(
+	context.Context,
+	domain.CommentSubjectType,
+	string,
+	int64,
+	int64,
+) (int64, []domain.CommentThreadPreview, error) {
 	return 1, []domain.CommentThreadPreview{{Root: r.comment, ReplyCount: 1, Replies: []domain.Comment{r.comment}}}, nil
 }
-func (r *commentRepoStub) ListReplies(domain.CommentSubjectType, string, int64, int64, int64) (int64, []domain.Comment, error) {
+func (r *commentRepoStub) ListReplies(
+	context.Context,
+	domain.CommentSubjectType,
+	string,
+	int64,
+	int64,
+	int64,
+) (int64, []domain.Comment, error) {
 	return 1, []domain.Comment{r.comment}, nil
 }
 
@@ -104,7 +127,7 @@ func TestCommentContentValidation(t *testing.T) {
 				var err error
 				switch operation {
 				case "create post":
-					_, err = u.Create(actor, CreatePostCommentCommand{PostID: 42, Content: tc.content})
+					_, err = u.Create(context.Background(), actor, CreatePostCommentCommand{PostID: 42, Content: tc.content})
 				case "create external":
 					_, err = u.CreateExternal(context.Background(), actor, CreateExternalCommentCommand{
 						Kind: "novel", SubjectKey: "42", Content: tc.content,
@@ -114,7 +137,7 @@ func TestCommentContentValidation(t *testing.T) {
 					if operation == "update external" {
 						subjectType = domain.CommentSubjectNovel
 					}
-					_, err = u.Update(actor, UpdateCommentCommand{
+					_, err = u.Update(context.Background(), actor, UpdateCommentCommand{
 						SubjectType: subjectType, CommentID: 7, Content: tc.content,
 					})
 				}
@@ -164,11 +187,18 @@ func TestCommentModificationPermissions(t *testing.T) {
 					u := NewCommentUsecase(repo, nil, nil, nil)
 					var err error
 					if operation == "update" {
-						_, err = u.Update(tc.principal, UpdateCommentCommand{
+						_, err = u.Update(context.Background(), tc.principal, UpdateCommentCommand{
 							SubjectType: subjectType, CommentID: 7, Content: "updated",
 						})
 					} else {
-						err = u.Delete(tc.principal, DeleteCommentCommand{SubjectType: subjectType, CommentID: 7})
+						err = u.Delete(
+							context.Background(),
+							tc.principal,
+							DeleteCommentCommand{
+								SubjectType: subjectType,
+								CommentID:   7,
+							},
+						)
 					}
 					if tc.allowed {
 						if err != nil || repo.writes != 1 {
@@ -194,7 +224,11 @@ func TestPostCommentCreationUsesActor(t *testing.T) {
 	u := NewCommentUsecase(repo, nil, nil, nil)
 	actor := Actor{UserID: 42, Username: "alice"}
 
-	if _, err := u.Create(actor, CreatePostCommentCommand{PostID: 7, Content: "body"}); err != nil {
+	if _, err := u.Create(
+		context.Background(),
+		actor,
+		CreatePostCommentCommand{PostID: 7, Content: "body"},
+	); err != nil {
 		t.Fatal(err)
 	}
 	if repo.input.AuthorID != actor.UserID || repo.input.AuthorUsername != actor.Username {
@@ -285,11 +319,18 @@ type failingCommentRepository struct {
 	err error
 }
 
-func (r failingCommentRepository) Create(domain.Comment) (*domain.Comment, error) {
+func (r failingCommentRepository) Create(context.Context, domain.Comment) (*domain.Comment, error) {
 	return nil, r.err
 }
 
-func (r failingCommentRepository) ListReplies(domain.CommentSubjectType, string, int64, int64, int64) (int64, []domain.Comment, error) {
+func (r failingCommentRepository) ListReplies(
+	context.Context,
+	domain.CommentSubjectType,
+	string,
+	int64,
+	int64,
+	int64,
+) (int64, []domain.Comment, error) {
 	return 0, nil, r.err
 }
 
@@ -304,7 +345,7 @@ func TestCommentRepositoryErrors(t *testing.T) {
 		storageError error
 	}{
 		{"comment.create_post", func(u *CommentUsecase) error {
-			_, err := u.Create(Actor{}, CreatePostCommentCommand{PostID: 42, Content: "body"})
+			_, err := u.Create(context.Background(), Actor{}, CreatePostCommentCommand{PostID: 42, Content: "body"})
 			return err
 		}, CodeCommentSubjectNotFound, repository.ErrNotFound},
 		{"comment.create_external", func(u *CommentUsecase) error {
@@ -314,7 +355,7 @@ func TestCommentRepositoryErrors(t *testing.T) {
 			return err
 		}, CodeCommentRootNotFound, repository.ErrCommentRootNotFound},
 		{"comment.list_replies", func(u *CommentUsecase) error {
-			_, _, err := u.ListReplies(Actor{}, ListCommentRepliesQuery{
+			_, _, err := u.ListReplies(context.Background(), Actor{}, ListCommentRepliesQuery{
 				SubjectType: domain.CommentSubjectNovel, SubjectKey: "wenku-book", RootID: 7, Limit: 20,
 			})
 			return err
@@ -340,18 +381,18 @@ type postExistenceStub struct {
 	err    error
 }
 
-func (s postExistenceStub) ExistsPublished(int64) (bool, error) {
+func (s postExistenceStub) ExistsPublished(context.Context, int64) (bool, error) {
 	return s.exists, s.err
 }
 
 func TestCommentPublishedPostCheck(t *testing.T) {
 	u := NewCommentUsecase(nil, postExistenceStub{exists: true}, nil, nil)
-	if err := u.checkSubjectExist(domain.CommentSubjectPost, "42"); err != nil {
+	if err := u.checkSubjectExist(context.Background(), domain.CommentSubjectPost, "42"); err != nil {
 		t.Fatalf("published post rejected: %v", err)
 	}
 	cause := errors.New("storage unavailable")
 	u = NewCommentUsecase(nil, postExistenceStub{err: cause}, nil, nil)
-	if err := u.checkSubjectExist(domain.CommentSubjectPost, "42"); !errors.Is(err, cause) {
+	if err := u.checkSubjectExist(context.Background(), domain.CommentSubjectPost, "42"); !errors.Is(err, cause) {
 		t.Fatalf("storage error lost: %v", err)
 	}
 }
@@ -372,11 +413,11 @@ func TestCommentReadSubjectChecks(t *testing.T) {
 	for _, replies := range []bool{false, true} {
 		var err error
 		if replies {
-			_, _, err = missing.ListReplies(Actor{}, ListCommentRepliesQuery{
+			_, _, err = missing.ListReplies(context.Background(), Actor{}, ListCommentRepliesQuery{
 				SubjectType: domain.CommentSubjectPost, SubjectKey: "42", RootID: 7, Limit: 20,
 			})
 		} else {
-			_, _, err = missing.List(Actor{}, ListCommentsQuery{
+			_, _, err = missing.List(context.Background(), Actor{}, ListCommentsQuery{
 				SubjectType: domain.CommentSubjectPost, SubjectKey: "42", Limit: 20,
 			})
 		}
@@ -384,11 +425,11 @@ func TestCommentReadSubjectChecks(t *testing.T) {
 			t.Fatalf("expected missing post, got %v", err)
 		}
 		if replies {
-			_, _, err = external.ListReplies(Actor{}, ListCommentRepliesQuery{
+			_, _, err = external.ListReplies(context.Background(), Actor{}, ListCommentRepliesQuery{
 				SubjectType: domain.CommentSubjectNovel, SubjectKey: "deleted", RootID: 7, Limit: 20,
 			})
 		} else {
-			_, _, err = external.List(Actor{}, ListCommentsQuery{
+			_, _, err = external.List(context.Background(), Actor{}, ListCommentsQuery{
 				SubjectType: domain.CommentSubjectNovel, SubjectKey: "deleted", Limit: 20,
 			})
 		}
@@ -424,7 +465,15 @@ func TestCommentCreationStorageFailures(t *testing.T) {
 						Kind: "novel", SubjectKey: "42", RootID: &rootID, Content: "reply",
 					})
 				} else {
-					_, err = u.Create(Actor{}, CreatePostCommentCommand{PostID: 42, RootID: &rootID, Content: "reply"})
+					_, err = u.Create(
+						context.Background(),
+						Actor{},
+						CreatePostCommentCommand{
+							PostID:  42,
+							RootID:  &rootID,
+							Content: "reply",
+						},
+					)
 				}
 				if external && tc.postOnly {
 					var appErr *AppError
@@ -453,7 +502,7 @@ func TestCommentListContentVisibility(t *testing.T) {
 				if !actor.IsAdmin && status != domain.CommentStatusPublished {
 					want.Content = ""
 				}
-				total, roots, err := u.List(actor, ListCommentsQuery{
+				total, roots, err := u.List(context.Background(), actor, ListCommentsQuery{
 					SubjectType: domain.CommentSubjectNovel, SubjectKey: "book", Limit: 20,
 				})
 				if err != nil || total != 1 || len(roots) != 1 {
@@ -462,7 +511,7 @@ func TestCommentListContentVisibility(t *testing.T) {
 				if roots[0].Root != want || roots[0].ReplyCount != 1 || len(roots[0].Replies) != 1 || roots[0].Replies[0] != want {
 					t.Fatalf("unexpected thread: %+v", roots[0])
 				}
-				total, replies, err := u.ListReplies(actor, ListCommentRepliesQuery{
+				total, replies, err := u.ListReplies(context.Background(), actor, ListCommentRepliesQuery{
 					SubjectType: domain.CommentSubjectNovel, SubjectKey: "book", RootID: 7, Limit: 20,
 				})
 				if err != nil || total != 1 || len(replies) != 1 || replies[0] != want {

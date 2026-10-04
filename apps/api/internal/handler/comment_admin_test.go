@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -23,7 +24,11 @@ type adminCommentRepository struct {
 	called        bool
 }
 
-func (r *adminCommentRepository) ListAdmin(filter repository.CommentFilter, limit, offset int64) (int64, []domain.Comment, error) {
+func (r *adminCommentRepository) ListAdmin(
+	ctx context.Context,
+	filter repository.CommentFilter,
+	limit, offset int64,
+) (int64, []domain.Comment, error) {
 	r.called = true
 	r.filter, r.limit, r.offset = filter, limit, offset
 	return 1, []domain.Comment{{
@@ -35,12 +40,17 @@ func (r *adminCommentRepository) ListAdmin(filter repository.CommentFilter, limi
 	}}, nil
 }
 
-func (r *adminCommentRepository) SetStatus(domain.CommentSubjectType, int64, domain.CommentStatus) error {
+func (r *adminCommentRepository) SetStatus(
+	context.Context,
+	domain.CommentSubjectType,
+	int64,
+	domain.CommentStatus,
+) error {
 	r.called = true
 	return nil
 }
 
-func (r *adminCommentRepository) DeleteAllByAuthor(int64) error {
+func (r *adminCommentRepository) DeleteAllByAuthor(context.Context, int64) error {
 	r.called = true
 	return nil
 }

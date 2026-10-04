@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -84,11 +85,19 @@ func publicPostQuery(query ListPostsQuery) ListPostsQuery {
 	return query
 }
 
-func (u *PostUsecase) List(actor Actor, query ListPostsQuery) (int64, []domain.PostListItem, error) {
-	return u.list(actor, publicPostQuery(query), 0)
+func (u *PostUsecase) List(
+	ctx context.Context,
+	actor Actor,
+	query ListPostsQuery,
+) (int64, []domain.PostListItem, error) {
+	return u.list(ctx, actor, publicPostQuery(query), 0)
 }
 
-func (u *PostUsecase) ListAdmin(actor Actor, query ListPostsQuery) (int64, []domain.PostListItem, error) {
+func (u *PostUsecase) ListAdmin(
+	ctx context.Context,
+	actor Actor,
+	query ListPostsQuery,
+) (int64, []domain.PostListItem, error) {
 	if err := checkPostAdmin(actor); err != nil {
 		return 0, nil, err
 	}
@@ -99,27 +108,40 @@ func (u *PostUsecase) ListAdmin(actor Actor, query ListPostsQuery) (int64, []dom
 		return 0, nil, Invalid(CodePostAuthorInvalid, "用户 ID 必须为正整数")
 	}
 	query.AuthorName = strings.TrimSpace(query.AuthorName)
-	return u.list(actor, query, 0)
+	return u.list(ctx, actor, query, 0)
 }
 
-func (u *PostUsecase) ListMine(actor Actor, query ListPostsQuery) (int64, []domain.PostListItem, error) {
+func (u *PostUsecase) ListMine(
+	ctx context.Context,
+	actor Actor,
+	query ListPostsQuery,
+) (int64, []domain.PostListItem, error) {
 	if actor.UserID <= 0 {
 		return 0, nil, PermissionDenied(CodePostAuthRequired, "需要登录")
 	}
 	query = publicPostQuery(query)
 	query.AuthorID = actor.UserID
-	return u.list(actor, query, 0)
+	return u.list(ctx, actor, query, 0)
 }
 
-func (u *PostUsecase) ListFavorites(actor Actor, query ListPostsQuery) (int64, []domain.PostListItem, error) {
+func (u *PostUsecase) ListFavorites(
+	ctx context.Context,
+	actor Actor,
+	query ListPostsQuery,
+) (int64, []domain.PostListItem, error) {
 	if actor.UserID <= 0 {
 		return 0, nil, PermissionDenied(CodePostAuthRequired, "需要登录")
 	}
 	query = publicPostQuery(query)
-	return u.list(actor, query, actor.UserID)
+	return u.list(ctx, actor, query, actor.UserID)
 }
 
-func (u *PostUsecase) list(actor Actor, query ListPostsQuery, favoriteUserID int64) (int64, []domain.PostListItem, error) {
+func (u *PostUsecase) list(
+	ctx context.Context,
+	actor Actor,
+	query ListPostsQuery,
+	favoriteUserID int64,
+) (int64, []domain.PostListItem, error) {
 	if query.Limit <= 0 || query.Limit > 100 || query.Offset < 0 {
 		return 0, nil, Invalid(CodePostPaginationInvalid, "limit 必须为 1 到 100，offset 不能为负数")
 	}
@@ -144,7 +166,7 @@ func (u *PostUsecase) list(actor Actor, query ListPostsQuery, favoriteUserID int
 		TagIDs: query.TagIDs, AuthorName: query.AuthorName, AuthorID: query.AuthorID,
 		Status: status, FavoriteUserID: favoriteUserID,
 	}
-	total, posts, err := u.postRepo.List(filter, query.Limit, query.Offset)
+	total, posts, err := u.postRepo.List(ctx, filter, query.Limit, query.Offset)
 	if err != nil {
 		return 0, nil, fmt.Errorf("post.list: %w", err)
 	}
@@ -154,7 +176,7 @@ func (u *PostUsecase) list(actor Actor, query ListPostsQuery, favoriteUserID int
 		for i, post := range posts {
 			ids[i] = post.ID
 		}
-		favorites, err = u.favoriteRepo.ListPostIDs(actor.UserID, ids)
+		favorites, err = u.favoriteRepo.ListPostIDs(ctx, actor.UserID, ids)
 		if err != nil {
 			return 0, nil, fmt.Errorf("post.list_favorites: %w", err)
 		}
@@ -165,25 +187,25 @@ func (u *PostUsecase) list(actor Actor, query ListPostsQuery, favoriteUserID int
 	return total, posts, nil
 }
 
-func (u *PostUsecase) Get(actor Actor, id int64) (*PostResult, error) {
+func (u *PostUsecase) Get(ctx context.Context, actor Actor, id int64) (*PostResult, error) {
 	if err := checkPostID(id); err != nil {
 		return nil, err
 	}
-	post, err := u.postRepo.Find(id, true)
+	post, err := u.postRepo.Find(ctx, id, true)
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, NotFound(CodePostNotFound, "帖子不存在")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("post.get: %w", err)
 	}
-	return u.result(actor, post)
+	return u.result(ctx, actor, post)
 }
 
-func (u *PostUsecase) result(actor Actor, post *domain.Post) (*PostResult, error) {
+func (u *PostUsecase) result(ctx context.Context, actor Actor, post *domain.Post) (*PostResult, error) {
 	favorited := false
 	if actor.UserID > 0 {
 		var err error
-		favorited, err = u.favoriteRepo.Has(post.ID, actor.UserID)
+		favorited, err = u.favoriteRepo.Has(ctx, post.ID, actor.UserID)
 		if err != nil {
 			return nil, fmt.Errorf("post.get_favorite: %w", err)
 		}
@@ -253,11 +275,11 @@ func (u *PostUsecase) checkDomainText(field, text string) error {
 	}
 }
 
-func (u *PostUsecase) Create(actor Actor, input PostInput) (*PostResult, error) {
+func (u *PostUsecase) Create(ctx context.Context, actor Actor, input PostInput) (*PostResult, error) {
 	if err := u.validateInput(actor, input); err != nil {
 		return nil, err
 	}
-	post, err := u.postRepo.Create(repository.CreatePostInput{
+	post, err := u.postRepo.Create(ctx, repository.CreatePostInput{
 		CategoryID: input.CategoryID, Title: strings.TrimSpace(input.Title), Content: input.Content,
 		TagIDs: input.TagIDs, AuthorID: actor.UserID, AuthorUsername: actor.Username, Attr: "{}",
 	})
@@ -275,11 +297,11 @@ func (u *PostUsecase) Create(actor Actor, input PostInput) (*PostResult, error) 
 	return &PostResult{Post: *post}, nil
 }
 
-func (u *PostUsecase) ownedPost(actor Actor, id int64) (*domain.Post, error) {
+func (u *PostUsecase) ownedPost(ctx context.Context, actor Actor, id int64) (*domain.Post, error) {
 	if err := checkPostID(id); err != nil {
 		return nil, err
 	}
-	post, err := u.postRepo.Find(id, false)
+	post, err := u.postRepo.Find(ctx, id, false)
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, NotFound(CodePostNotFound, "帖子不存在")
 	}
@@ -292,14 +314,14 @@ func (u *PostUsecase) ownedPost(actor Actor, id int64) (*domain.Post, error) {
 	return post, nil
 }
 
-func (u *PostUsecase) Update(actor Actor, id int64, input PostInput) (*PostResult, error) {
-	if _, err := u.ownedPost(actor, id); err != nil {
+func (u *PostUsecase) Update(ctx context.Context, actor Actor, id int64, input PostInput) (*PostResult, error) {
+	if _, err := u.ownedPost(ctx, actor, id); err != nil {
 		return nil, err
 	}
 	if err := u.validateInput(actor, input); err != nil {
 		return nil, err
 	}
-	post, err := u.postRepo.Update(id, repository.UpdatePostInput{
+	post, err := u.postRepo.Update(ctx, id, repository.UpdatePostInput{
 		CategoryID: input.CategoryID, Title: strings.TrimSpace(input.Title), Content: input.Content, TagIDs: input.TagIDs,
 	})
 	switch {
@@ -316,18 +338,18 @@ func (u *PostUsecase) Update(actor Actor, id int64, input PostInput) (*PostResul
 	default:
 		return nil, fmt.Errorf("post.update: %w", err)
 	}
-	return u.result(actor, post)
+	return u.result(ctx, actor, post)
 }
 
-func (u *PostUsecase) Delete(actor Actor, id int64) error {
-	post, err := u.ownedPost(actor, id)
+func (u *PostUsecase) Delete(ctx context.Context, actor Actor, id int64) error {
+	post, err := u.ownedPost(ctx, actor, id)
 	if err != nil {
 		return err
 	}
 	if !actor.IsAdmin && !post.WithinDeletionWindow(time.Now()) {
 		return PermissionDenied(CodePostDeleteExpired, "帖子只能在发布后 20 分钟内删除")
 	}
-	err = u.postRepo.SetStatus(id, domain.PostStatusDeleted)
+	err = u.postRepo.SetStatus(ctx, id, domain.PostStatusDeleted)
 	if errors.Is(err, repository.ErrNotFound) {
 		return NotFound(CodePostNotFound, "帖子不存在")
 	}
@@ -337,14 +359,14 @@ func (u *PostUsecase) Delete(actor Actor, id int64) error {
 	return nil
 }
 
-func (u *PostUsecase) SetFavorite(actor Actor, id int64, favorite bool) error {
+func (u *PostUsecase) SetFavorite(ctx context.Context, actor Actor, id int64, favorite bool) error {
 	if err := checkPostID(id); err != nil {
 		return err
 	}
 	if actor.UserID <= 0 {
 		return PermissionDenied(CodePostAuthRequired, "需要登录")
 	}
-	err := u.favoriteRepo.Set(id, actor.UserID, favorite)
+	err := u.favoriteRepo.Set(ctx, id, actor.UserID, favorite)
 	if favorite && errors.Is(err, repository.ErrNotFound) {
 		return NotFound(CodePostNotFound, "帖子不存在")
 	}
@@ -368,7 +390,7 @@ func checkPostID(id int64) error {
 	return nil
 }
 
-func (u *PostUsecase) SetStatus(actor Actor, id int64, status domain.PostStatus) error {
+func (u *PostUsecase) SetStatus(ctx context.Context, actor Actor, id int64, status domain.PostStatus) error {
 	if err := checkPostAdmin(actor); err != nil {
 		return err
 	}
@@ -378,7 +400,7 @@ func (u *PostUsecase) SetStatus(actor Actor, id int64, status domain.PostStatus)
 	if !status.Valid() {
 		return Invalid(CodePostStatusInvalid, "status 必须为 0、1 或 2")
 	}
-	err := u.postRepo.SetStatus(id, status)
+	err := u.postRepo.SetStatus(ctx, id, status)
 	if errors.Is(err, repository.ErrNotFound) {
 		return NotFound(CodePostNotFound, "帖子不存在")
 	}
@@ -388,14 +410,14 @@ func (u *PostUsecase) SetStatus(actor Actor, id int64, status domain.PostStatus)
 	return nil
 }
 
-func (u *PostUsecase) SetCommentsLocked(actor Actor, id int64, locked bool) error {
+func (u *PostUsecase) SetCommentsLocked(ctx context.Context, actor Actor, id int64, locked bool) error {
 	if err := checkPostAdmin(actor); err != nil {
 		return err
 	}
 	if err := checkPostID(id); err != nil {
 		return err
 	}
-	err := u.postRepo.SetCommentsLocked(id, locked)
+	err := u.postRepo.SetCommentsLocked(ctx, id, locked)
 	if errors.Is(err, repository.ErrNotFound) {
 		return NotFound(CodePostNotFound, "帖子不存在")
 	}
@@ -405,7 +427,7 @@ func (u *PostUsecase) SetCommentsLocked(actor Actor, id int64, locked bool) erro
 	return nil
 }
 
-func (u *PostUsecase) SetPinOrder(actor Actor, id int64, pinOrder *int32) error {
+func (u *PostUsecase) SetPinOrder(ctx context.Context, actor Actor, id int64, pinOrder *int32) error {
 	if err := checkPostAdmin(actor); err != nil {
 		return err
 	}
@@ -413,7 +435,7 @@ func (u *PostUsecase) SetPinOrder(actor Actor, id int64, pinOrder *int32) error 
 		return err
 	}
 	// Any int32 order is supported; nil removes the pin, as in the handler.
-	err := u.postRepo.SetPinOrder(id, pinOrder)
+	err := u.postRepo.SetPinOrder(ctx, id, pinOrder)
 	if errors.Is(err, repository.ErrNotFound) {
 		return NotFound(CodePostNotFound, "帖子不存在")
 	}

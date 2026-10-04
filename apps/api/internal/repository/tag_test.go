@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"reflect"
 	"testing"
 	"time"
@@ -41,7 +42,7 @@ func TestTagsFromModels(t *testing.T) {
 
 func TestTagListForPostsEmpty(t *testing.T) {
 	repo := NewTagRepository(nil)
-	got, err := repo.ListForPosts(nil)
+	got, err := repo.ListForPosts(context.Background(), nil)
 	if err != nil || got == nil || len(got) != 0 {
 		t.Fatalf("ListForPosts(nil) = %#v, %v; want non-nil empty map and no error", got, err)
 	}

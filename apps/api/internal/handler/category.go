@@ -38,7 +38,7 @@ type categoryTagResponse struct {
 }
 
 func (h *categoryHandler) list(w http.ResponseWriter, r *http.Request) error {
-	tags, err := h.tagUsecase.ListActive()
+	tags, err := h.tagUsecase.ListActive(r.Context())
 	if err != nil {
 		return httpx.InternalError(err, "查询标签失败")
 	}

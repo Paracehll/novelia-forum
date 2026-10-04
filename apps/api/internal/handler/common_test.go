@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -48,16 +49,25 @@ type domainCommentRepository struct {
 	written bool
 }
 
-func (r *domainCommentRepository) Find(subjectType domain.CommentSubjectType, id int64) (*domain.Comment, error) {
+func (r *domainCommentRepository) Find(
+	ctx context.Context,
+	subjectType domain.CommentSubjectType,
+	id int64,
+) (*domain.Comment, error) {
 	return &domain.Comment{ID: id, AuthorID: 1, SubjectType: subjectType, CreatedAt: time.Now()}, nil
 }
 
-func (r *domainCommentRepository) Create(domain.Comment) (*domain.Comment, error) {
+func (r *domainCommentRepository) Create(context.Context, domain.Comment) (*domain.Comment, error) {
 	r.written = true
 	return &domain.Comment{}, nil
 }
 
-func (r *domainCommentRepository) Update(domain.CommentSubjectType, int64, string) (*domain.Comment, error) {
+func (r *domainCommentRepository) Update(
+	context.Context,
+	domain.CommentSubjectType,
+	int64,
+	string,
+) (*domain.Comment, error) {
 	r.written = true
 	return &domain.Comment{}, nil
 }
@@ -125,7 +135,7 @@ func TestDomainFilterErrorMapping(t *testing.T) {
 		posts := usecase.NewPostUsecase(&writePostRepository{}, nil, filter)
 		response := httptest.NewRecorder()
 		httpx.EH(func(http.ResponseWriter, *http.Request) error {
-			_, err := posts.Create(usecase.Actor{UserID: 1}, usecase.PostInput{
+			_, err := posts.Create(context.Background(), usecase.Actor{UserID: 1}, usecase.PostInput{
 				CategoryID: 1, Title: "标题", Content: value,
 			})
 			return transportError(err)
