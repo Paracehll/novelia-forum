@@ -49,23 +49,23 @@ type externalCommentResponse struct {
 	Replies        *page[externalCommentResponse] `json:"replies,omitempty"`
 }
 
-func newExternalCommentThreadResponse(r *http.Request, value repository.CommentThread) externalCommentResponse {
-	response := newExternalCommentResponse(r, value.Comment)
+func newExternalCommentThreadResponse(value repository.CommentThread) externalCommentResponse {
+	response := newExternalCommentResponse(value.Comment)
 	response.ReplyCount = value.ReplyCount
 	items := make([]externalCommentResponse, len(value.Replies))
 	for i, reply := range value.Replies {
-		items[i] = newExternalCommentResponse(r, reply)
+		items[i] = newExternalCommentResponse(reply)
 	}
 	response.Replies = &page[externalCommentResponse]{Total: value.ReplyCount, Items: items}
 	return response
 }
 
-func newExternalCommentResponse(r *http.Request, value repository.Comment) externalCommentResponse {
+func newExternalCommentResponse(value repository.Comment) externalCommentResponse {
 	return externalCommentResponse{
 		ID:             value.ID,
 		SubjectKey:     value.SubjectKey,
 		RootID:         value.RootID,
-		Content:        publicCommentContent(r, value),
+		Content:        value.Content,
 		AuthorID:       value.AuthorID,
 		AuthorUsername: value.AuthorUsername,
 		Status:         value.Status,
@@ -99,13 +99,14 @@ func (h *externalCommentHandler) list(w http.ResponseWriter, r *http.Request) er
 	if err != nil {
 		return err
 	}
-	total, items, err := h.commentUsecase.ListRoots(subjectType, subjectKey, pagination.Limit, pagination.Offset)
+	principal, _ := httpx.AuthenticatedPrincipal(r)
+	total, items, err := h.commentUsecase.ListRoots(commentActor(principal), subjectType, subjectKey, pagination.Limit, pagination.Offset)
 	if err != nil {
 		return transportError(err)
 	}
 	response := make([]externalCommentResponse, len(items))
 	for i, item := range items {
-		response[i] = newExternalCommentThreadResponse(r, item)
+		response[i] = newExternalCommentThreadResponse(item)
 	}
 	render.JSON(w, r, page[externalCommentResponse]{Total: total, Items: response})
 	return nil
@@ -128,7 +129,9 @@ func (h *externalCommentHandler) listReplies(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		return err
 	}
+	principal, _ := httpx.AuthenticatedPrincipal(r)
 	total, items, err := h.commentUsecase.ListReplies(
+		commentActor(principal),
 		subjectType,
 		subjectKey,
 		rootID,
@@ -140,7 +143,7 @@ func (h *externalCommentHandler) listReplies(w http.ResponseWriter, r *http.Requ
 	}
 	response := make([]externalCommentResponse, len(items))
 	for i, item := range items {
-		response[i] = newExternalCommentResponse(r, item)
+		response[i] = newExternalCommentResponse(item)
 	}
 	render.JSON(w, r, page[externalCommentResponse]{Total: total, Items: response})
 	return nil
@@ -180,7 +183,7 @@ func (h *externalCommentHandler) create(w http.ResponseWriter, r *http.Request) 
 		return transportError(err)
 	}
 	render.Status(r, http.StatusCreated)
-	render.JSON(w, r, newExternalCommentResponse(r, *comment))
+	render.JSON(w, r, newExternalCommentResponse(*comment))
 	return nil
 }
 
@@ -210,7 +213,7 @@ func (h *externalCommentHandler) update(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		return transportError(err)
 	}
-	render.JSON(w, r, newExternalCommentResponse(r, *comment))
+	render.JSON(w, r, newExternalCommentResponse(*comment))
 	return nil
 }
 

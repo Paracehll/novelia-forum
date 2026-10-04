@@ -362,7 +362,9 @@ func (h *postHandler) listComments(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
+	principal, _ := httpx.AuthenticatedPrincipal(r)
 	total, items, err := h.commentUsecase.ListRoots(
+		commentActor(principal),
 		repository.CommentSubjectPost,
 		repository.PostSubjectKey(postID),
 		pagination.Limit,
@@ -373,7 +375,7 @@ func (h *postHandler) listComments(w http.ResponseWriter, r *http.Request) error
 	}
 	response := make([]commentResponse, len(items))
 	for i, item := range items {
-		response[i], err = newCommentThreadResponse(r, item)
+		response[i], err = newCommentThreadResponse(item)
 		if err != nil {
 			return httpx.InternalError(err, "转换评论数据失败")
 		}
@@ -395,7 +397,9 @@ func (h *postHandler) listCommentReplies(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		return err
 	}
+	principal, _ := httpx.AuthenticatedPrincipal(r)
 	total, items, err := h.commentUsecase.ListReplies(
+		commentActor(principal),
 		repository.CommentSubjectPost,
 		repository.PostSubjectKey(postID),
 		rootID,
@@ -407,7 +411,7 @@ func (h *postHandler) listCommentReplies(w http.ResponseWriter, r *http.Request)
 	}
 	response := make([]commentResponse, len(items))
 	for i, item := range items {
-		response[i], err = newCommentResponse(r, item)
+		response[i], err = newCommentResponse(item)
 		if err != nil {
 			return httpx.InternalError(err, "转换评论回复数据失败")
 		}
@@ -439,7 +443,7 @@ func (h *postHandler) createComment(w http.ResponseWriter, r *http.Request) erro
 	if err != nil {
 		return transportError(err)
 	}
-	response, err := newCommentResponse(r, *comment)
+	response, err := newCommentResponse(*comment)
 	if err != nil {
 		return httpx.InternalError(err, "转换评论数据失败")
 	}

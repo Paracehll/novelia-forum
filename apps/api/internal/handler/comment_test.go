@@ -207,69 +207,24 @@ func TestValidateCommentUpdate(t *testing.T) {
 	}
 }
 
-func TestCommentResponsesMaskModeratedContent(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		status  int16
-		content string
-	}{
-		{"published", repository.StatusPublished, "原始内容"},
-		{"hidden", repository.StatusHidden, ""},
-		{"deleted", repository.StatusDeleted, ""},
-		{"unknown", 99, ""},
-	} {
-		for _, role := range []string{"", "member", "admin"} {
-			t.Run(tc.name+"/"+role, func(t *testing.T) {
-				request := httptest.NewRequest(http.MethodGet, "/", nil)
-				if role != "" {
-					token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-						"sub": "tester", "uid": 1, "role": role,
-					}).SignedString([]byte(httpx.AccessTokenSecret))
-					if err != nil {
-						t.Fatal(err)
-					}
-					request.Header.Set("Authorization", "Bearer "+token)
-				}
-				recorder := httptest.NewRecorder()
-				called := false
-				httpx.OptionalAccessToken(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					called = true
-					expected := tc.content
-					if role == "admin" {
-						expected = "原始内容"
-					}
-					rootID := int64(1)
-					comment := repository.Comment{
-						ID: 2, SubjectKey: "123", RootID: &rootID,
-						Content: "原始内容", Status: tc.status,
-					}
-					post, err := newCommentResponse(r, comment)
-					if err != nil {
-						t.Fatal(err)
-					}
-					external := newExternalCommentResponse(r, comment)
-					if post.Content != expected || external.Content != expected {
-						t.Fatalf("unexpected content: post=%q external=%q", post.Content, external.Content)
-					}
-					if post.Status != tc.status || external.Status != tc.status {
-						t.Fatal("comment status was not preserved")
-					}
-					if post.ID != comment.ID || external.ID != comment.ID ||
-						post.RootID == nil || external.RootID == nil ||
-						*post.RootID != rootID || *external.RootID != rootID {
-						t.Fatal("comment identity or reply relationship was not preserved")
-					}
-				})).ServeHTTP(recorder, request)
-				if !called {
-					t.Fatalf("authentication failed: %d", recorder.Code)
-				}
-			})
-		}
+func TestCommentResponsesPreserveContent(t *testing.T) {
+	rootID := int64(1)
+	comment := repository.Comment{ID: 2, SubjectKey: "123", RootID: &rootID, Content: "原始内容", Status: repository.StatusHidden}
+	post, err := newCommentResponse(comment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	external := newExternalCommentResponse(comment)
+	if post.Content != comment.Content || external.Content != comment.Content ||
+		post.Status != comment.Status || external.Status != comment.Status ||
+		post.ID != comment.ID || external.ID != comment.ID ||
+		post.RootID == nil || external.RootID == nil ||
+		*post.RootID != rootID || *external.RootID != rootID {
+		t.Fatal("comment response must preserve usecase result")
 	}
 }
 
-func TestEmbeddedReplyVisibility(t *testing.T) {
-	request := httptest.NewRequest(http.MethodGet, "/", nil)
+func TestEmbeddedReplyResponse(t *testing.T) {
 	rootID := int64(1)
 	thread := repository.CommentThread{
 		Comment:    repository.Comment{ID: rootID, SubjectKey: repository.PostSubjectKey(42)},
@@ -280,22 +235,22 @@ func TestEmbeddedReplyVisibility(t *testing.T) {
 			ID: int64(status) + 2, SubjectKey: thread.SubjectKey, RootID: &rootID, Content: "body", Status: status,
 		})
 	}
-	post, err := newCommentThreadResponse(request, thread)
+	post, err := newCommentThreadResponse(thread)
 	if err != nil {
 		t.Fatal(err)
 	}
-	external := newExternalCommentThreadResponse(request, thread)
+	external := newExternalCommentThreadResponse(thread)
 	if post.Replies == nil || external.Replies == nil || post.Replies.Total != 3 || external.Replies.Total != 3 {
 		t.Fatal("missing embedded reply page")
 	}
-	for i, expected := range []string{"body", "", ""} {
+	for i, expected := range []string{"body", "body", "body"} {
 		if post.Replies.Items[i].Content != expected || external.Replies.Items[i].Content != expected {
-			t.Fatalf("reply %d does not respect content visibility", i)
+			t.Fatalf("reply %d content was not preserved", i)
 		}
 	}
 	thread.Replies = nil
 	thread.ReplyCount = 0
-	empty, err := newCommentThreadResponse(request, thread)
+	empty, err := newCommentThreadResponse(thread)
 	if err != nil {
 		t.Fatal(err)
 	}

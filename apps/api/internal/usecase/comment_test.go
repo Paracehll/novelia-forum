@@ -36,7 +36,7 @@ func (r *commentRepoStub) Create(input repository.CreateCommentInput) (*reposito
 	return &r.comment, nil
 }
 func (r *commentRepoStub) ListRoots(int16, string, int64, int64) (int64, []repository.CommentThread, error) {
-	return 1, []repository.CommentThread{{Comment: r.comment}}, nil
+	return 1, []repository.CommentThread{{Comment: r.comment, ReplyCount: 1, Replies: []repository.Comment{r.comment}}}, nil
 }
 func (r *commentRepoStub) ListReplies(int16, string, int64, int64, int64) (int64, []repository.Comment, error) {
 	return 1, []repository.Comment{r.comment}, nil
@@ -245,7 +245,7 @@ func TestCommentRepositoryErrors(t *testing.T) {
 			return err
 		}, CodeCommentRootNotFound, repository.ErrCommentRootNotFound},
 		{"comment.list_replies", func(u *CommentUsecase) error {
-			_, _, err := u.ListReplies(repository.CommentSubjectNovel, "wenku-book", 7, 20, 0)
+			_, _, err := u.ListReplies(Actor{}, repository.CommentSubjectNovel, "wenku-book", 7, 20, 0)
 			return err
 		}, CodeCommentRootNotFound, repository.ErrNotFound},
 	} {
@@ -286,17 +286,17 @@ func TestCommentReadSubjectChecks(t *testing.T) {
 	for _, replies := range []bool{false, true} {
 		var err error
 		if replies {
-			_, _, err = missing.ListReplies(repository.CommentSubjectPost, "42", 7, 20, 0)
+			_, _, err = missing.ListReplies(Actor{}, repository.CommentSubjectPost, "42", 7, 20, 0)
 		} else {
-			_, _, err = missing.ListRoots(repository.CommentSubjectPost, "42", 20, 0)
+			_, _, err = missing.ListRoots(Actor{}, repository.CommentSubjectPost, "42", 20, 0)
 		}
 		if !isAppErrorCode(err, CodeCommentSubjectNotFound) {
 			t.Fatalf("expected missing post, got %v", err)
 		}
 		if replies {
-			_, _, err = external.ListReplies(repository.CommentSubjectNovel, "deleted", 7, 20, 0)
+			_, _, err = external.ListReplies(Actor{}, repository.CommentSubjectNovel, "deleted", 7, 20, 0)
 		} else {
-			_, _, err = external.ListRoots(repository.CommentSubjectNovel, "deleted", 20, 0)
+			_, _, err = external.ListRoots(Actor{}, repository.CommentSubjectNovel, "deleted", 20, 0)
 		}
 		if err != nil {
 			t.Fatal(err)
@@ -330,6 +330,32 @@ func TestCommentCreationStorageFailures(t *testing.T) {
 				}
 				if !isAppErrorCode(err, tc.wantCode) {
 					t.Fatalf("got %v, want code %s", err, tc.wantCode)
+				}
+			})
+		}
+	}
+}
+
+func TestCommentListContentVisibility(t *testing.T) {
+	for _, actor := range []Actor{{}, {UserID: 1}, {UserID: 2, IsAdmin: true}} {
+		for _, status := range []int16{repository.StatusPublished, repository.StatusHidden, repository.StatusDeleted, 99} {
+			t.Run(fmt.Sprintf("actor=%+v/status=%d", actor, status), func(t *testing.T) {
+				repo := &commentRepoStub{comment: repository.Comment{ID: 7, AuthorID: 1, Content: "body", Status: status}}
+				u := NewCommentUsecase(repo, nil, nil, nil)
+				want := repo.comment
+				if !actor.IsAdmin && status != repository.StatusPublished {
+					want.Content = ""
+				}
+				total, roots, err := u.ListRoots(actor, repository.CommentSubjectNovel, "book", 20, 0)
+				if err != nil || total != 1 || len(roots) != 1 {
+					t.Fatalf("roots=%+v total=%d err=%v", roots, total, err)
+				}
+				if roots[0].Comment != want || roots[0].ReplyCount != 1 || len(roots[0].Replies) != 1 || roots[0].Replies[0] != want {
+					t.Fatalf("unexpected thread: %+v", roots[0])
+				}
+				total, replies, err := u.ListReplies(actor, repository.CommentSubjectNovel, "book", 7, 20, 0)
+				if err != nil || total != 1 || len(replies) != 1 || replies[0] != want {
+					t.Fatalf("replies=%+v total=%d err=%v", replies, total, err)
 				}
 			})
 		}

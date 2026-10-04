@@ -93,7 +93,7 @@ func (h *commentHandler) listAdmin(w http.ResponseWriter, r *http.Request) error
 	}
 	responses := make([]commentResponse, len(items))
 	for i, item := range items {
-		response, err := newCommentResponse(r, item)
+		response, err := newCommentResponse(item)
 		if err != nil {
 			return httpx.InternalError(err, "转换评论数据失败")
 		}

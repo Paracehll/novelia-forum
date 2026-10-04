@@ -69,13 +69,6 @@ func (u *CommentUsecase) checkContent(content string) error {
 	}
 }
 
-func CommentContent(principal Actor, value repository.Comment) string {
-	if value.Status == repository.StatusPublished || principal.IsAdmin {
-		return value.Content
-	}
-	return ""
-}
-
 func (u *CommentUsecase) checkModifiable(principal Actor, subjectType int16, id int64) error {
 	comment, err := u.commentRepo.Find(subjectType, id)
 	if err != nil {
@@ -172,6 +165,7 @@ func (u *CommentUsecase) checkPost(subjectType int16, key string) error {
 }
 
 func (u *CommentUsecase) ListRoots(
+	principal Actor,
 	subjectType int16,
 	key string,
 	limit, offset int64,
@@ -183,10 +177,23 @@ func (u *CommentUsecase) ListRoots(
 	if err != nil {
 		return 0, nil, fmt.Errorf("comment.list_roots: %w", err)
 	}
+	if !principal.IsAdmin {
+		for i := range items {
+			if items[i].Status != repository.StatusPublished {
+				items[i].Content = ""
+			}
+			for j := range items[i].Replies {
+				if items[i].Replies[j].Status != repository.StatusPublished {
+					items[i].Replies[j].Content = ""
+				}
+			}
+		}
+	}
 	return total, items, nil
 }
 
 func (u *CommentUsecase) ListReplies(
+	principal Actor,
 	subjectType int16,
 	key string,
 	rootID, limit, offset int64,
@@ -200,6 +207,13 @@ func (u *CommentUsecase) ListReplies(
 	}
 	if err != nil {
 		return 0, nil, fmt.Errorf("comment.list_replies: %w", err)
+	}
+	if !principal.IsAdmin {
+		for i := range items {
+			if items[i].Status != repository.StatusPublished {
+				items[i].Content = ""
+			}
+		}
 	}
 	return total, items, nil
 }

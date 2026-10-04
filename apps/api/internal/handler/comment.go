@@ -63,7 +63,7 @@ type commentResponse struct {
 	Replies        *page[commentResponse] `json:"replies,omitempty"`
 }
 
-func newCommentResponse(r *http.Request, value repository.Comment) (commentResponse, error) {
+func newCommentResponse(value repository.Comment) (commentResponse, error) {
 	postID, err := repository.PostIDFromSubjectKey(value.SubjectKey)
 	if err != nil {
 		return commentResponse{}, fmt.Errorf("comment %d: %w", value.ID, err)
@@ -72,7 +72,7 @@ func newCommentResponse(r *http.Request, value repository.Comment) (commentRespo
 		ID:             value.ID,
 		PostID:         postID,
 		RootID:         value.RootID,
-		Content:        publicCommentContent(r, value),
+		Content:        value.Content,
 		AuthorID:       value.AuthorID,
 		AuthorUsername: value.AuthorUsername,
 		Status:         value.Status,
@@ -81,26 +81,21 @@ func newCommentResponse(r *http.Request, value repository.Comment) (commentRespo
 	}, nil
 }
 
-func newCommentThreadResponse(r *http.Request, value repository.CommentThread) (commentResponse, error) {
-	response, err := newCommentResponse(r, value.Comment)
+func newCommentThreadResponse(value repository.CommentThread) (commentResponse, error) {
+	response, err := newCommentResponse(value.Comment)
 	if err != nil {
 		return response, err
 	}
 	response.ReplyCount = value.ReplyCount
 	items := make([]commentResponse, len(value.Replies))
 	for i, reply := range value.Replies {
-		items[i], err = newCommentResponse(r, reply)
+		items[i], err = newCommentResponse(reply)
 		if err != nil {
 			return response, err
 		}
 	}
 	response.Replies = &page[commentResponse]{Total: value.ReplyCount, Items: items}
 	return response, nil
-}
-
-func publicCommentContent(r *http.Request, value repository.Comment) string {
-	principal, _ := httpx.AuthenticatedPrincipal(r)
-	return usecase.CommentContent(commentActor(principal), value)
 }
 
 func (h *commentHandler) update(w http.ResponseWriter, r *http.Request) error {
@@ -124,7 +119,7 @@ func (h *commentHandler) update(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return transportError(err)
 	}
-	response, err := newCommentResponse(r, *comment)
+	response, err := newCommentResponse(*comment)
 	if err != nil {
 		return httpx.InternalError(err, "转换评论数据失败")
 	}
