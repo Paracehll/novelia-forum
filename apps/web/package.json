@@ -19,7 +19,7 @@
     "@vue/tsconfig": "^0.9.1",
     "pinia": "^4.0.3",
     "pinia-plugin-persistedstate": "^4.7.1",
-    "reka-ui": "^2.10.4",
+    "reka-ui": "^2.10.5",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.0",
     "vite": "^8.2.2",
