@@ -10,6 +10,44 @@ export interface PostDraft {
 
 const MAX_DRAFT_COUNT = 20;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function deserializeDrafts(value: string) {
+  const state: unknown = JSON.parse(value);
+  if (
+    !isRecord(state) ||
+    !isRecord(state.postDrafts) ||
+    !isRecord(state.commentDrafts) ||
+    !isRecord(state.draftUpdatedAt) ||
+    !Object.values(state.postDrafts).every(
+      (draft) =>
+        isRecord(draft) &&
+        typeof draft.title === 'string' &&
+        typeof draft.category === 'string' &&
+        typeof draft.content === 'string' &&
+        Array.isArray(draft.tagIds) &&
+        draft.tagIds.every((id) => Number.isSafeInteger(id) && id > 0),
+    ) ||
+    !Object.values(state.commentDrafts).every(
+      (content) => typeof content === 'string',
+    ) ||
+    !Object.values(state.draftUpdatedAt).every(
+      (timestamp) =>
+        typeof timestamp === 'number' && Number.isFinite(timestamp),
+    )
+  ) {
+    // The persistence plugin catches this and keeps the empty initial state.
+    throw new Error('Invalid draft cache');
+  }
+  return {
+    postDrafts: state.postDrafts,
+    commentDrafts: state.commentDrafts,
+    draftUpdatedAt: state.draftUpdatedAt,
+  };
+}
+
 export const useDraftStore = defineStore(
   'draft',
   () => {
@@ -114,7 +152,15 @@ export const useDraftStore = defineStore(
   {
     persist: {
       key: 'forum:drafts:v1',
-      storage: localStorage,
+      // Access storage inside the plugin's error handling, not at module load.
+      storage: {
+        getItem: (key) => localStorage.getItem(key),
+        setItem: (key, value) => localStorage.setItem(key, value),
+      },
+      serializer: {
+        serialize: JSON.stringify,
+        deserialize: deserializeDrafts,
+      },
     },
   },
 );

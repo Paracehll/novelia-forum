@@ -40,7 +40,7 @@ const {
 } = useCommentValidation(content, submitting);
 const draftKey = computed(() =>
   authUser.value
-    ? `${props.postId}:${authUser.value.id}:${props.replyTo?.rootId ?? props.replyTo?.id ?? 'root'}`
+    ? `${props.postId}:${authUser.value.id}:${props.replyTo ? `reply:${props.replyTo.id}` : 'root'}`
     : '',
 );
 
