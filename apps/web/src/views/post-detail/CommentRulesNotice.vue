@@ -11,16 +11,13 @@ import { RouterLink } from 'vue-router';
     <p class="flex flex-wrap">
       <span>发言请遵守</span>
       <span class="inline-flex">
-        <span>《</span>
         <RouterLink
           :to="{ name: 'community-rules' }"
           class="font-semibold text-primary underline underline-offset-2 hover:text-primary-hover focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           社区守则
         </RouterLink>
-        <span>》</span>
       </span>
-      <span>，累计三次违规即出局。</span>
     </p>
   </div>
 </template>

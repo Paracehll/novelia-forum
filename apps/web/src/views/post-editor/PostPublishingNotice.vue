@@ -58,7 +58,7 @@ import { RouterLink } from 'vue-router';
         >
           社区守则
         </RouterLink>
-        ，累计三次违规即出局。
+        。
       </li>
     </ul>
   </div>
