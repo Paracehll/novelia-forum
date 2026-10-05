@@ -50,6 +50,12 @@ const navigationOptions = computed<WebKitMenuOption[]>(() => [
     to: { name: 'posts', params: { slug: category.slug } },
   })),
   {
+    key: 'light-novels',
+    label: '轻小说机翻站',
+    icon: MenuBookOutlined,
+    to: { name: 'light-novels' },
+  },
+  {
     key: 'community-rules',
     label: '社区守则',
     icon: FactCheckOutlined,

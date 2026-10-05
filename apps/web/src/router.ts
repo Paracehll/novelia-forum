@@ -43,6 +43,15 @@ const router = createRouter({
       },
     },
     {
+      path: '/light-novels',
+      name: 'light-novels',
+      component: { render: () => null },
+      beforeEnter: () => {
+        window.location.assign('https://n.novelia.cc');
+        return false;
+      },
+    },
+    {
       path: '/rules',
       name: 'community-rules',
       component: CommunityRulesView,
