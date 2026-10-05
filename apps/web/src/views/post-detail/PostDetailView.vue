@@ -17,7 +17,6 @@ import CommentComposer from './CommentComposer.vue';
 import CommentList from './CommentList.vue';
 import PostActions from './PostActions.vue';
 import PostContent from './PostContent.vue';
-import PostFavoriteButton from './PostFavoriteButton.vue';
 
 const COMMENT_PAGE_SIZE = 50;
 
@@ -267,17 +266,6 @@ function returnToList() {
               />
             </template>
           </PostContent>
-          <section
-            class="relative border-t border-divider py-3"
-            aria-label="帖子操作"
-          >
-            <PostFavoriteButton
-              v-if="canFavorite"
-              :favorited="post.favorited"
-              :loading="favoriteLoading"
-              @toggle="toggleFavorite"
-            />
-          </section>
           <div id="comments" tabindex="-1" class="scroll-mt-20">
             <CommentList
               :comments="comments"

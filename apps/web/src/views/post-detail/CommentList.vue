@@ -42,7 +42,7 @@ const emit = defineEmits<{
         { 'border-b border-divider': !composing },
       ]"
     >
-      <h2 class="font-semibold text-ink">
+      <h2 class="text-lg font-semibold text-ink">
         评论
         <span class="text-muted">{{ commentsCount }}</span>
       </h2>
