@@ -195,6 +195,7 @@ function toggleLock() {
         href="#comments"
         variant="outline"
         size="sm"
+        class="text-ink!"
         aria-controls="comments"
         @click.prevent="emit('comments')"
       >
@@ -205,6 +206,7 @@ function toggleLock() {
         v-if="canManagePost"
         variant="outline"
         size="sm"
+        class="text-ink!"
         :disabled="actionLoading"
         @click="editPost"
       >
@@ -217,6 +219,7 @@ function toggleLock() {
             <XButton
               variant="ghost"
               size="icon"
+              class="text-ink!"
               aria-label="更多操作"
               title="更多操作"
               :disabled="actionLoading"
