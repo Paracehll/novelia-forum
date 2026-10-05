@@ -12,9 +12,8 @@ import {
 
 import { authApi, deleteCommentsByAuthor } from '@/api';
 import { XButton } from '@novelia/web-kit';
-import { Notify } from '@novelia/web-kit';
+import { getApiErrorMessage, Notify } from '@novelia/web-kit';
 import { useCommentStore } from '@/stores/comment';
-import { getApiErrorMessage } from '@/utils/apiError';
 
 const props = defineProps<{
   open: boolean;

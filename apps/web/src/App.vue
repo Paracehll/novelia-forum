@@ -7,7 +7,11 @@ import {
   MenuBookOutlined,
   StarBorderOutlined,
 } from '@vicons/material';
-import { WebKitLayout, type WebKitMenuOption } from '@novelia/web-kit';
+import {
+  WebKitApp,
+  WebKitLayout,
+  type WebKitMenuOption,
+} from '@novelia/web-kit';
 import { computed, type Component } from 'vue';
 import { RouterView, useRoute } from 'vue-router';
 
@@ -72,11 +76,13 @@ const selectedNavigationKey = computed(() => {
 </script>
 
 <template>
-  <WebKitLayout
-    :navigation-options="navigationOptions"
-    :account-options="accountOptions"
-    :selected-navigation-key="selectedNavigationKey"
-  >
-    <RouterView />
-  </WebKitLayout>
+  <WebKitApp>
+    <WebKitLayout
+      :navigation-options="navigationOptions"
+      :account-options="accountOptions"
+      :selected-navigation-key="selectedNavigationKey"
+    >
+      <RouterView />
+    </WebKitLayout>
+  </WebKitApp>
 </template>

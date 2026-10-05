@@ -6,11 +6,10 @@ import CommentRulesNotice from './CommentRulesNotice.vue';
 import MarkdownEditor from '@/components/markdown/MarkdownEditor.vue';
 import MarkdownHelpDialog from '@/components/markdown/MarkdownHelpDialog.vue';
 import { useCommentValidation } from '@/composables/useCommentValidation';
-import { Notify } from '@novelia/web-kit';
+import { getApiErrorMessage, Notify } from '@novelia/web-kit';
 import { useCommentStore } from '@/stores/comment';
 import { useDraftStore } from '@/stores/draft';
 import { XButton } from '@novelia/web-kit';
-import { getApiErrorMessage } from '@/utils/apiError';
 
 const props = defineProps<{
   postId: number;

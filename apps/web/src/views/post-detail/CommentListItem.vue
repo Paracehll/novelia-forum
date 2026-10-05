@@ -8,9 +8,8 @@ import MarkdownEditor from '@/components/markdown/MarkdownEditor.vue';
 import MarkdownHelpDialog from '@/components/markdown/MarkdownHelpDialog.vue';
 import { useCommentValidation } from '@/composables/useCommentValidation';
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard';
-import { Notify } from '@novelia/web-kit';
+import { getApiErrorMessage, Notify } from '@novelia/web-kit';
 import { useCommentStore } from '@/stores/comment';
-import { getApiErrorMessage } from '@/utils/apiError';
 
 import CommentActions from './CommentActions.vue';
 import CommentComposer from './CommentComposer.vue';

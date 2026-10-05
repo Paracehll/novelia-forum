@@ -6,10 +6,9 @@ import { authUser, updatePost, type Post } from '@/api';
 import { XButton } from '@novelia/web-kit';
 import { XAsyncContent } from '@novelia/web-kit';
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard';
-import { Notify } from '@novelia/web-kit';
+import { getApiErrorMessage, Notify } from '@novelia/web-kit';
 import { useCategoryStore } from '@/stores/category';
 import { usePostQuery, usePostStore } from '@/stores/post';
-import { getApiErrorMessage } from '@/utils/apiError';
 
 import PostForm from './PostForm.vue';
 

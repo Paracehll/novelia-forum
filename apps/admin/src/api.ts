@@ -1,8 +1,8 @@
 import { inject, type InjectionKey } from 'vue';
 
-import type { createAdminKit } from '@novelia/admin-kit';
+import type { AdminKitContext } from '@novelia/admin-kit';
 
-type AuthApi = ReturnType<typeof createAdminKit>['api'];
+type AuthApi = AdminKitContext['api'];
 
 export interface Page<T> {
   total: number;

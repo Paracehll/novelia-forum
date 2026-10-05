@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ArticleOutlined } from '@vicons/material';
+import { useWebKitLayout } from '@novelia/web-kit';
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -11,6 +12,7 @@ const PAGE_SIZE = 20;
 
 const route = useRoute();
 const router = useRouter();
+const { scrollToTop } = useWebKitLayout();
 
 const page = computed(() => {
   const value = Number(route.query.page);
@@ -34,7 +36,7 @@ function changePage(nextPage: number) {
     name: 'my-posts',
     query: nextPage > 1 ? { page: String(nextPage) } : {},
   });
-  document.querySelector('main')?.scrollTo({ top: 0, behavior: 'smooth' });
+  scrollToTop({ behavior: 'smooth' });
 }
 </script>
 

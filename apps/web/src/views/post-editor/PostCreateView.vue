@@ -4,10 +4,9 @@ import { useRoute, useRouter } from 'vue-router';
 
 import { authUser, createPost } from '@/api';
 import { usePostStore } from '@/stores/post';
-import { Notify } from '@novelia/web-kit';
+import { getApiErrorMessage, Notify } from '@novelia/web-kit';
 import { useCategoryStore } from '@/stores/category';
 import { useDraftStore } from '@/stores/draft';
-import { getApiErrorMessage } from '@/utils/apiError';
 import PostPublishingNotice from './PostPublishingNotice.vue';
 
 import PostForm from './PostForm.vue';

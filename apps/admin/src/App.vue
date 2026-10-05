@@ -5,8 +5,12 @@ import {
   CommentOutlined,
   DashboardOutlined,
 } from '@vicons/material';
-import { AdminKitApp, AdminKitLayout } from '@novelia/admin-kit';
-import { NIcon, type MenuOption } from 'naive-ui';
+import {
+  AdminKitApp,
+  AdminKitLayout,
+  type AdminKitMenuOption,
+} from '@novelia/admin-kit';
+import { NIcon } from 'naive-ui';
 import { h, type Component } from 'vue';
 import { RouterView, useRoute } from 'vue-router';
 
@@ -16,29 +20,29 @@ function renderIcon(icon: Component) {
   return () => h(NIcon, null, { default: () => h(icon) });
 }
 
-const menuOptions: MenuOption[] = [
+const menuOptions: AdminKitMenuOption[] = [
   {
     label: '概览',
-    key: '/overview',
-    to: '/overview',
+    key: 'overview',
+    to: { name: 'overview' },
     icon: renderIcon(DashboardOutlined),
   },
   {
     label: '标签管理',
-    key: '/categories',
-    to: '/categories',
+    key: 'categories',
+    to: { name: 'categories' },
     icon: renderIcon(LocalOfferOutlined),
   },
   {
     label: '帖子管理',
-    key: '/posts',
-    to: '/posts',
+    key: 'posts',
+    to: { name: 'posts' },
     icon: renderIcon(ArticleOutlined),
   },
   {
     label: '评论管理',
-    key: '/comments',
-    to: '/comments',
+    key: 'comments',
+    to: { name: 'comments' },
     icon: renderIcon(CommentOutlined),
   },
 ];

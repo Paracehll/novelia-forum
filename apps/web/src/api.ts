@@ -1,12 +1,13 @@
-import type { createWebKit } from '@novelia/web-kit';
+import type { WebKitContext } from '@novelia/web-kit';
 
-type WebKit = ReturnType<typeof createWebKit>;
+export let authApi: WebKitContext['api'];
+export let authUser: WebKitContext['profile'];
+let client: ReturnType<WebKitContext['api']['createClient']>;
 
-export let authApi: WebKit['api'];
-export let authUser: WebKit['profile'];
-let client: ReturnType<WebKit['api']['createClient']>;
-
-export function initializeApi(api: WebKit['api'], profile: WebKit['profile']) {
+export function initializeApi(
+  api: WebKitContext['api'],
+  profile: WebKitContext['profile'],
+) {
   authApi = api;
   authUser = profile;
   client = authApi.createClient(

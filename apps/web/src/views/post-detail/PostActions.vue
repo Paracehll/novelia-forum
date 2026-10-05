@@ -18,8 +18,7 @@ import { XActionMenu } from '@novelia/web-kit';
 import { XActionMenuItem } from '@novelia/web-kit';
 import { XConfirmDialog } from '@novelia/web-kit';
 import UserModerationDialog from '@/components/UserModerationDialog.vue';
-import { Notify } from '@novelia/web-kit';
-import { getApiErrorMessage } from '@/utils/apiError';
+import { getApiErrorMessage, Notify } from '@novelia/web-kit';
 
 const props = defineProps<{ post: Post }>();
 
