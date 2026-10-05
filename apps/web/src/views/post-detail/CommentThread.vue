@@ -42,11 +42,20 @@ const totalPages = computed(() =>
 );
 
 async function handleCreated(comment: PostComment) {
+  // 二级评论按时间正序排列，新回复位于最后一页。
+  const lastPage = Math.max(
+    1,
+    Math.ceil((props.comment.replyCount + 1) / REPLY_PAGE_SIZE),
+  );
   emit('created', comment);
   if (comment.rootId !== props.comment.id) return;
-  replyPage.value = 1;
+  replyPage.value = lastPage;
   await nextTick();
   await refresh();
+  await nextTick();
+  document
+    .querySelector(`#comment-${comment.id}`)
+    ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 </script>
 
