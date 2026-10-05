@@ -5,14 +5,25 @@ import {
   PushPinOutlined,
   VisibilityOutlined,
 } from '@vicons/material';
+import { computed } from 'vue';
 import { RouterLink } from 'vue-router';
 
 import type { PostSummary } from '@/api';
 import PostTagList from '@/components/PostTagList.vue';
 
-defineProps<{
+const props = defineProps<{
   post: PostSummary;
 }>();
+
+const timestamp = computed(() => {
+  const updated =
+    new Date(props.post.updatedAt).getTime() >
+    new Date(props.post.createdAt).getTime();
+  return {
+    label: updated ? '更新于' : '发布于',
+    value: updated ? props.post.updatedAt : props.post.createdAt,
+  };
+});
 
 const countFormatter = new Intl.NumberFormat('en-US', {
   notation: 'compact',
@@ -31,6 +42,8 @@ function formatDate(value: string) {
     year: sameYear ? undefined : 'numeric',
     month: 'short',
     day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   }).format(date);
 }
 </script>
@@ -70,10 +83,18 @@ function formatDate(value: string) {
       <div
         class="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-muted"
       >
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span class="font-medium text-ink/80">{{ post.authorUsername }}</span>
           <span aria-hidden="true">·</span>
-          <time :datetime="post.activeAt">{{ formatDate(post.activeAt) }}</time>
+          <span>
+            {{ timestamp.label }}
+            <time
+              :datetime="timestamp.value"
+              :title="new Date(timestamp.value).toLocaleString('zh-CN')"
+            >
+              {{ formatDate(timestamp.value) }}
+            </time>
+          </span>
         </div>
         <div class="flex items-center gap-4 sm:hidden" aria-label="帖子数据">
           <span class="inline-flex items-center gap-1.5">
