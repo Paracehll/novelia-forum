@@ -15,6 +15,7 @@ import (
 )
 
 const (
+	CodeCommentAccountTooYoung    = "comment.account_too_young"
 	CodeCommentContentInvalid     = "comment.content_invalid"
 	CodeCommentNotOwner           = "comment.not_owner"
 	CodeCommentAdminRequired      = "comment.admin_required"
@@ -252,6 +253,13 @@ func (u *CommentUsecase) findModifiableComment(
 	return comment, nil
 }
 
+func checkCommentPublisher(actor Actor) error {
+	if actor.CreatedAt.IsZero() || time.Now().Before(actor.CreatedAt.Add(30*24*time.Hour)) {
+		return PermissionDenied(CodeCommentAccountTooYoung, "注册满 30 天后才能发表评论")
+	}
+	return nil
+}
+
 type CreatePostCommentCommand struct {
 	PostID  int64
 	RootID  *int64
@@ -263,6 +271,9 @@ func (u *CommentUsecase) Create(
 	actor Actor,
 	command CreatePostCommentCommand,
 ) (*domain.Comment, error) {
+	if err := checkCommentPublisher(actor); err != nil {
+		return nil, err
+	}
 	if err := u.checkContent(command.Content); err != nil {
 		return nil, err
 	}
@@ -286,6 +297,9 @@ func (u *CommentUsecase) CreateExternal(
 	actor Actor,
 	command CreateExternalCommentCommand,
 ) (*domain.Comment, error) {
+	if err := checkCommentPublisher(actor); err != nil {
+		return nil, err
+	}
 	if err := u.checkContent(command.Content); err != nil {
 		return nil, err
 	}

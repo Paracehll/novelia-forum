@@ -94,7 +94,7 @@ type commentFixture struct {
 }
 
 func (r commentFixture) Create(ctx context.Context, input domain.Comment) (*domain.Comment, error) {
-	actor := usecase.Actor{UserID: input.AuthorID, Username: input.AuthorUsername, IsAdmin: true}
+	actor := usecase.Actor{UserID: input.AuthorID, Username: input.AuthorUsername, IsAdmin: true, CreatedAt: time.Now().Add(-30 * 24 * time.Hour)}
 	if input.SubjectType == domain.CommentSubjectPost {
 		id, err := domain.PostIDFromCommentSubjectKey(input.SubjectKey)
 		if err != nil {

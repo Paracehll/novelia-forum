@@ -20,6 +20,7 @@ import (
 )
 
 func TestActorFromPrincipal(t *testing.T) {
+	createdAt := time.Now().Add(-30 * 24 * time.Hour)
 	for _, tc := range []struct {
 		name      string
 		principal httpx.Principal
@@ -28,8 +29,8 @@ func TestActorFromPrincipal(t *testing.T) {
 		{"anonymous", httpx.Principal{}, usecase.Actor{}},
 		{
 			"member",
-			httpx.Principal{UserID: 7, Username: "alice", Role: "member"},
-			usecase.Actor{UserID: 7, Username: "alice"},
+			httpx.Principal{UserID: 7, Username: "alice", Role: "member", CreatedAt: createdAt},
+			usecase.Actor{UserID: 7, Username: "alice", CreatedAt: createdAt},
 		},
 		{
 			"admin",
@@ -83,7 +84,8 @@ func TestDomainFilterRejectsWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": "tester", "uid": 1, "role": "member",
+		"crat": time.Now().Add(-30 * 24 * time.Hour).Unix(),
+		"sub":  "tester", "uid": 1, "role": "member",
 	}).SignedString([]byte(httpx.AccessTokenSecret))
 	if err != nil {
 		t.Fatal(err)

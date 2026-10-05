@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"forum/internal/domain"
 	"forum/internal/httpx"
@@ -82,7 +83,8 @@ func TestCommentAdminHandlersPassActor(t *testing.T) {
 				router.Route("/admin/comment", NewCommentHandler(u).RegisterAdminRoutes)
 				router.Route("/external/comment", NewExternalCommentHandler(u).RegisterRoutes)
 				token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-					"sub": "tester", "uid": 1, "role": role,
+					"crat": time.Now().Add(-30 * 24 * time.Hour).Unix(),
+					"sub":  "tester", "uid": 1, "role": role,
 				}).SignedString([]byte(httpx.AccessTokenSecret))
 				if err != nil {
 					t.Fatal(err)
@@ -165,7 +167,8 @@ func TestAdminCommentList(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, "/"+tc.query, nil)
 			if tc.role != "" {
 				token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-					"sub": "tester", "uid": 1, "role": tc.role,
+					"crat": time.Now().Add(-30 * 24 * time.Hour).Unix(),
+					"sub":  "tester", "uid": 1, "role": tc.role,
 				}).SignedString([]byte(httpx.AccessTokenSecret))
 				if err != nil {
 					t.Fatal(err)

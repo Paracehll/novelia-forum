@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"forum/internal/domain"
 	"forum/internal/httpx"
@@ -37,7 +38,8 @@ func (s handlerSubjectResolver) Check(ctx context.Context, kind, key string) (bo
 
 func TestExternalCommentCreationChecksSubject(t *testing.T) {
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": "tester", "uid": 1, "role": "member",
+		"crat": time.Now().Add(-30 * 24 * time.Hour).Unix(),
+		"sub":  "tester", "uid": 1, "role": "member",
 	}).SignedString([]byte(httpx.AccessTokenSecret))
 	if err != nil {
 		t.Fatal(err)

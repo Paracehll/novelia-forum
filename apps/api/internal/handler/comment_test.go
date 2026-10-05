@@ -163,7 +163,8 @@ func TestCommentEditingStateResponses(t *testing.T) {
 						NewCommentHandler(u).RegisterRoutes(router)
 					}
 					token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-						"sub": "tester", "uid": 1, "role": role,
+						"crat": time.Now().Add(-30 * 24 * time.Hour).Unix(),
+						"sub":  "tester", "uid": 1, "role": role,
 					}).SignedString([]byte(httpx.AccessTokenSecret))
 					if err != nil {
 						t.Fatal(err)
@@ -214,7 +215,8 @@ func TestAdminCanEditCommentAfterWindow(t *testing.T) {
 			router := chi.NewRouter()
 			NewCommentHandler(usecase.NewCommentUsecase(immediateTransaction{}, repo, &writePostRepository{}, nil, nil)).RegisterRoutes(router)
 			token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-				"sub": "tester", "uid": tc.userID, "role": tc.role,
+				"crat": time.Now().Add(-30 * 24 * time.Hour).Unix(),
+				"sub":  "tester", "uid": tc.userID, "role": tc.role,
 			}).SignedString([]byte(httpx.AccessTokenSecret))
 			if err != nil {
 				t.Fatal(err)
@@ -256,7 +258,8 @@ func TestAdminCanModifyExternalCommentAfterWindow(t *testing.T) {
 				usecase.NewCommentUsecase(immediateTransaction{}, repo, &writePostRepository{}, nil, resolver),
 			).RegisterRoutes(router)
 			token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-				"sub": "tester", "uid": 1, "role": tc.role,
+				"crat": time.Now().Add(-30 * 24 * time.Hour).Unix(),
+				"sub":  "tester", "uid": 1, "role": tc.role,
 			}).SignedString([]byte(httpx.AccessTokenSecret))
 			if err != nil {
 				t.Fatal(err)
@@ -396,7 +399,8 @@ func TestValidateComment(t *testing.T) {
 
 func TestInvalidCommentRequestsStopBeforeUsecase(t *testing.T) {
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": "tester", "uid": 1, "role": "admin",
+		"crat": time.Now().Add(-30 * 24 * time.Hour).Unix(),
+		"sub":  "tester", "uid": 1, "role": "admin",
 	}).SignedString([]byte(httpx.AccessTokenSecret))
 	if err != nil {
 		t.Fatal(err)
@@ -435,7 +439,8 @@ func TestInvalidCommentRequestsStopBeforeUsecase(t *testing.T) {
 
 func TestInvalidCommentContentResponses(t *testing.T) {
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": "tester", "uid": 1, "role": "member",
+		"crat": time.Now().Add(-30 * 24 * time.Hour).Unix(),
+		"sub":  "tester", "uid": 1, "role": "member",
 	}).SignedString([]byte(httpx.AccessTokenSecret))
 	if err != nil {
 		t.Fatal(err)
@@ -469,6 +474,90 @@ func TestInvalidCommentContentResponses(t *testing.T) {
 					t.Fatalf("status=%d body=%q written=%v", response.Code, response.Body.String(), repo.written)
 				}
 			})
+		}
+	}
+}
+
+type publishingCommentRepository struct {
+	repository.CommentRepository
+	subjectType domain.CommentSubjectType
+	subjectKey  string
+	written     bool
+}
+
+func (r *publishingCommentRepository) Find(context.Context, domain.CommentSubjectType, int64) (*domain.Comment, error) {
+	return &domain.Comment{ID: 7, SubjectType: r.subjectType, SubjectKey: r.subjectKey, Status: domain.CommentStatusPublished}, nil
+}
+
+func (r *publishingCommentRepository) Create(_ context.Context, input domain.Comment) (*domain.Comment, error) {
+	r.written = true
+	input.ID = 8
+	return &input, nil
+}
+
+func TestCommentPublishingRequiresThirtyDayOldAccount(t *testing.T) {
+	for _, route := range []struct {
+		name, path, subjectKey string
+		subjectType            domain.CommentSubjectType
+	}{
+		{"post", "/post/42/comment", "42", domain.CommentSubjectPost},
+		{"external", "/external/novel/book", "book", domain.CommentSubjectNovel},
+	} {
+		for _, role := range []string{"member", "trusted", "admin", "restricted", "banned", "unknown", ""} {
+			for _, age := range []struct {
+				name      string
+				createdAt any
+				oldEnough bool
+			}{
+				{"missing", nil, false},
+				{"future", time.Now().Add(time.Hour).Unix(), false},
+				{"under thirty days", time.Now().Add(-30*24*time.Hour + time.Minute).Unix(), false},
+				{"thirty days", time.Now().Add(-30 * 24 * time.Hour).Unix(), true},
+				{"older", time.Now().Add(-31 * 24 * time.Hour).Unix(), true},
+			} {
+				for _, body := range []string{`{"content":"评论"}`, `{"content":"回复","rootId":7}`} {
+					t.Run(route.name+"/"+role+"/"+age.name+"/"+body, func(t *testing.T) {
+						repo := &publishingCommentRepository{subjectType: route.subjectType, subjectKey: route.subjectKey}
+						checks := 0
+						resolver := handlerSubjectResolver{valid: true, check: func(context.Context, string, string) bool { checks++; return true }}
+						u := usecase.NewCommentUsecase(immediateTransaction{}, repo, &writePostRepository{}, nil, resolver)
+						router := chi.NewRouter()
+						router.Route("/post", NewPostHandler(nil, u).RegisterRoutes)
+						router.Route("/external", NewExternalCommentHandler(u).RegisterRoutes)
+						request := httptest.NewRequest(http.MethodPost, route.path, strings.NewReader(body))
+						request.Header.Set("Content-Type", "application/json")
+						if role != "" {
+							claims := jwt.MapClaims{"sub": "tester", "uid": 1, "role": role}
+							if age.createdAt != nil {
+								claims["crat"] = age.createdAt
+							}
+							token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(httpx.AccessTokenSecret))
+							if err != nil {
+								t.Fatal(err)
+							}
+							request.Header.Set("Authorization", "Bearer "+token)
+						}
+						allowed := age.oldEnough && (role == "member" || role == "trusted" || role == "admin")
+						wantStatus := http.StatusForbidden
+						if role == "" || age.createdAt == nil {
+							wantStatus = http.StatusUnauthorized
+						} else if allowed {
+							wantStatus = http.StatusCreated
+						}
+						response := httptest.NewRecorder()
+						router.ServeHTTP(response, request)
+						if response.Code != wantStatus || repo.written != allowed {
+							t.Fatalf("status=%d want=%d written=%v allowed=%v body=%s", response.Code, wantStatus, repo.written, allowed, response.Body.String())
+						}
+						if !allowed && checks != 0 {
+							t.Fatal("denied request checked external subject")
+						}
+						if age.createdAt != nil && !age.oldEnough && (role == "member" || role == "trusted" || role == "admin") && response.Body.String() != "注册满 30 天后才能发表评论" {
+							t.Fatalf("unexpected age error: %s", response.Body.String())
+						}
+					})
+				}
+			}
 		}
 	}
 }

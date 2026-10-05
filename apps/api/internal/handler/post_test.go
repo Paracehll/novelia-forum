@@ -385,7 +385,8 @@ func (noFavoriteRepository) ListPostIDs(context.Context, int64, []int64) (map[in
 func adminPostRequest(t *testing.T, path string) *http.Request {
 	t.Helper()
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": "tester", "uid": 1, "role": "admin",
+		"crat": time.Now().Add(-30 * 24 * time.Hour).Unix(),
+		"sub":  "tester", "uid": 1, "role": "admin",
 	}).SignedString([]byte(httpx.AccessTokenSecret))
 	if err != nil {
 		t.Fatal(err)
@@ -426,7 +427,8 @@ func TestAnnouncementsPublishingRequiresAdmin(t *testing.T) {
 						`{"categoryId":%d,"title":"标题","content":"正文","tagIds":[]}`, categoryID)))
 					request.Header.Set("Content-Type", "application/json")
 					token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-						"sub": "tester", "uid": 1, "role": role,
+						"crat": time.Now().Add(-30 * 24 * time.Hour).Unix(),
+						"sub":  "tester", "uid": 1, "role": role,
 					}).SignedString([]byte(httpx.AccessTokenSecret))
 					if err != nil {
 						t.Fatal(err)
@@ -489,7 +491,8 @@ func TestPostDeletionWindow(t *testing.T) {
 				usecase.NewPostUsecase(immediateTransaction{}, repo, availableTagRepository{}, noFavoriteRepository{}, nil), nil,
 			).RegisterRoutes(router)
 			token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-				"sub": "tester", "uid": tc.userID, "role": tc.role,
+				"crat": time.Now().Add(-30 * 24 * time.Hour).Unix(),
+				"sub":  "tester", "uid": tc.userID, "role": tc.role,
 			}).SignedString([]byte(httpx.AccessTokenSecret))
 			if err != nil {
 				t.Fatal(err)

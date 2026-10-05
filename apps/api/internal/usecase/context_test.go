@@ -195,7 +195,7 @@ func TestCommentContextSurvivesSubjectCheckAndWrite(t *testing.T) {
 		u := NewCommentUsecase(immediateTransaction{}, contextCommentRepository{recorder: r}, nil, nil, resolver)
 		if _, err := u.CreateExternal(
 			ctx,
-			Actor{UserID: 1},
+			Actor{UserID: 1, CreatedAt: time.Now().Add(-30 * 24 * time.Hour)},
 			CreateExternalCommentCommand{
 				Kind:       "novel",
 				SubjectKey: "book",

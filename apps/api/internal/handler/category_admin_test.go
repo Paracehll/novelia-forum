@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	forumcategory "forum/internal/category"
 	"forum/internal/domain"
@@ -75,7 +76,8 @@ func (r *capturingTagRepository) ListActive(ctx context.Context) ([]domain.Tag, 
 func tagAdminToken(t *testing.T, role string) string {
 	t.Helper()
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": "tester", "uid": 1, "role": role,
+		"crat": time.Now().Add(-30 * 24 * time.Hour).Unix(),
+		"sub":  "tester", "uid": 1, "role": role,
 	}).SignedString([]byte(httpx.AccessTokenSecret))
 	if err != nil {
 		t.Fatal(err)

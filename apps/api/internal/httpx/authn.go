@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -28,9 +29,10 @@ type accessClaim struct {
 }
 
 type Principal struct {
-	UserID   int64
-	Username string
-	Role     string
+	UserID    int64
+	Username  string
+	Role      string
+	CreatedAt time.Time
 }
 
 func (p Principal) IsAdmin() bool {
@@ -54,11 +56,17 @@ func verifyAccessToken(tokenString string) (Principal, error) {
 	}
 
 	validClaims, ok := token.Claims.(*accessClaim)
-	if !ok || validClaims.Subject == "" {
+	if !ok || validClaims.Subject == "" || validClaims.CreatedAt == nil {
 		return Principal{}, jwt.ErrTokenInvalidClaims
 	}
 
-	return Principal{UserID: validClaims.UserID, Username: validClaims.Subject, Role: validClaims.Role}, nil
+	principal := Principal{
+		UserID:    validClaims.UserID,
+		Username:  validClaims.Subject,
+		Role:      validClaims.Role,
+		CreatedAt: validClaims.CreatedAt.Time,
+	}
+	return principal, nil
 }
 
 func RequireAccessToken(next http.Handler) http.Handler {

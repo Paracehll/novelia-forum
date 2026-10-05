@@ -57,8 +57,9 @@ func uniquePositiveIDs(ids []int64) bool {
 
 func actorFromPrincipal(principal httpx.Principal) usecase.Actor {
 	return usecase.Actor{
-		UserID:   principal.UserID,
-		Username: principal.Username,
-		IsAdmin:  principal.IsAdmin(),
+		UserID:    principal.UserID,
+		Username:  principal.Username,
+		IsAdmin:   principal.IsAdmin(),
+		CreatedAt: principal.CreatedAt,
 	}
 }

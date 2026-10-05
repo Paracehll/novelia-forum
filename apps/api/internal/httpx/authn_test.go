@@ -177,6 +177,7 @@ func testAccessToken(t *testing.T, username, role string) string {
 func testAccessTokenWithUserID(t *testing.T, userID int64, username, role string) string {
 	t.Helper()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"crat": time.Now().Add(-30 * 24 * time.Hour).Unix(),
 		"uid":  userID,
 		"sub":  username,
 		"role": role,

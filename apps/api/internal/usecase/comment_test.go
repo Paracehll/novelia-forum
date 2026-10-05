@@ -131,7 +131,7 @@ func TestCommentContentValidation(t *testing.T) {
 					return true
 				})
 				u := NewCommentUsecase(immediateTransaction{}, repo, postExistenceStub{exists: true}, nil, checker)
-				actor := Actor{UserID: 1, Username: "tester"}
+				actor := Actor{UserID: 1, Username: "tester", CreatedAt: time.Now().Add(-30 * 24 * time.Hour)}
 				var err error
 				switch operation {
 				case "create post":
@@ -230,7 +230,7 @@ func TestCommentModificationPermissions(t *testing.T) {
 func TestPostCommentCreationUsesActor(t *testing.T) {
 	repo := &commentRepoStub{}
 	u := NewCommentUsecase(immediateTransaction{}, repo, postExistenceStub{exists: true}, nil, nil)
-	actor := Actor{UserID: 42, Username: "alice"}
+	actor := Actor{UserID: 42, Username: "alice", CreatedAt: time.Now().Add(-30 * 24 * time.Hour)}
 
 	if _, err := u.Create(
 		context.Background(),
@@ -254,7 +254,7 @@ func TestExternalCommentCheckFailureStopsWrite(t *testing.T) {
 			u := NewCommentUsecase(immediateTransaction{}, repo, postExistenceStub{exists: true}, nil, subjectResolverStub{
 				supported: true, valid: true, exists: exists, checkErr: cause, checks: &checks,
 			})
-			comment, err := u.CreateExternal(context.Background(), Actor{UserID: 1}, CreateExternalCommentCommand{
+			comment, err := u.CreateExternal(context.Background(), Actor{UserID: 1, CreatedAt: time.Now().Add(-30 * 24 * time.Hour)}, CreateExternalCommentCommand{
 				Kind: "novel", SubjectKey: "web-syosetu-n1234", Content: "body",
 			})
 			var appErr *AppError
@@ -291,7 +291,7 @@ func TestExternalCommentChecksBeforeWrite(t *testing.T) {
 				checks:    &checks,
 			}
 			u := NewCommentUsecase(immediateTransaction{}, repo, postExistenceStub{exists: true}, nil, checker)
-			actor := Actor{UserID: 1, Username: "tester"}
+			actor := Actor{UserID: 1, Username: "tester", CreatedAt: time.Now().Add(-30 * 24 * time.Hour)}
 			command := CreateExternalCommentCommand{
 				Kind: "novel", SubjectKey: "web-syosetu-n1234", Content: "body",
 			}
@@ -372,11 +372,11 @@ func TestCommentRepositoryErrors(t *testing.T) {
 		storageError error
 	}{
 		{"comment.create_post", func(u *CommentUsecase) error {
-			_, err := u.Create(context.Background(), Actor{}, CreatePostCommentCommand{PostID: 42, Content: "body"})
+			_, err := u.Create(context.Background(), Actor{CreatedAt: time.Now().Add(-30 * 24 * time.Hour)}, CreatePostCommentCommand{PostID: 42, Content: "body"})
 			return err
 		}, CodeCommentSubjectNotFound, repository.ErrNotFound},
 		{"comment.create_external", func(u *CommentUsecase) error {
-			_, err := u.CreateExternal(context.Background(), Actor{}, CreateExternalCommentCommand{
+			_, err := u.CreateExternal(context.Background(), Actor{CreatedAt: time.Now().Add(-30 * 24 * time.Hour)}, CreateExternalCommentCommand{
 				Kind: "novel", SubjectKey: "wenku-book", RootID: int64Pointer(7), Content: "body",
 			})
 			return err
@@ -529,9 +529,9 @@ func TestCommentCreationStorageFailures(t *testing.T) {
 				rootID := int64(7)
 				var err error
 				if external {
-					_, err = u.CreateExternal(context.Background(), Actor{}, CreateExternalCommentCommand{Kind: "novel", SubjectKey: "42", RootID: &rootID, Content: "reply"})
+					_, err = u.CreateExternal(context.Background(), Actor{CreatedAt: time.Now().Add(-30 * 24 * time.Hour)}, CreateExternalCommentCommand{Kind: "novel", SubjectKey: "42", RootID: &rootID, Content: "reply"})
 				} else {
-					_, err = u.Create(context.Background(), Actor{}, CreatePostCommentCommand{PostID: 42, RootID: &rootID, Content: "reply"})
+					_, err = u.Create(context.Background(), Actor{CreatedAt: time.Now().Add(-30 * 24 * time.Hour)}, CreatePostCommentCommand{PostID: 42, RootID: &rootID, Content: "reply"})
 				}
 				if external && tc.postOnly {
 					if err != nil {
@@ -575,6 +575,56 @@ func TestCommentListContentVisibility(t *testing.T) {
 					t.Fatalf("replies=%+v total=%d err=%v", replies, total, err)
 				}
 			})
+		}
+	}
+}
+
+func TestCommentCreationRequiresThirtyDayOldAccount(t *testing.T) {
+	for _, external := range []bool{false, true} {
+		for _, admin := range []bool{false, true} {
+			for _, tc := range []struct {
+				name      string
+				createdAt time.Time
+				allowed   bool
+			}{
+				{"missing", time.Time{}, false},
+				{"future", time.Now().Add(time.Hour), false},
+				{"under thirty days", time.Now().Add(-30*24*time.Hour + time.Minute), false},
+				{"thirty days", time.Now().Add(-30 * 24 * time.Hour), true},
+				{"older", time.Now().Add(-31 * 24 * time.Hour), true},
+			} {
+				rootID := int64(7)
+				for _, root := range []*int64{nil, &rootID} {
+					t.Run(fmt.Sprintf("external=%t/admin=%t/%s/reply=%t", external, admin, tc.name, root != nil), func(t *testing.T) {
+						actor := Actor{UserID: 1, IsAdmin: admin, CreatedAt: tc.createdAt}
+						// Denied calls must stop before any repository or resolver access.
+						u := NewCommentUsecase(immediateTransaction{}, nil, nil, nil, nil)
+						repo := &commentRepoStub{comment: domain.Comment{ID: rootID, SubjectKey: "42", SubjectType: domain.CommentSubjectPost}}
+						if external {
+							repo.comment.SubjectType = domain.CommentSubjectNovel
+						}
+						if tc.allowed {
+							u = NewCommentUsecase(immediateTransaction{}, repo, postExistenceStub{exists: true}, nil, subjectResolverStub{supported: true, valid: true, exists: true})
+						}
+						var err error
+						if external {
+							_, err = u.CreateExternal(context.Background(), actor, CreateExternalCommentCommand{Kind: "novel", SubjectKey: "42", RootID: root, Content: "body"})
+						} else {
+							_, err = u.Create(context.Background(), actor, CreatePostCommentCommand{PostID: 42, RootID: root, Content: "body"})
+						}
+						if tc.allowed {
+							if err != nil || repo.writes != 1 {
+								t.Fatalf("err=%v writes=%d", err, repo.writes)
+							}
+						} else {
+							var appErr *AppError
+							if !errors.As(err, &appErr) || appErr.Kind != KindPermissionDenied || appErr.Code != CodeCommentAccountTooYoung {
+								t.Fatalf("expected account age permission error, got %v", err)
+							}
+						}
+					})
+				}
+			}
 		}
 	}
 }
