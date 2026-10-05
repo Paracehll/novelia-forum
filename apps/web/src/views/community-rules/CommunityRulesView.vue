@@ -5,8 +5,8 @@ import { RouterLink } from 'vue-router';
 const permissions = [
   { site: '论坛', name: '管理帖子收藏', allowed: [true, true, true] },
   { site: '论坛', name: '发表、编辑帖子', allowed: [true, true, false] },
-  { site: '论坛', name: '发表、编辑评论', allowed: [true, true, false] },
-  { site: '小说', name: '发表、编辑评论', allowed: [false, true, false] },
+  { site: '论坛', name: '发表评论', allowed: [false, true, false] },
+  { site: '小说', name: '发表评论', allowed: [false, true, false] },
   { site: '小说', name: '管理小说收藏', allowed: [true, true, true] },
   { site: '小说', name: '更新网页小说', allowed: [false, true, false] },
   { site: '小说', name: '编辑网页小说', allowed: [false, true, false] },
@@ -91,12 +91,12 @@ const permissions = [
               <th scope="col" class="px-3 py-2 text-center font-medium">
                 普通用户
                 <br />
-                未满月
+                未满30天
               </th>
               <th scope="col" class="px-3 py-2 text-center font-medium">
                 普通用户
                 <br />
-                已满月
+                满30天
               </th>
               <th scope="col" class="px-3 py-2 text-center font-medium">
                 受限用户
@@ -106,7 +106,7 @@ const permissions = [
           <tbody>
             <tr
               v-for="permission in permissions"
-              :key="permission.name"
+              :key="`${permission.site}-${permission.name}`"
               class="border-b border-current/10"
             >
               <td class="whitespace-nowrap px-3 py-2">
