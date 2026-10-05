@@ -36,7 +36,7 @@ create table if not exists post
 );
 
 comment on column post.status is '帖子状态: 0=published, 1=hidden, 2=deleted';
-comment on column post.views_count is '帖子详情页成功加载的累计次数，每次加载计 1 次';
+comment on column post.views_count is '帖子详情数据成功读取后的累计次数，每次获取计 1 次；尽力统计，计数失败不影响读取，不代表浏览器完成渲染或独立访客数';
 comment on column post.comments_count is '帖子下 status=published 的评论数量，统计一级评论和子回复';
 comment on column post.comments_locked is 'true=评论区锁定状态，禁止新增评论；false=评论区开放状态，可新增评论';
 comment on column post.pin_order is 'NULL=普通帖；非NULL=置顶帖的排序优先级，数值越小越靠前';

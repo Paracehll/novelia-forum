@@ -43,11 +43,11 @@ func TestRepositoriesRespectCanceledContext(t *testing.T) {
 			return err
 		}},
 		{"post find", func() error {
-			_, err := posts.Find(ctx, 1, false)
+			_, err := posts.Find(ctx, 1)
 			return err
 		}},
 		{"post view", func() error {
-			_, err := posts.Find(ctx, 1, true)
+			_, err := posts.IncrementViews(ctx, 1)
 			return err
 		}},
 		{"post exists", func() error {

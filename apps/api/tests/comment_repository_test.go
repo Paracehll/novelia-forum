@@ -86,11 +86,11 @@ func TestCommentRepositoryDeleteAllByAuthor(t *testing.T) {
 		t.Fatalf("other author's comment status = %d", remaining.Status)
 	}
 
-	first, err := postRepo.Find(context.Background(), firstPost.ID, false)
+	first, err := postRepo.Find(context.Background(), firstPost.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := postRepo.Find(context.Background(), secondPost.ID, false)
+	second, err := postRepo.Find(context.Background(), secondPost.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestCommentCreationRootErrors(t *testing.T) {
 			); err != nil {
 				t.Fatal(err)
 			}
-			before, err := postRepo.Find(context.Background(), post.ID, false)
+			before, err := postRepo.Find(context.Background(), post.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -250,7 +250,7 @@ func TestCommentCreationRootErrors(t *testing.T) {
 			if err := testDB.QueryRow("SELECT COUNT(*) FROM comment").Scan(&countAfter); err != nil {
 				t.Fatal(err)
 			}
-			after, err := postRepo.Find(context.Background(), post.ID, false)
+			after, err := postRepo.Find(context.Background(), post.ID)
 			if err != nil {
 				t.Fatal(err)
 			}

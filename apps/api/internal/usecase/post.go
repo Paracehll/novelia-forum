@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -201,14 +202,26 @@ func (u *PostUsecase) Get(ctx context.Context, actor Actor, id int64) (*PostResu
 	if err := checkPostID(id); err != nil {
 		return nil, err
 	}
-	post, err := u.postRepo.Find(ctx, id, true)
+	post, err := u.postRepo.Find(ctx, id)
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, NotFound(CodePostNotFound, "帖子不存在")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("post.get: %w", err)
 	}
-	return u.result(ctx, actor, post)
+	result, err := u.result(ctx, actor, post)
+	if err != nil {
+		return nil, err
+	}
+	// Views measure successfully prepared details, not browser rendering. This
+	// non-critical metric must never turn a successful read into a failure.
+	count, err := u.postRepo.IncrementViews(ctx, id)
+	if err != nil {
+		slog.WarnContext(ctx, "Post view count update failed", "post_id", id, "error", err)
+	} else {
+		result.Post.ViewsCount = count
+	}
+	return result, nil
 }
 
 func (u *PostUsecase) result(ctx context.Context, actor Actor, post *domain.Post) (*PostResult, error) {

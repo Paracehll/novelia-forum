@@ -166,10 +166,11 @@ func TestJetRepositories(t *testing.T) {
 		t.Fatalf("unexpected posts: total=%d items=%d", total, len(posts))
 	}
 
-	viewed, err := postRepo.Find(context.Background(), post.ID, true)
+	detail, err := postRepo.u.Get(context.Background(), usecase.Actor{}, post.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
+	viewed := &detail.Post
 	if viewed.Content != post.Content {
 		t.Fatal("detail did not preserve content")
 	}
@@ -372,7 +373,7 @@ func TestJetRepositories(t *testing.T) {
 	if err := postRepo.SetPinOrder(context.Background(), post.ID, &pinOrder); err != nil {
 		t.Fatal(err)
 	}
-	moderated, err := postRepo.Find(context.Background(), post.ID, false)
+	moderated, err := postRepo.Find(context.Background(), post.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

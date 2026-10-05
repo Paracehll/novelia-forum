@@ -39,7 +39,8 @@ type UpdatePostInput struct {
 // Lock and write operations spanning multiple statements require a transaction context.
 type PostRepository interface {
 	List(ctx context.Context, filter PostFilter, limit, offset int64) (int64, []domain.PostListItem, error)
-	Find(ctx context.Context, id int64, incrementViews bool) (*domain.Post, error)
+	Find(ctx context.Context, id int64) (*domain.Post, error)
+	IncrementViews(ctx context.Context, id int64) (int32, error)
 	ExistsPublished(ctx context.Context, id int64) (bool, error)
 	Lock(ctx context.Context, id int64) (*domain.Post, error)
 	AdjustCommentsCount(ctx context.Context, id int64, delta int32, activeAt *time.Time) error
@@ -241,26 +242,13 @@ func (r *postRepository) AdjustCommentsCount(ctx context.Context, id int64, delt
 	return err
 }
 
-func (r *postRepository) Find(
-	ctx context.Context,
-	id int64,
-	incrementViews bool,
-) (result *domain.Post, err error) {
+func (r *postRepository) Find(ctx context.Context, id int64) (result *domain.Post, err error) {
 	defer func() { err = storageError(err, "post.Find") }()
+	stmt := SELECT(table.Post.AllColumns).
+		FROM(table.Post).
+		WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(int16(domain.PostStatusPublished)))))
 	var dest model.Post
-	if incrementViews {
-		stmt := table.Post.UPDATE(table.Post.ViewsCount).
-			SET(table.Post.ViewsCount.ADD(Int32(1))).
-			WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(int16(domain.PostStatusPublished))))).
-			RETURNING(table.Post.AllColumns)
-		err = stmt.QueryContext(ctx, executor(ctx, r.db), &dest)
-	} else {
-		stmt := SELECT(table.Post.AllColumns).
-			FROM(table.Post).
-			WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(int16(domain.PostStatusPublished)))))
-		err = stmt.QueryContext(ctx, executor(ctx, r.db), &dest)
-	}
-	if err != nil {
+	if err := stmt.QueryContext(ctx, executor(ctx, r.db), &dest); err != nil {
 		return nil, err
 	}
 	tags, err := r.tagRepo.ListForPost(ctx, id)
@@ -269,6 +257,20 @@ func (r *postRepository) Find(
 	}
 	post := postFromModel(dest, tags)
 	return &post, nil
+}
+
+// IncrementViews updates only the counter and returns its current value.
+func (r *postRepository) IncrementViews(ctx context.Context, id int64) (count int32, err error) {
+	defer func() { err = storageError(err, "post.IncrementViews") }()
+	stmt := table.Post.UPDATE(table.Post.ViewsCount).
+		SET(table.Post.ViewsCount.ADD(Int32(1))).
+		WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(int16(domain.PostStatusPublished))))).
+		RETURNING(table.Post.ViewsCount)
+	var record model.Post
+	if err := stmt.QueryContext(ctx, executor(ctx, r.db), &record); err != nil {
+		return 0, err
+	}
+	return record.ViewsCount, nil
 }
 
 func (r *postRepository) Create(ctx context.Context, input CreatePostInput) (result *domain.Post, err error) {

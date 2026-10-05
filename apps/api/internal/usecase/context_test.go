@@ -51,9 +51,13 @@ func (r contextPostRepository) List(
 	r.recorder.record(ctx, "post.list")
 	return 1, []domain.PostListItem{{ID: 7}}, nil
 }
-func (r contextPostRepository) Find(ctx context.Context, _ int64, _ bool) (*domain.Post, error) {
+func (r contextPostRepository) Find(ctx context.Context, _ int64) (*domain.Post, error) {
 	r.recorder.record(ctx, "post.find")
 	return &domain.Post{ID: 7, AuthorID: 1, CreatedAt: time.Now()}, nil
+}
+func (r contextPostRepository) IncrementViews(ctx context.Context, _ int64) (int32, error) {
+	r.recorder.record(ctx, "post.increment_views")
+	return 1, nil
 }
 func (r contextPostRepository) Lock(ctx context.Context, _ int64) (*domain.Post, error) {
 	r.recorder.record(ctx, "post.lock")
@@ -123,7 +127,7 @@ func TestPostContextSurvivesHelpersAndMultipleRepositories(t *testing.T) {
 		{"get", func(u *PostUsecase) error {
 			_, err := u.Get(ctx, actor, 7)
 			return err
-		}, []string{"post.find", "favorite.has"}},
+		}, []string{"post.find", "favorite.has", "post.increment_views"}},
 		{"update", func(u *PostUsecase) error {
 			_, err := u.Update(ctx, actor, 7, PostInput{CategoryID: 1, Title: "标题", Content: "body"})
 			return err

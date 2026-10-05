@@ -35,9 +35,13 @@ func (r *postUsecaseRepoStub) List(
 	r.limit, r.offset = limit, offset
 	return 1, []domain.PostListItem{r.listItem}, r.err
 }
-func (r *postUsecaseRepoStub) Find(ctx context.Context, _ int64, increment bool) (*domain.Post, error) {
-	r.incrementViews = increment
+func (r *postUsecaseRepoStub) Find(ctx context.Context, _ int64) (*domain.Post, error) {
 	return &r.post, r.err
+}
+func (r *postUsecaseRepoStub) IncrementViews(context.Context, int64) (int32, error) {
+	r.incrementViews = true
+	r.post.ViewsCount++
+	return r.post.ViewsCount, nil
 }
 func (r *postUsecaseRepoStub) Lock(context.Context, int64) (*domain.Post, error) {
 	return &r.post, r.err
@@ -283,8 +287,9 @@ func TestPostInputAndModificationRules(t *testing.T) {
 			t.Fatalf("input=%+v err=%v", tc.input, err)
 		}
 	}
-	if _, err := u.Get(context.Background(), Actor{}, 1); err != nil || !repo.incrementViews {
-		t.Fatalf("get err=%v increment=%v", err, repo.incrementViews)
+	result, err = u.Get(context.Background(), Actor{}, 1)
+	if err != nil || !repo.incrementViews || result.Post.ViewsCount != repo.post.ViewsCount {
+		t.Fatalf("get result=%+v err=%v increment=%v", result, err, repo.incrementViews)
 	}
 }
 
@@ -340,6 +345,9 @@ func TestPostReadErrorsKeepCause(t *testing.T) {
 			u.favoriteRepo = &postUsecaseFavoriteStub{err: cause}
 			_, _, favoritesErr := u.List(context.Background(), Actor{UserID: 7}, ListPostsQuery{Limit: 20})
 			_, favoriteErr := u.Get(context.Background(), Actor{UserID: 7}, 1)
+			if repo.incrementViews {
+				t.Fatal("failed detail read incremented views")
+			}
 			for _, err := range []error{listErr, favoritesErr, favoriteErr} {
 				var appErr *AppError
 				if !errors.Is(err, cause) || errors.As(err, &appErr) {

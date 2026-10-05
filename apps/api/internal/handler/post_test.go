@@ -333,8 +333,12 @@ type writePostRepository struct {
 	written bool
 }
 
-func (r *writePostRepository) Find(context.Context, int64, bool) (*domain.Post, error) {
+func (r *writePostRepository) Find(context.Context, int64) (*domain.Post, error) {
 	return &domain.Post{ID: 42, AuthorID: 1}, nil
+}
+
+func (r *writePostRepository) IncrementViews(context.Context, int64) (int32, error) {
+	return 1, nil
 }
 
 func (r *writePostRepository) Lock(context.Context, int64) (*domain.Post, error) {
@@ -446,7 +450,7 @@ type deletePostRepository struct {
 	deleted bool
 }
 
-func (r *deletePostRepository) Find(context.Context, int64, bool) (*domain.Post, error) {
+func (r *deletePostRepository) Find(context.Context, int64) (*domain.Post, error) {
 	return &r.post, nil
 }
 
