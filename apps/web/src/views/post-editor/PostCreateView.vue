@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 
 import { authUser, createPost } from '@/api';
 import { usePostStore } from '@/stores/post';
-import { getApiErrorMessage, Notify } from '@novelia/web-kit';
+import { getApiErrorMessage, Notify, XAsyncContent } from '@novelia/web-kit';
 import { useCategoryStore } from '@/stores/category';
 import { useDraftStore } from '@/stores/draft';
 import PostPublishingNotice from './PostPublishingNotice.vue';
@@ -34,15 +34,16 @@ const selectedCategory = computed(
 );
 const tags = computed(() => selectedCategory.value.tags);
 const draftUserId = computed(() => authUser.value?.id ?? 0);
+const categoriesReady = computed(() => categoryStore.items.length > 0);
 
 watch(
-  draftUserId,
-  (userId) => {
+  [draftUserId, categoriesReady],
+  ([userId, ready]) => {
     title.value = '';
     categorySlug.value = initialCategory;
     selectedTagIds.value = [];
     content.value = '';
-    if (!userId) return;
+    if (!userId || !ready) return;
     const draft = draftStore.getPostDraft(userId);
     if (!draft) return;
     const categoryItem =
@@ -61,7 +62,7 @@ watch(
 watch(
   [title, categorySlug, selectedTagIds, content],
   () => {
-    if (!draftUserId.value) return;
+    if (!draftUserId.value || !categoriesReady.value) return;
     draftStore.savePostDraft(draftUserId.value, {
       title: title.value,
       category: categorySlug.value,
@@ -77,7 +78,7 @@ function changeCategory() {
 }
 
 async function submitPost() {
-  if (!authUser.value || submitting.value) return;
+  if (!authUser.value || !categoriesReady.value || submitting.value) return;
   submitting.value = true;
   try {
     const post = await createPost({
@@ -111,27 +112,37 @@ async function submitPost() {
           登录后才能发表帖子，请使用页面右上角的登录入口。
         </div>
 
-        <PostForm
+        <XAsyncContent
           v-else
-          v-model:title="title"
-          v-model:category="categorySlug"
-          v-model:content="content"
-          v-model:tag-ids="selectedTagIds"
-          class="mt-6"
-          :categories="categoryStore.writableCategories"
-          :tags="tags"
-          :submitting="submitting"
-          submit-label="发布帖子"
-          submitting-label="发布中…"
-          title-placeholder="用一句话概括你想讨论的内容"
-          content-placeholder="详细说明你想分享或讨论的内容…"
-          @category-change="changeCategory"
-          @submit="submitPost"
+          :loading="!categoriesReady && categoryStore.loading"
+          :error="categoriesReady ? undefined : categoryStore.error"
+          error-title="分类加载失败"
+          @retry="categoryStore.refresh"
         >
-          <template #notice>
-            <PostPublishingNotice />
+          <template #loading>
+            <p class="mt-6 py-4 text-sm text-muted">正在加载分类…</p>
           </template>
-        </PostForm>
+          <PostForm
+            v-model:title="title"
+            v-model:category="categorySlug"
+            v-model:content="content"
+            v-model:tag-ids="selectedTagIds"
+            class="mt-6"
+            :categories="categoryStore.writableCategories"
+            :tags="tags"
+            :submitting="submitting"
+            submit-label="发布帖子"
+            submitting-label="发布中…"
+            title-placeholder="用一句话概括你想讨论的内容"
+            content-placeholder="详细说明你想分享或讨论的内容…"
+            @category-change="changeCategory"
+            @submit="submitPost"
+          >
+            <template #notice>
+              <PostPublishingNotice />
+            </template>
+          </PostForm>
+        </XAsyncContent>
       </section>
     </div>
   </div>
