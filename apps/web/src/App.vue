@@ -12,15 +12,29 @@ import {
   WebKitLayout,
   type WebKitMenuOption,
 } from '@novelia/web-kit';
-import { computed, type Component } from 'vue';
+import { computed, watch, type Component } from 'vue';
 import { RouterView, useRoute } from 'vue-router';
 
+import { authUser } from '@/api';
 import { useCategoryStore } from '@/stores/category';
+import { useDraftStore } from '@/stores/draft';
 import { usePostStore } from '@/stores/post';
 
 const route = useRoute();
 const categoryStore = useCategoryStore();
 const postStore = usePostStore();
+const draftStore = useDraftStore();
+
+watch(
+  () => authUser.value?.id,
+  (userId, previousUserId) => {
+    if (previousUserId && userId !== previousUserId) {
+      draftStore.clearAllDrafts();
+      draftStore.$persist();
+    }
+  },
+  { flush: 'sync' },
+);
 
 function categoryIcon(slug: string): Component {
   if (slug === 'novel') return MenuBookOutlined;
