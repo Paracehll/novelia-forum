@@ -70,7 +70,7 @@ func (r *commentRepository) ListRoots(
 	stmt := SELECT(table.Comment.AllColumns).
 		FROM(table.Comment).
 		WHERE(condition).
-		ORDER_BY(table.Comment.CreatedAt.ASC(), table.Comment.ID.ASC()).
+		ORDER_BY(table.Comment.CreatedAt.DESC(), table.Comment.ID.DESC()).
 		LIMIT(limit).
 		OFFSET(offset)
 	var dest []model.Comment
@@ -112,7 +112,7 @@ func (r *commentRepository) ListRoots(
 	if len(rootIDs) > 0 {
 		ranked := SELECT(table.Comment.AllColumns,
 			ROW_NUMBER().OVER(PARTITION_BY(table.Comment.RootID).
-				ORDER_BY(table.Comment.CreatedAt.ASC(), table.Comment.ID.ASC())).AS("reply_rank"),
+				ORDER_BY(table.Comment.CreatedAt.DESC(), table.Comment.ID.DESC())).AS("reply_rank"),
 		).FROM(table.Comment).
 			WHERE(table.Comment.SubjectType.EQ(Int16(int16(subjectType))).
 				AND(table.Comment.SubjectKey.EQ(String(subjectKey))).
@@ -120,7 +120,7 @@ func (r *commentRepository) ListRoots(
 		var replies []model.Comment
 		err := SELECT(ranked.AllColumns()).FROM(ranked).
 			WHERE(IntegerColumn("reply_rank").From(ranked).LT_EQ(Int64(CommentReplyPageSize))).
-			ORDER_BY(table.Comment.CreatedAt.From(ranked).ASC(), table.Comment.ID.From(ranked).ASC()).
+			ORDER_BY(table.Comment.CreatedAt.From(ranked).DESC(), table.Comment.ID.From(ranked).DESC()).
 			QueryContext(ctx, executor(ctx, r.db), &replies)
 		if err != nil {
 			return 0, nil, err
@@ -166,7 +166,7 @@ func (r *commentRepository) ListReplies(
 	}
 	var dest []model.Comment
 	if err = SELECT(table.Comment.AllColumns).FROM(table.Comment).WHERE(condition).
-		ORDER_BY(table.Comment.CreatedAt.ASC(), table.Comment.ID.ASC()).
+		ORDER_BY(table.Comment.CreatedAt.DESC(), table.Comment.ID.DESC()).
 		LIMIT(limit).OFFSET(offset).QueryContext(ctx, executor(ctx, r.db), &dest); err != nil {
 		return 0, nil, err
 	}

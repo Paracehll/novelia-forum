@@ -128,7 +128,10 @@ func TestCommentRootReplyPreviews(t *testing.T) {
 		t.Fatalf("unexpected roots: %d %d", total, len(threads))
 	}
 	for i, thread := range threads {
-		if i == 2 {
+		if thread.Root.ID != roots[len(roots)-1-i].ID {
+			t.Fatalf("roots are not newest first: %#v", thread.Root)
+		}
+		if i == 0 {
 			if thread.ReplyCount != 0 || len(thread.Replies) != 0 {
 				t.Fatal("empty root has replies")
 			}
@@ -149,6 +152,10 @@ func TestCommentRootReplyPreviews(t *testing.T) {
 			t.Fatalf("bad preview size/count: %#v", thread)
 		}
 		for j, reply := range thread.Replies {
+			if j > 0 && (reply.CreatedAt.After(thread.Replies[j-1].CreatedAt) ||
+				(reply.CreatedAt.Equal(thread.Replies[j-1].CreatedAt) && reply.ID >= thread.Replies[j-1].ID)) {
+				t.Fatalf("replies are not newest first: %#v", thread.Replies)
+			}
 			if reply.ID != replies[j].ID || reply.RootID == nil || *reply.RootID != thread.Root.ID {
 				t.Fatalf("preview order/group mismatch: %#v", reply)
 			}

@@ -100,7 +100,7 @@ function changeCommentPage(nextPage: number) {
 
 async function handleCommentCreated(comment: PostComment) {
   if (!post.value) return;
-  const lastPage = commentStore.registerCreatedComment(
+  const targetPage = commentStore.registerCreatedComment(
     comment,
     commentPage.value,
     COMMENT_PAGE_SIZE,
@@ -110,11 +110,11 @@ async function handleCommentCreated(comment: PostComment) {
     commentsCount: post.value.commentsCount + 1,
   });
 
-  if (comment.rootId == null && commentPage.value !== lastPage) {
+  if (comment.rootId == null && commentPage.value !== targetPage) {
     await router.push({
       name: 'post-detail',
       params: { id: postId.value },
-      query: { commentPage: String(lastPage) },
+      query: { commentPage: String(targetPage) },
     });
   }
   composingComment.value = false;

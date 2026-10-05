@@ -140,10 +140,6 @@ export const useCommentStore = defineStore('comment', () => {
       });
       return Math.max(1, Math.ceil(current.total / pageSize));
     }
-    const lastPage = Math.max(
-      1,
-      Math.ceil((current.total + (alreadyIncluded ? 0 : 1)) / pageSize),
-    );
     for (const entry of rootEntries) {
       const page = entry.state.value.data as Page<PostComment> | undefined;
       if (page)
@@ -154,14 +150,14 @@ export const useCommentStore = defineStore('comment', () => {
     }
     const items = [...current.items];
     if (!items.some((item) => item.id === comment.id)) {
-      if (currentPage === lastPage) items.push(comment);
+      if (currentPage === 1) items.unshift(comment);
     }
     cache.setQueryData<Page<PostComment>>(key, {
-      items,
+      items: items.slice(0, pageSize),
       total: current.total + (alreadyIncluded ? 0 : 1),
     });
     void cache.invalidateQueries(filter, false);
-    return lastPage;
+    return 1;
   }
 
   async function updateComment(id: number, content: string) {

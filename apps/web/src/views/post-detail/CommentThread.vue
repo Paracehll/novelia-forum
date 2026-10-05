@@ -42,13 +42,9 @@ const totalPages = computed(() =>
 );
 
 async function handleCreated(comment: PostComment) {
-  const lastPage = Math.max(
-    1,
-    Math.ceil((props.comment.replyCount + 1) / REPLY_PAGE_SIZE),
-  );
   emit('created', comment);
   if (comment.rootId !== props.comment.id) return;
-  replyPage.value = lastPage;
+  replyPage.value = 1;
   await nextTick();
   await refresh();
 }
