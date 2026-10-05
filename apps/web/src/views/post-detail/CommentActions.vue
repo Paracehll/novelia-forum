@@ -26,6 +26,7 @@ const emit = defineEmits<{
 
 const commentStore = useCommentStore();
 const submitting = ref(false);
+const copying = ref(false);
 const now = ref(Date.now());
 const confirmationAction = ref<'delete' | 'hide'>();
 const userModerationAction = ref<'strike' | 'ban'>();
@@ -46,8 +47,6 @@ const canEdit = computed(
   () => isAdmin.value || (isOwner.value && now.value <= modificationDeadline),
 );
 const canModerateAuthor = computed(() => isAdmin.value && !isOwner.value);
-const hasMenu = computed(() => canEdit.value || isAdmin.value);
-const hasActions = computed(() => canReply.value || hasMenu.value);
 const moderationEvidence = computed(() =>
   [
     `论坛评论 #${props.comment.id}（帖子 #${props.postId}）`,
@@ -72,6 +71,19 @@ const confirmation = computed(() =>
 );
 
 onBeforeUnmount(() => window.clearTimeout(expiryTimer));
+
+async function copyComment() {
+  if (copying.value) return;
+  copying.value = true;
+  try {
+    await navigator.clipboard.writeText(props.comment.content);
+    Notify.success('评论原文已复制');
+  } catch {
+    Notify.error('复制失败，请手动选择评论内容复制');
+  } finally {
+    copying.value = false;
+  }
+}
 
 async function removeComment() {
   submitting.value = true;
@@ -116,7 +128,7 @@ function handleUserModerationOpenChange(open: boolean) {
 </script>
 
 <template>
-  <div v-if="hasActions" class="ml-auto flex items-center gap-1">
+  <div class="ml-auto flex items-center gap-1">
     <XButton
       v-if="canReply"
       variant="ghost"
@@ -129,7 +141,10 @@ function handleUserModerationOpenChange(open: boolean) {
     <XButton v-if="canEdit" variant="ghost" size="xs" @click="emit('edit')">
       编辑
     </XButton>
-    <XActionMenu v-if="hasMenu" compact side="bottom" align="end">
+    <XActionMenu compact side="bottom" align="end">
+      <XActionMenuItem :disabled="copying" @activate="copyComment">
+        复制原文
+      </XActionMenuItem>
       <XActionMenuItem
         v-if="isAdmin"
         :disabled="submitting"
@@ -138,6 +153,7 @@ function handleUserModerationOpenChange(open: boolean) {
         隐藏评论
       </XActionMenuItem>
       <XActionMenuItem
+        v-if="canEdit"
         danger
         :disabled="submitting"
         @activate="confirmationAction = 'delete'"
