@@ -107,12 +107,13 @@ func (r *commentRepository) ListRoots(
 			countsByRoot[*row.RootID] = row.Count
 		}
 	}
-	// Fetch the first page for all roots in this page in one query.
+	// Replies read oldest first, the opposite of roots, so the preview keeps
+	// matching the first page of ListReplies.
 	repliesByRoot := make(map[int64][]domain.Comment, len(rootIDs))
 	if len(rootIDs) > 0 {
 		ranked := SELECT(table.Comment.AllColumns,
 			ROW_NUMBER().OVER(PARTITION_BY(table.Comment.RootID).
-				ORDER_BY(table.Comment.CreatedAt.DESC(), table.Comment.ID.DESC())).AS("reply_rank"),
+				ORDER_BY(table.Comment.CreatedAt.ASC(), table.Comment.ID.ASC())).AS("reply_rank"),
 		).FROM(table.Comment).
 			WHERE(table.Comment.SubjectType.EQ(Int16(int16(subjectType))).
 				AND(table.Comment.SubjectKey.EQ(String(subjectKey))).
@@ -120,7 +121,7 @@ func (r *commentRepository) ListRoots(
 		var replies []model.Comment
 		err := SELECT(ranked.AllColumns()).FROM(ranked).
 			WHERE(IntegerColumn("reply_rank").From(ranked).LT_EQ(Int64(CommentReplyPageSize))).
-			ORDER_BY(table.Comment.CreatedAt.From(ranked).DESC(), table.Comment.ID.From(ranked).DESC()).
+			ORDER_BY(table.Comment.CreatedAt.From(ranked).ASC(), table.Comment.ID.From(ranked).ASC()).
 			QueryContext(ctx, executor(ctx, r.db), &replies)
 		if err != nil {
 			return 0, nil, err
@@ -166,7 +167,7 @@ func (r *commentRepository) ListReplies(
 	}
 	var dest []model.Comment
 	if err = SELECT(table.Comment.AllColumns).FROM(table.Comment).WHERE(condition).
-		ORDER_BY(table.Comment.CreatedAt.DESC(), table.Comment.ID.DESC()).
+		ORDER_BY(table.Comment.CreatedAt.ASC(), table.Comment.ID.ASC()).
 		LIMIT(limit).OFFSET(offset).QueryContext(ctx, executor(ctx, r.db), &dest); err != nil {
 		return 0, nil, err
 	}

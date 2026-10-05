@@ -152,9 +152,9 @@ func TestCommentRootReplyPreviews(t *testing.T) {
 			t.Fatalf("bad preview size/count: %#v", thread)
 		}
 		for j, reply := range thread.Replies {
-			if j > 0 && (reply.CreatedAt.After(thread.Replies[j-1].CreatedAt) ||
-				(reply.CreatedAt.Equal(thread.Replies[j-1].CreatedAt) && reply.ID >= thread.Replies[j-1].ID)) {
-				t.Fatalf("replies are not newest first: %#v", thread.Replies)
+			if j > 0 && (reply.CreatedAt.Before(thread.Replies[j-1].CreatedAt) ||
+				(reply.CreatedAt.Equal(thread.Replies[j-1].CreatedAt) && reply.ID <= thread.Replies[j-1].ID)) {
+				t.Fatalf("replies are not oldest first: %#v", thread.Replies)
 			}
 			if reply.ID != replies[j].ID || reply.RootID == nil || *reply.RootID != thread.Root.ID {
 				t.Fatalf("preview order/group mismatch: %#v", reply)
