@@ -4,6 +4,7 @@ import {
   ExploreOutlined,
   FactCheckOutlined,
   ForumOutlined,
+  LanguageOutlined,
   MenuBookOutlined,
   StarBorderOutlined,
 } from '@vicons/material';
@@ -50,10 +51,19 @@ const navigationOptions = computed<WebKitMenuOption[]>(() => [
     to: { name: 'posts', params: { slug: category.slug } },
   })),
   {
+    type: 'divider',
+    key: 'categories-divider',
+  },
+  {
+    type: 'external',
     key: 'light-novels',
-    label: '轻小说机翻站',
-    icon: MenuBookOutlined,
-    to: { name: 'light-novels' },
+    label: '小说站',
+    icon: LanguageOutlined,
+    href: 'https://n.novelia.cc',
+  },
+  {
+    type: 'divider',
+    key: 'navigation-divider',
   },
   {
     key: 'community-rules',

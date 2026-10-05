@@ -1,24 +1,2 @@
 @import 'tailwindcss';
 @import '@novelia/web-kit/styles.css';
-
-.web-kit-sidebar > div:has(> nav[aria-label='站点导航']) {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.web-kit-sidebar nav[aria-label='站点导航'] {
-  display: contents;
-}
-
-.web-kit-sidebar > div > [role='separator'] {
-  order: 1;
-}
-
-.web-kit-sidebar nav > a[href='/rules'] {
-  order: 2;
-}
-
-.web-kit-sidebar > div > button {
-  order: 3;
-}
