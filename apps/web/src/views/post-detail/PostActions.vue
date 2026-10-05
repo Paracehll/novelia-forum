@@ -1,6 +1,10 @@
 <script setup lang="ts">
-import { EditOutlined } from '@vicons/material';
-import { computed, ref } from 'vue';
+import {
+  ChatBubbleOutlineOutlined,
+  EditOutlined,
+  MoreVertOutlined,
+} from '@vicons/material';
+import { computed, onScopeDispose, ref, watch } from 'vue';
 import { XButton } from '@novelia/web-kit';
 
 import {
@@ -13,26 +17,50 @@ import {
   unlockPost,
   unpinPost,
 } from '@/api';
-import { XActionMenu } from '@novelia/web-kit';
+import {
+  DropdownMenuContent,
+  DropdownMenuPortal,
+  DropdownMenuRoot,
+  DropdownMenuTrigger,
+} from 'reka-ui';
+import PostFavoriteButton from './PostFavoriteButton.vue';
 import { XActionMenuItem } from '@novelia/web-kit';
 import { XConfirmDialog } from '@novelia/web-kit';
 import UserModerationDialog from '@/components/UserModerationDialog.vue';
 import { getApiErrorMessage, Notify } from '@novelia/web-kit';
 
-const props = withDefaults(defineProps<{ post: Post; inline?: boolean }>(), {
-  inline: false,
-});
+const props = defineProps<{
+  post: Post;
+  canFavorite: boolean;
+  favoriteLoading: boolean;
+}>();
 
 const emit = defineEmits<{
+  favorite: [];
+  comments: [];
   edit: [];
   deleted: [];
-  updated: [post: Post];
+  updated: [patch: Partial<Pick<Post, 'pinOrder' | 'commentsLocked'>>];
   authorCommentsDeleted: [];
 }>();
 
 const actionLoading = ref(false);
 const confirmationAction = ref<'delete' | 'hide'>();
 const userModerationAction = ref<'strike' | 'ban'>();
+let context = 0;
+watch(
+  () => [props.post.id, authUser.value?.id, authUser.value?.role],
+  (next, previous) => {
+    if (next.some((value, index) => value !== previous[index])) {
+      context++;
+      actionLoading.value = false;
+      confirmationAction.value = undefined;
+      userModerationAction.value = undefined;
+    }
+  },
+  { flush: 'sync' },
+);
+onScopeDispose(() => context++);
 const isAdmin = computed(() => authUser.value?.role === 'admin');
 const isOwner = computed(() => authUser.value?.id === props.post.authorId);
 const canManagePost = computed(() => isOwner.value || isAdmin.value);
@@ -67,45 +95,44 @@ function editPost() {
   emit('edit');
 }
 
-async function removePost() {
-  actionLoading.value = true;
-  try {
-    await deletePost(props.post.id);
-    Notify.success('帖子已删除');
-    emit('deleted');
-  } catch (reason) {
-    Notify.error(await getApiErrorMessage(reason, '删除帖子失败'));
-  } finally {
-    actionLoading.value = false;
-  }
+function removePost() {
+  void updateModeration(
+    () => deletePost(props.post.id),
+    { status: 1 },
+    '帖子已删除',
+    '删除帖子失败',
+  );
 }
 
 async function updateModeration(
-  request: Promise<unknown>,
-  nextPost: Post,
+  request: () => Promise<unknown>,
+  patch: Partial<Pick<Post, 'pinOrder' | 'commentsLocked' | 'status'>>,
   successMessage: string,
   failureMessage: string,
 ) {
+  if (actionLoading.value || !canManagePost.value) return;
+  const requestContext = context;
+  const isCurrent = () => requestContext === context;
   actionLoading.value = true;
   try {
-    await request;
+    await request();
+    if (!isCurrent()) return;
     Notify.success(successMessage);
-    if (nextPost.status !== 0) emit('deleted');
-    else emit('updated', nextPost);
+    if (patch.status != null && patch.status !== 0) emit('deleted');
+    else emit('updated', patch);
   } catch (reason) {
-    Notify.error(await getApiErrorMessage(reason, failureMessage));
+    if (!isCurrent()) return;
+    const message = await getApiErrorMessage(reason, failureMessage);
+    if (isCurrent()) Notify.error(message);
   } finally {
-    actionLoading.value = false;
+    if (isCurrent()) actionLoading.value = false;
   }
 }
 
 function hidePost() {
   void updateModeration(
-    setPostStatus(props.post.id, 1),
-    {
-      ...props.post,
-      status: 1,
-    },
+    () => setPostStatus(props.post.id, 1),
+    { status: 1 },
     '帖子已隐藏',
     '隐藏帖子失败',
   );
@@ -128,13 +155,13 @@ function handleUserModerationOpenChange(open: boolean) {
 
 function togglePin() {
   const pinOrder = props.post.pinOrder == null ? 0 : null;
-  const request =
+  const request = () =>
     pinOrder == null
       ? unpinPost(props.post.id)
       : pinPost(props.post.id, pinOrder);
   void updateModeration(
     request,
-    { ...props.post, pinOrder },
+    { pinOrder },
     pinOrder == null ? '已取消置顶' : '帖子已置顶',
     pinOrder == null ? '取消置顶失败' : '置顶帖子失败',
   );
@@ -142,12 +169,11 @@ function togglePin() {
 
 function toggleLock() {
   const commentsLocked = !props.post.commentsLocked;
-  const request = commentsLocked
-    ? lockPost(props.post.id)
-    : unlockPost(props.post.id);
+  const request = () =>
+    commentsLocked ? lockPost(props.post.id) : unlockPost(props.post.id);
   void updateModeration(
     request,
-    { ...props.post, commentsLocked },
+    { commentsLocked },
     commentsLocked ? '评论区已锁定' : '评论区已开放',
     commentsLocked ? '锁定评论失败' : '开放评论失败',
   );
@@ -155,13 +181,26 @@ function toggleLock() {
 </script>
 
 <template>
-  <section
-    v-if="!inline || canManagePost"
-    :class="inline ? 'relative' : 'relative border-t border-divider py-3'"
-    aria-label="帖子操作"
-  >
+  <section class="relative" aria-label="帖子快捷操作">
     <div class="flex flex-wrap items-center gap-2">
-      <slot name="favorite" />
+      <PostFavoriteButton
+        v-if="canFavorite"
+        prominent
+        :favorited="post.favorited"
+        :loading="favoriteLoading"
+        @toggle="emit('favorite')"
+      />
+      <XButton
+        as="a"
+        href="#comments"
+        variant="outline"
+        size="sm"
+        aria-controls="comments"
+        @click.prevent="emit('comments')"
+      >
+        <ChatBubbleOutlineOutlined class="size-4" aria-hidden="true" />
+        评论
+      </XButton>
       <XButton
         v-if="canManagePost"
         variant="outline"
@@ -172,47 +211,74 @@ function toggleLock() {
         <EditOutlined class="size-4" aria-hidden="true" />
         编辑
       </XButton>
-      <div v-if="isAdmin || canDelete" class="post-more-menu">
-        <XActionMenu>
-          <template v-if="isAdmin">
-            <XActionMenuItem :disabled="actionLoading" @activate="togglePin">
-              {{ post.pinOrder == null ? '置顶帖子' : '取消置顶' }}
-            </XActionMenuItem>
-            <XActionMenuItem :disabled="actionLoading" @activate="toggleLock">
-              {{ post.commentsLocked ? '开放评论' : '锁定评论' }}
-            </XActionMenuItem>
-            <XActionMenuItem
+      <div v-if="isAdmin || canDelete">
+        <DropdownMenuRoot>
+          <DropdownMenuTrigger as-child>
+            <XButton
+              variant="ghost"
+              size="icon"
+              aria-label="更多操作"
+              title="更多操作"
               :disabled="actionLoading"
-              @activate="confirmationAction = 'hide'"
             >
-              隐藏帖子
-            </XActionMenuItem>
-          </template>
-          <XActionMenuItem
-            v-if="canDelete"
-            danger
-            :disabled="actionLoading"
-            @activate="confirmationAction = 'delete'"
-          >
-            删除帖子
-          </XActionMenuItem>
-          <template v-if="canModerateAuthor">
-            <XActionMenuItem
-              danger
-              :disabled="actionLoading"
-              @activate="userModerationAction = 'strike'"
+              <MoreVertOutlined class="size-5" aria-hidden="true" />
+            </XButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuPortal>
+            <DropdownMenuContent
+              side="bottom"
+              align="end"
+              :side-offset="6"
+              :collision-padding="8"
+              class="z-30 w-40 rounded-md border border-border bg-surface p-1 shadow-xl outline-none"
             >
-              处罚作者
-            </XActionMenuItem>
-            <XActionMenuItem
-              danger
-              :disabled="actionLoading"
-              @activate="userModerationAction = 'ban'"
-            >
-              封禁作者
-            </XActionMenuItem>
-          </template>
-        </XActionMenu>
+              <template v-if="isAdmin">
+                <XActionMenuItem
+                  :disabled="actionLoading"
+                  @activate="togglePin"
+                >
+                  {{ post.pinOrder == null ? '置顶帖子' : '取消置顶' }}
+                </XActionMenuItem>
+                <XActionMenuItem
+                  :disabled="actionLoading"
+                  @activate="toggleLock"
+                >
+                  {{ post.commentsLocked ? '开放评论' : '锁定评论' }}
+                </XActionMenuItem>
+                <XActionMenuItem
+                  :disabled="actionLoading"
+                  @activate="confirmationAction = 'hide'"
+                >
+                  隐藏帖子
+                </XActionMenuItem>
+              </template>
+              <XActionMenuItem
+                v-if="canDelete"
+                danger
+                :disabled="actionLoading"
+                @activate="confirmationAction = 'delete'"
+              >
+                删除帖子
+              </XActionMenuItem>
+              <template v-if="canModerateAuthor">
+                <XActionMenuItem
+                  danger
+                  :disabled="actionLoading"
+                  @activate="userModerationAction = 'strike'"
+                >
+                  处罚作者
+                </XActionMenuItem>
+                <XActionMenuItem
+                  danger
+                  :disabled="actionLoading"
+                  @activate="userModerationAction = 'ban'"
+                >
+                  封禁作者
+                </XActionMenuItem>
+              </template>
+            </DropdownMenuContent>
+          </DropdownMenuPortal>
+        </DropdownMenuRoot>
       </div>
     </div>
     <XConfirmDialog
@@ -237,9 +303,3 @@ function toggleLock() {
     />
   </section>
 </template>
-
-<style scoped>
-.post-more-menu :deep(button[aria-label='更多操作'] > svg) {
-  transform: rotate(90deg);
-}
-</style>

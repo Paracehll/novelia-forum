@@ -3,8 +3,8 @@ import { ArrowBackOutlined } from '@vicons/material';
 import { computed, nextTick, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
-import { authUser, setPostFavorite, type Post, type PostComment } from '@/api';
-import { getApiErrorMessage, Notify } from '@novelia/web-kit';
+import { type Post, type PostComment } from '@/api';
+import { usePostFavorite } from '@/composables/usePostFavorite';
 import { XButton } from '@novelia/web-kit';
 import { XAsyncContent } from '@novelia/web-kit';
 import PostTagList from '@/components/PostTagList.vue';
@@ -71,29 +71,11 @@ const category = computed(() =>
   categoryStore.categories.find((item) => item.id === post.value?.categoryId),
 );
 
-const favoriteLoading = ref(false);
-
-async function toggleFavorite() {
-  const currentPost = post.value;
-  const userId = authUser.value?.id;
-  if (!currentPost || !userId || favoriteLoading.value) return;
-  const nextValue = !currentPost.favorited;
-  favoriteLoading.value = true;
-  try {
-    await setPostFavorite(currentPost.id, nextValue);
-    // Do not apply a response to a different post or signed-in viewer.
-    if (post.value?.id !== currentPost.id || authUser.value?.id !== userId)
-      return;
-    postStore.setPost({ ...post.value, favorited: nextValue });
-    Notify.success(nextValue ? '帖子已收藏' : '已取消收藏');
-  } catch (reason) {
-    if (post.value?.id === currentPost.id && authUser.value?.id === userId) {
-      Notify.error(await getApiErrorMessage(reason, '更新收藏失败'));
-    }
-  } finally {
-    favoriteLoading.value = false;
-  }
-}
+const {
+  canFavorite,
+  loading: favoriteLoading,
+  toggle: toggleFavorite,
+} = usePostFavorite(post);
 
 function jumpToComments() {
   const target = document.getElementById('comments');
@@ -183,8 +165,10 @@ function editPost() {
   void router.push({ name: 'post-edit', params: { id: postId.value } });
 }
 
-function handlePostUpdated(value: Post) {
-  postStore.setPost(value);
+function handlePostUpdated(
+  patch: Partial<Pick<Post, 'pinOrder' | 'commentsLocked'>>,
+) {
+  if (post.value) postStore.setPost({ ...post.value, ...patch });
 }
 
 async function handleAuthorCommentsDeleted() {
@@ -270,20 +254,15 @@ function returnToList() {
         </template>
 
         <template v-if="post">
-          <PostContent :post="post" @comments="jumpToComments">
-            <template #favorite>
-              <PostFavoriteButton
-                prominent
-                :favorited="post.favorited"
-                :loading="favoriteLoading"
-                @toggle="toggleFavorite"
-              />
-            </template>
-            <template #more>
+          <PostContent :post="post">
+            <template #actions>
               <PostActions
                 :key="post.id"
-                inline
                 :post="post"
+                :can-favorite="canFavorite"
+                :favorite-loading="favoriteLoading"
+                @favorite="toggleFavorite"
+                @comments="jumpToComments"
                 @edit="editPost"
                 @deleted="leaveDeletedPost"
                 @updated="handlePostUpdated"
@@ -296,6 +275,7 @@ function returnToList() {
             aria-label="帖子操作"
           >
             <PostFavoriteButton
+              v-if="canFavorite"
               :favorited="post.favorited"
               :loading="favoriteLoading"
               @toggle="toggleFavorite"

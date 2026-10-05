@@ -2,8 +2,6 @@
 import { FavoriteBorderOutlined, FavoriteFilled } from '@vicons/material';
 import { XButton } from '@novelia/web-kit';
 
-import { authUser } from '@/api';
-
 withDefaults(
   defineProps<{
     favorited: boolean;
@@ -18,7 +16,6 @@ defineEmits<{ toggle: [] }>();
 
 <template>
   <XButton
-    v-if="authUser"
     :variant="
       prominent
         ? favorited
