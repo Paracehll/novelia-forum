@@ -9,24 +9,29 @@ import (
 	"github.com/lib/pq"
 )
 
-const (
-	StatusPublished int16 = 0
-	StatusHidden    int16 = 1
-	StatusDeleted   int16 = 2
-)
-
 var (
 	ErrNotFound = errors.New("record not found")
 	ErrConflict = errors.New("record conflict")
 )
 
-func IsNotFound(err error) bool {
-	return errors.Is(err, ErrNotFound) || errors.Is(err, qrm.ErrNoRows)
-}
-
-func IsUniqueViolation(err error) bool {
+func isUniqueViolation(err error) bool {
 	var pqErr *pq.Error
 	return errors.Is(err, ErrConflict) || errors.As(err, &pqErr) && pqErr.Code == "23505"
+}
+
+// requireAffectedRow converts an empty single-record update to a stable outcome.
+func requireAffectedRow(result sql.Result, err error) error {
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // storageError translates known storage outcomes without leaking driver errors.
@@ -38,7 +43,7 @@ func storageError(err error, operation string) error {
 	switch {
 	case errors.Is(err, qrm.ErrNoRows), errors.Is(err, sql.ErrNoRows):
 		err = ErrNotFound
-	case IsUniqueViolation(err):
+	case isUniqueViolation(err):
 		err = ErrConflict
 	}
 	return fmt.Errorf("%s: %w", operation, err)

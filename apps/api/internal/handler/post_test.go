@@ -136,7 +136,7 @@ func TestPostListQueryPreservesHTTPFilters(t *testing.T) {
 	}
 	filter := repo.filter
 	if filter.CategoryID != 1 || filter.Search != "title" ||
-		filter.Sort != repository.PostSortNewest ||
+		filter.Sort != domain.PostSortNewest ||
 		len(filter.TagIDs) != 3 ||
 		filter.TagIDs[0] != 2 || filter.TagIDs[1] != 3 || filter.TagIDs[2] != 4 ||
 		filter.Status != domain.PostStatusPublished ||

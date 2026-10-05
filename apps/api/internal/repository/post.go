@@ -9,16 +9,9 @@ import (
 	"time"
 
 	. "github.com/go-jet/jet/v2/postgres"
-	"github.com/go-jet/jet/v2/qrm"
 )
 
-const (
-	PostSortActive   = "active"
-	PostSortNewest   = "newest"
-	PostSortViews    = "views"
-	PostSortComments = "comments"
-	PostStatusAll    = -1
-)
+const PostStatusAll = -1
 
 type PostFilter struct {
 	CategoryID               int64
@@ -68,7 +61,7 @@ func NewPostRepository(db *sql.DB, tagRepo TagRepository) PostRepository {
 }
 
 // postFromModel keeps generated database models behind the repository boundary.
-func postFromModel(record model.Post, tags []Tag) domain.Post {
+func postFromModel(record model.Post, tags []domain.Tag) domain.Post {
 	return domain.Post{
 		ID: record.ID, CategoryID: record.CategoryID, Title: record.Title,
 		AuthorID: record.AuthorID, AuthorUsername: record.AuthorUsername,
@@ -76,11 +69,11 @@ func postFromModel(record model.Post, tags []Tag) domain.Post {
 		ViewsCount: record.ViewsCount, CommentsCount: record.CommentsCount,
 		CommentsLocked: record.CommentsLocked, PinOrder: record.PinOrder,
 		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, ActiveAt: record.ActiveAt,
-		Tags: postTagsFromModels(tags),
+		Tags: domain.PostTags(tags),
 	}
 }
 
-func postListItemFromModel(record model.Post, tags []Tag) domain.PostListItem {
+func postListItemFromModel(record model.Post, tags []domain.Tag) domain.PostListItem {
 	return domain.PostListItem{
 		ID: record.ID, CategoryID: record.CategoryID, Title: record.Title,
 		AuthorID: record.AuthorID, AuthorUsername: record.AuthorUsername,
@@ -88,16 +81,8 @@ func postListItemFromModel(record model.Post, tags []Tag) domain.PostListItem {
 		ViewsCount: record.ViewsCount, CommentsCount: record.CommentsCount,
 		CommentsLocked: record.CommentsLocked, PinOrder: record.PinOrder,
 		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, ActiveAt: record.ActiveAt,
-		Tags: postTagsFromModels(tags),
+		Tags: domain.PostTags(tags),
 	}
-}
-
-func postTagsFromModels(tags []Tag) []domain.PostTag {
-	postTags := make([]domain.PostTag, len(tags))
-	for i, tag := range tags {
-		postTags[i] = domain.PostTag{ID: tag.ID, Name: tag.Name, Color: tag.Color}
-	}
-	return postTags
 }
 
 func integerExpressions(ids []int64) []Expression {
@@ -155,11 +140,11 @@ func postFrom(filter PostFilter) ReadableTable {
 func postOrderBy(sort string) []OrderByClause {
 	pinned := table.Post.PinOrder.ASC().NULLS_LAST()
 	switch sort {
-	case PostSortNewest:
+	case domain.PostSortNewest:
 		return []OrderByClause{pinned, table.Post.CreatedAt.DESC(), table.Post.ID.DESC()}
-	case PostSortViews:
+	case domain.PostSortViews:
 		return []OrderByClause{pinned, table.Post.ViewsCount.DESC(), table.Post.ActiveAt.DESC(), table.Post.ID.DESC()}
-	case PostSortComments:
+	case domain.PostSortComments:
 		return []OrderByClause{pinned, table.Post.CommentsCount.DESC(), table.Post.ActiveAt.DESC(), table.Post.ID.DESC()}
 	default:
 		return []OrderByClause{pinned, table.Post.ActiveAt.DESC(), table.Post.ID.DESC()}
@@ -176,7 +161,7 @@ func (r *postRepository) List(
 	from := postFrom(filter)
 	countStmt := SELECT(COUNT(STAR)).FROM(from).WHERE(condition)
 	var count struct{ Count int64 }
-	if err := countStmt.QueryContext(ctx, queryDB(ctx, r.db), &count); err != nil {
+	if err := countStmt.QueryContext(ctx, executor(ctx, r.db), &count); err != nil {
 		return 0, nil, err
 	}
 
@@ -192,7 +177,7 @@ func (r *postRepository) List(
 		LIMIT(limit).
 		OFFSET(offset)
 	var records []model.Post
-	if err := stmt.QueryContext(ctx, queryDB(ctx, r.db), &records); err != nil {
+	if err := stmt.QueryContext(ctx, executor(ctx, r.db), &records); err != nil {
 		return 0, nil, err
 	}
 	postIDs := make([]int64, len(records))
@@ -216,7 +201,7 @@ func (r *postRepository) ExistsPublished(ctx context.Context, id int64) (exists 
 	stmt := SELECT(EXISTS(SELECT(table.Post.ID).
 		FROM(table.Post).
 		WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(int16(domain.PostStatusPublished)))))).AS("Exists"))
-	if err := stmt.QueryContext(ctx, queryDB(ctx, r.db), &result); err != nil {
+	if err := stmt.QueryContext(ctx, executor(ctx, r.db), &result); err != nil {
 		return false, err
 	}
 	return result.Exists, nil
@@ -268,12 +253,12 @@ func (r *postRepository) Find(
 			SET(table.Post.ViewsCount.ADD(Int32(1))).
 			WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(int16(domain.PostStatusPublished))))).
 			RETURNING(table.Post.AllColumns)
-		err = stmt.QueryContext(ctx, queryDB(ctx, r.db), &dest)
+		err = stmt.QueryContext(ctx, executor(ctx, r.db), &dest)
 	} else {
 		stmt := SELECT(table.Post.AllColumns).
 			FROM(table.Post).
 			WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(int16(domain.PostStatusPublished)))))
-		err = stmt.QueryContext(ctx, queryDB(ctx, r.db), &dest)
+		err = stmt.QueryContext(ctx, executor(ctx, r.db), &dest)
 	}
 	if err != nil {
 		return nil, err
@@ -367,7 +352,7 @@ func (r *postRepository) SetStatus(ctx context.Context, id int64, status domain.
 	stmt := table.Post.UPDATE(table.Post.Status, table.Post.UpdatedAt).
 		SET(Int16(int16(status)), TimestampzT(time.Now())).
 		WHERE(table.Post.ID.EQ(Int64(id)))
-	return execPostUpdate(ctx, queryDB(ctx, r.db), stmt)
+	return requireAffectedRow(stmt.ExecContext(ctx, executor(ctx, r.db)))
 }
 
 func (r *postRepository) SetCommentsLocked(ctx context.Context, id int64, locked bool) (err error) {
@@ -375,7 +360,7 @@ func (r *postRepository) SetCommentsLocked(ctx context.Context, id int64, locked
 	stmt := table.Post.UPDATE(table.Post.CommentsLocked, table.Post.UpdatedAt).
 		SET(Bool(locked), TimestampzT(time.Now())).
 		WHERE(table.Post.ID.EQ(Int64(id)))
-	return execPostUpdate(ctx, queryDB(ctx, r.db), stmt)
+	return requireAffectedRow(stmt.ExecContext(ctx, executor(ctx, r.db)))
 }
 
 func (r *postRepository) SetPinOrder(ctx context.Context, id int64, pinOrder *int32) (err error) {
@@ -383,20 +368,5 @@ func (r *postRepository) SetPinOrder(ctx context.Context, id int64, pinOrder *in
 	stmt := table.Post.UPDATE(table.Post.PinOrder, table.Post.UpdatedAt).
 		SET(pinOrder, TimestampzT(time.Now())).
 		WHERE(table.Post.ID.EQ(Int64(id)))
-	return execPostUpdate(ctx, queryDB(ctx, r.db), stmt)
-}
-
-func execPostUpdate(ctx context.Context, db qrm.DB, stmt UpdateStatement) error {
-	result, err := stmt.ExecContext(ctx, db)
-	if err != nil {
-		return err
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if affected == 0 {
-		return qrm.ErrNoRows
-	}
-	return nil
+	return requireAffectedRow(stmt.ExecContext(ctx, executor(ctx, r.db)))
 }

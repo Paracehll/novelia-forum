@@ -42,7 +42,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	tagRepo = repository.NewTagRepository(testDB)
-	transactions := repository.NewTransactionManager(testDB)
+	transactions := repository.NewTransactionRunner(testDB)
 	rawPosts := repository.NewPostRepository(testDB, tagRepo)
 	rawComments := repository.NewCommentRepository(testDB)
 	favoriteRepo = repository.NewFavoriteRepository(testDB)

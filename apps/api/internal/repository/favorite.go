@@ -26,7 +26,7 @@ func (r *favoriteRepository) Has(ctx context.Context, postID, userID int64) (exi
 		FROM(table.PostFavorite).
 		WHERE(table.PostFavorite.PostID.EQ(Int64(postID)).
 			AND(table.PostFavorite.UserID.EQ(Int64(userID))))).AS("Exists"))
-	if err := stmt.QueryContext(ctx, queryDB(ctx, r.db), &result); err != nil {
+	if err := stmt.QueryContext(ctx, executor(ctx, r.db), &result); err != nil {
 		return false, err
 	}
 	return result.Exists, nil
@@ -47,7 +47,7 @@ func (r *favoriteRepository) ListPostIDs(
 		WHERE(table.PostFavorite.UserID.EQ(Int64(userID)).
 			AND(table.PostFavorite.PostID.IN(integerExpressions(postIDs)...)))
 	var records []model.PostFavorite
-	if err := stmt.QueryContext(ctx, queryDB(ctx, r.db), &records); err != nil {
+	if err := stmt.QueryContext(ctx, executor(ctx, r.db), &records); err != nil {
 		return nil, err
 	}
 	for _, record := range records {
@@ -61,7 +61,7 @@ func (r *favoriteRepository) Set(ctx context.Context, postID, userID int64, favo
 	if !favorite {
 		stmt := table.PostFavorite.DELETE().
 			WHERE(table.PostFavorite.PostID.EQ(Int64(postID)).AND(table.PostFavorite.UserID.EQ(Int64(userID))))
-		_, err := stmt.ExecContext(ctx, queryDB(ctx, r.db))
+		_, err := stmt.ExecContext(ctx, executor(ctx, r.db))
 		return err
 	}
 	record := model.PostFavorite{PostID: postID, UserID: userID}
@@ -69,6 +69,6 @@ func (r *favoriteRepository) Set(ctx context.Context, postID, userID int64, favo
 		MODEL(record).
 		ON_CONFLICT(table.PostFavorite.PostID, table.PostFavorite.UserID).
 		DO_NOTHING()
-	_, err = stmt.ExecContext(ctx, queryDB(ctx, r.db))
+	_, err = stmt.ExecContext(ctx, executor(ctx, r.db))
 	return err
 }

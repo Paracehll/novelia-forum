@@ -20,16 +20,16 @@ type TransactionRunner interface {
 // repository backed by another database must not accidentally use this tx.
 type transactionKey struct{ db *sql.DB }
 
-type transactionManager struct{ db *sql.DB }
+type transactionRunner struct{ db *sql.DB }
 
-func NewTransactionManager(db *sql.DB) *transactionManager {
-	return &transactionManager{db: db}
+func NewTransactionRunner(db *sql.DB) TransactionRunner {
+	return &transactionRunner{db: db}
 }
 
 // WithinTransaction implements the usecase transaction boundary without
 // exposing database/sql or Jet types to the application layer. The callback
 // context is only valid during the callback and must not escape to goroutines.
-func (m *transactionManager) WithinTransaction(ctx context.Context, fn func(context.Context) error) error {
+func (m *transactionRunner) WithinTransaction(ctx context.Context, fn func(context.Context) error) error {
 	if ctx.Value(transactionKey{m.db}) != nil {
 		return errors.New("transaction: nested transactions are not supported")
 	}
@@ -46,9 +46,9 @@ func (m *transactionManager) WithinTransaction(ctx context.Context, fn func(cont
 	return storageError(tx.Commit(), "transaction.Commit")
 }
 
-// queryDB lets every repository operation participate in the usecase's tx,
+// executor lets every repository operation participate in the usecase's tx,
 // while standalone reads and single-statement writes can still use the DB.
-func queryDB(ctx context.Context, db *sql.DB) qrm.DB {
+func executor(ctx context.Context, db *sql.DB) qrm.DB {
 	if tx, ok := ctx.Value(transactionKey{db}).(*sql.Tx); ok {
 		return tx
 	}

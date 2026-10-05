@@ -103,7 +103,7 @@ func TestPostListQueryMapsToRepositoryFilter(t *testing.T) {
 	repo := &postUsecaseRepoStub{}
 	u := NewPostUsecase(immediateTransaction{}, repo, &postTagRepoStub{}, nil, nil)
 	query := ListPostsQuery{
-		CategorySlug: "novel", Search: " title ", Sort: PostSortNewest,
+		CategorySlug: "novel", Search: " title ", Sort: domain.PostSortNewest,
 		TagIDs: []int64{2, 3}, AuthorName: " alice ", AuthorID: 7,
 		Status: &status, Limit: 25, Offset: 50,
 	}
@@ -111,7 +111,7 @@ func TestPostListQueryMapsToRepositoryFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 	filter := repo.filter
-	if filter.CategoryID != forumcategory.NovelID || filter.Search != "title" || filter.Sort != repository.PostSortNewest ||
+	if filter.CategoryID != forumcategory.NovelID || filter.Search != "title" || filter.Sort != domain.PostSortNewest ||
 		len(filter.TagIDs) != 2 || filter.TagIDs[0] != 2 || filter.TagIDs[1] != 3 ||
 		filter.AuthorName != "alice" || filter.AuthorID != 7 || filter.Status != status ||
 		filter.FavoriteUserID != 0 || repo.limit != 25 || repo.offset != 50 {
@@ -147,7 +147,7 @@ func TestPostListQueryDefaultsAndValidation(t *testing.T) {
 				}
 				return
 			}
-			if err != nil || repo.filter.Status != repository.PostStatusAll || repo.filter.Sort != repository.PostSortActive {
+			if err != nil || repo.filter.Status != repository.PostStatusAll || repo.filter.Sort != domain.PostSortActive {
 				t.Fatalf("defaults: filter=%+v error=%v", repo.filter, err)
 			}
 		})

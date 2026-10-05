@@ -68,7 +68,7 @@ func main() {
 	defer db.Close()
 
 	// repository
-	transactions := repository.NewTransactionManager(db)
+	transactions := repository.NewTransactionRunner(db)
 	tagRepo := repository.NewTagRepository(db)
 	postRepo := repository.NewPostRepository(db, tagRepo)
 	commentRepo := repository.NewCommentRepository(db)

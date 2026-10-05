@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"forum/internal/domain"
 	"forum/internal/httpx"
 	"forum/internal/repository"
 	"forum/internal/usecase"
@@ -33,10 +34,10 @@ func (r *capturingTagRepository) Update(
 	name string,
 	color int16,
 	sortOrder int32,
-) (*repository.Tag, error) {
+) (*domain.Tag, error) {
 	r.categoryID, r.tagID = categoryID, id
 	r.name = name
-	return &repository.Tag{
+	return &domain.Tag{
 		ID:         id,
 		CategoryID: categoryID,
 		Name:       name,
@@ -57,17 +58,17 @@ func (r *capturingTagRepository) Create(
 	color int16,
 	order int32,
 	attr string,
-) (*repository.Tag, error) {
+) (*domain.Tag, error) {
 	return r.Update(ctx, cid, 9, name, color, order)
 }
 
-func (r *capturingTagRepository) ListByCategory(ctx context.Context, cid int64) ([]repository.Tag, error) {
+func (r *capturingTagRepository) ListByCategory(ctx context.Context, cid int64) ([]domain.Tag, error) {
 	r.categoryID = cid
 	return nil, r.err
 }
 
-func (r *capturingTagRepository) ListActive(ctx context.Context) ([]repository.Tag, error) {
-	return []repository.Tag{{ID: 9, CategoryID: 1, Name: "标签", IsActive: true}}, r.err
+func (r *capturingTagRepository) ListActive(ctx context.Context) ([]domain.Tag, error) {
+	return []domain.Tag{{ID: 9, CategoryID: 1, Name: "标签", IsActive: true}}, r.err
 }
 
 func tagAdminToken(t *testing.T, role string) string {

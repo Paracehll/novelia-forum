@@ -2,6 +2,14 @@ package domain
 
 import "time"
 
+// Post sort values are shared by query validation and storage ordering.
+const (
+	PostSortActive   = "active"
+	PostSortNewest   = "newest"
+	PostSortViews    = "views"
+	PostSortComments = "comments"
+)
+
 type PostStatus int16
 
 const (
@@ -19,6 +27,16 @@ type PostTag struct {
 	ID    int64
 	Name  string
 	Color int16
+}
+
+// PostTags projects category tags to the metadata exposed on posts.
+// It preserves display order and returns an empty slice for empty input.
+func PostTags(tags []Tag) []PostTag {
+	result := make([]PostTag, len(tags))
+	for i, tag := range tags {
+		result[i] = PostTag{ID: tag.ID, Name: tag.Name, Color: tag.Color}
+	}
+	return result
 }
 
 type Post struct {

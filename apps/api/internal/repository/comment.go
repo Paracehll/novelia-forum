@@ -64,7 +64,7 @@ func (r *commentRepository) ListRoots(
 		AND(table.Comment.RootID.IS_NULL())
 	countStmt := SELECT(COUNT(STAR)).FROM(table.Comment).WHERE(condition)
 	var count struct{ Count int64 }
-	if err := countStmt.QueryContext(ctx, queryDB(ctx, r.db), &count); err != nil {
+	if err := countStmt.QueryContext(ctx, executor(ctx, r.db), &count); err != nil {
 		return 0, nil, err
 	}
 	stmt := SELECT(table.Comment.AllColumns).
@@ -74,7 +74,7 @@ func (r *commentRepository) ListRoots(
 		LIMIT(limit).
 		OFFSET(offset)
 	var dest []model.Comment
-	if err := stmt.QueryContext(ctx, queryDB(ctx, r.db), &dest); err != nil {
+	if err := stmt.QueryContext(ctx, executor(ctx, r.db), &dest); err != nil {
 		return 0, nil, err
 	}
 	rootIDs := make([]int64, len(dest))
@@ -96,7 +96,7 @@ func (r *commentRepository) ListRoots(
 				AND(table.Comment.SubjectKey.EQ(String(subjectKey))).
 				AND(table.Comment.RootID.IN(integerExpressions(rootIDs)...))).
 			GROUP_BY(table.Comment.RootID).
-			QueryContext(ctx, queryDB(ctx, r.db), &replyCounts)
+			QueryContext(ctx, executor(ctx, r.db), &replyCounts)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -121,7 +121,7 @@ func (r *commentRepository) ListRoots(
 		err := SELECT(ranked.AllColumns()).FROM(ranked).
 			WHERE(IntegerColumn("reply_rank").From(ranked).LT_EQ(Int64(CommentReplyPageSize))).
 			ORDER_BY(table.Comment.CreatedAt.From(ranked).ASC(), table.Comment.ID.From(ranked).ASC()).
-			QueryContext(ctx, queryDB(ctx, r.db), &replies)
+			QueryContext(ctx, executor(ctx, r.db), &replies)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -154,20 +154,20 @@ func (r *commentRepository) ListReplies(
 			AND(table.Comment.RootID.IS_NULL()),
 	)
 	var root struct{ ID int64 }
-	if err := rootStmt.QueryContext(ctx, queryDB(ctx, r.db), &root); err != nil {
+	if err := rootStmt.QueryContext(ctx, executor(ctx, r.db), &root); err != nil {
 		return 0, nil, err
 	}
 	condition := table.Comment.SubjectType.EQ(Int16(int16(subjectType))).
 		AND(table.Comment.SubjectKey.EQ(String(subjectKey))).
 		AND(table.Comment.RootID.EQ(Int64(rootID)))
 	var count struct{ Count int64 }
-	if err := SELECT(COUNT(STAR)).FROM(table.Comment).WHERE(condition).QueryContext(ctx, queryDB(ctx, r.db), &count); err != nil {
+	if err := SELECT(COUNT(STAR)).FROM(table.Comment).WHERE(condition).QueryContext(ctx, executor(ctx, r.db), &count); err != nil {
 		return 0, nil, err
 	}
 	var dest []model.Comment
 	if err = SELECT(table.Comment.AllColumns).FROM(table.Comment).WHERE(condition).
 		ORDER_BY(table.Comment.CreatedAt.ASC(), table.Comment.ID.ASC()).
-		LIMIT(limit).OFFSET(offset).QueryContext(ctx, queryDB(ctx, r.db), &dest); err != nil {
+		LIMIT(limit).OFFSET(offset).QueryContext(ctx, executor(ctx, r.db), &dest); err != nil {
 		return 0, nil, err
 	}
 	return count.Count, commentsFromModels(dest), nil
@@ -193,7 +193,7 @@ func (r *commentRepository) ListAdmin(
 		condition = condition.AND(RawBool(`"comment"."author_username" ILIKE :authorPattern`, RawArgs{":authorPattern": "%" + filter.AuthorName + "%"}))
 	}
 	var count struct{ Count int64 }
-	if err := SELECT(COUNT(STAR)).FROM(table.Comment).WHERE(condition).QueryContext(ctx, queryDB(ctx, r.db), &count); err != nil {
+	if err := SELECT(COUNT(STAR)).FROM(table.Comment).WHERE(condition).QueryContext(ctx, executor(ctx, r.db), &count); err != nil {
 		return 0, nil, err
 	}
 	var dest []model.Comment
@@ -201,7 +201,7 @@ func (r *commentRepository) ListAdmin(
 		ORDER_BY(table.Comment.CreatedAt.DESC(), table.Comment.ID.DESC()).
 		LIMIT(limit).
 		OFFSET(offset).
-		QueryContext(ctx, queryDB(ctx, r.db), &dest)
+		QueryContext(ctx, executor(ctx, r.db), &dest)
 	return count.Count, commentsFromModels(dest), err
 }
 
@@ -216,7 +216,7 @@ func (r *commentRepository) Find(
 		WHERE(table.Comment.ID.EQ(Int64(id)).
 			AND(table.Comment.SubjectType.EQ(Int16(int16(subjectType)))))
 	var dest model.Comment
-	if err := stmt.QueryContext(ctx, queryDB(ctx, r.db), &dest); err != nil {
+	if err := stmt.QueryContext(ctx, executor(ctx, r.db), &dest); err != nil {
 		return nil, err
 	}
 	converted := commentFromModel(dest)
@@ -320,18 +320,7 @@ func (r *commentRepository) SetStatus(
 		SET(Int16(int16(status)), TimestampzT(time.Now())).
 		WHERE(table.Comment.ID.EQ(Int64(id)).
 			AND(table.Comment.SubjectType.EQ(Int16(int16(subjectType)))))
-	result, err := stmt.ExecContext(ctx, tx)
-	if err != nil {
-		return err
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if affected == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return requireAffectedRow(stmt.ExecContext(ctx, tx))
 }
 
 // SetStatusByAuthor returns the locked rows as they were before the update.

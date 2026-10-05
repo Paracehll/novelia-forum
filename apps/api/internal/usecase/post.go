@@ -67,13 +67,6 @@ type PostResult struct {
 	Favorited bool
 }
 
-const (
-	PostSortActive   = "active"
-	PostSortNewest   = "newest"
-	PostSortViews    = "views"
-	PostSortComments = "comments"
-)
-
 type ListPostsQuery struct {
 	CategorySlug  string
 	Search        string
@@ -155,10 +148,10 @@ func (u *PostUsecase) list(
 		return 0, nil, Invalid(CodePostPaginationInvalid, "limit 必须为 1 到 100，offset 不能为负数")
 	}
 	if query.Sort == "" {
-		query.Sort = PostSortActive
+		query.Sort = domain.PostSortActive
 	}
 	switch query.Sort {
-	case PostSortActive, PostSortNewest, PostSortViews, PostSortComments:
+	case domain.PostSortActive, domain.PostSortNewest, domain.PostSortViews, domain.PostSortComments:
 	default:
 		return 0, nil, Invalid(CodePostSortInvalid, "sort 必须为 active、newest、views 或 comments")
 	}
@@ -316,14 +309,6 @@ func (u *PostUsecase) validatePostTags(ctx context.Context, input PostInput) ([]
 	return tags, nil
 }
 
-func postTags(tags []domain.Tag) []domain.PostTag {
-	result := make([]domain.PostTag, len(tags))
-	for i, tag := range tags {
-		result[i] = domain.PostTag{ID: tag.ID, Name: tag.Name, Color: tag.Color}
-	}
-	return result
-}
-
 func (u *PostUsecase) Create(ctx context.Context, actor Actor, input PostInput) (*PostResult, error) {
 	if err := u.validateInput(actor, input); err != nil {
 		return nil, err
@@ -348,7 +333,7 @@ func (u *PostUsecase) Create(ctx context.Context, actor Actor, input PostInput) 
 		if err := u.postRepo.ReplaceTags(txCtx, post.ID, input.TagIDs); err != nil {
 			return err
 		}
-		post.Tags = postTags(tags)
+		post.Tags = domain.PostTags(tags)
 		return nil
 	})
 	switch {
@@ -405,7 +390,7 @@ func (u *PostUsecase) Update(ctx context.Context, actor Actor, id int64, input P
 		if err := u.postRepo.ReplaceTags(txCtx, id, input.TagIDs); err != nil {
 			return err
 		}
-		post.Tags = postTags(tags)
+		post.Tags = domain.PostTags(tags)
 		result, err = u.result(txCtx, actor, post)
 		return err
 	})

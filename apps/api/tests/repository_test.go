@@ -4,6 +4,7 @@ package tests
 
 import (
 	"context"
+	"errors"
 	forumcategory "forum/internal/category"
 	"forum/internal/domain"
 	"forum/internal/repository"
@@ -38,10 +39,10 @@ func TestJetRepositories(t *testing.T) {
 		"跨分类更新",
 		2,
 		20,
-	); !repository.IsNotFound(err) {
+	); !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("cross-category update error = %v, want not found", err)
 	}
-	if err := tagRepo.SetActive(context.Background(), otherCategory.ID, tag.ID, false); !repository.IsNotFound(err) {
+	if err := tagRepo.SetActive(context.Background(), otherCategory.ID, tag.ID, false); !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("cross-category activation error = %v, want not found", err)
 	}
 	if err := tagRepo.SetActive(context.Background(), tag.CategoryID, tag.ID, false); err != nil {
@@ -395,7 +396,7 @@ func TestJetRepositories(t *testing.T) {
 	}
 	_, newestPosts, err := postRepo.List(
 		context.Background(),
-		repository.PostFilter{Sort: repository.PostSortNewest},
+		repository.PostFilter{Sort: domain.PostSortNewest},
 		20,
 		0,
 	)
@@ -413,7 +414,7 @@ func TestJetRepositories(t *testing.T) {
 	}
 	_, viewedPosts, err := postRepo.List(
 		context.Background(),
-		repository.PostFilter{Sort: repository.PostSortViews},
+		repository.PostFilter{Sort: domain.PostSortViews},
 		20,
 		0,
 	)
@@ -426,7 +427,7 @@ func TestJetRepositories(t *testing.T) {
 	_, commentedPosts, err := postRepo.List(
 		context.Background(),
 		repository.PostFilter{
-			Sort: repository.PostSortComments,
+			Sort: domain.PostSortComments,
 		},
 		20,
 		0,

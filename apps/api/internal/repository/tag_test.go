@@ -34,7 +34,7 @@ func TestTagsFromModels(t *testing.T) {
 		t.Fatalf("empty input = %#v, want non-nil empty slice", got)
 	}
 	stored := []model.Tag{{ID: 2, Name: "first"}, {ID: 1, Name: "second"}}
-	want := []Tag{{ID: 2, Name: "first"}, {ID: 1, Name: "second"}}
+	want := []domain.Tag{{ID: 2, Name: "first"}, {ID: 1, Name: "second"}}
 	if got := tagsFromModels(stored); !reflect.DeepEqual(got, want) {
 		t.Fatalf("tagsFromModels() = %#v, want %#v", got, want)
 	}
