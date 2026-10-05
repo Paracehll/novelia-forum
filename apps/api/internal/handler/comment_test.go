@@ -52,7 +52,7 @@ func TestExternalCommentRepliesArePaginatedSeparately(t *testing.T) {
 	router := chi.NewRouter()
 	resolver := handlerSubjectResolver{valid: true, exists: true}
 	NewExternalCommentHandler(
-		usecase.NewCommentUsecase(immediateTransaction{}, repo, nil, nil, resolver),
+		usecase.NewCommentUsecase(immediateTransaction{}, repo, &writePostRepository{}, nil, resolver),
 	).RegisterRoutes(router)
 
 	for _, tc := range []struct {
@@ -103,6 +103,15 @@ func (r *editableCommentRepository) Find(
 	return &r.comment, nil
 }
 
+func (r *editableCommentRepository) Lock(_ context.Context, kind domain.CommentSubjectType, _ int64) (*domain.Comment, error) {
+	copy := r.comment
+	copy.SubjectType = kind
+	if copy.SubjectKey == "" {
+		copy.SubjectKey = "42"
+	}
+	return &copy, nil
+}
+
 func (r *editableCommentRepository) Update(
 	ctx context.Context,
 	_ domain.CommentSubjectType,
@@ -145,7 +154,7 @@ func TestCommentEditingStateResponses(t *testing.T) {
 						Content: "original", Status: status, CreatedAt: time.Now(),
 					}}
 					u := usecase.NewCommentUsecase(immediateTransaction{},
-						repo, nil, nil, handlerSubjectResolver{valid: true, exists: true},
+						repo, &writePostRepository{}, nil, handlerSubjectResolver{valid: true, exists: true},
 					)
 					router := chi.NewRouter()
 					if route.external {
@@ -203,7 +212,7 @@ func TestAdminCanEditCommentAfterWindow(t *testing.T) {
 				ID: 7, SubjectKey: "42", AuthorID: 1, CreatedAt: time.Now().Add(-tc.age),
 			}}
 			router := chi.NewRouter()
-			NewCommentHandler(usecase.NewCommentUsecase(immediateTransaction{}, repo, nil, nil, nil)).RegisterRoutes(router)
+			NewCommentHandler(usecase.NewCommentUsecase(immediateTransaction{}, repo, &writePostRepository{}, nil, nil)).RegisterRoutes(router)
 			token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 				"sub": "tester", "uid": tc.userID, "role": tc.role,
 			}).SignedString([]byte(httpx.AccessTokenSecret))
@@ -244,7 +253,7 @@ func TestAdminCanModifyExternalCommentAfterWindow(t *testing.T) {
 			router := chi.NewRouter()
 			resolver := handlerSubjectResolver{valid: true, exists: true}
 			NewExternalCommentHandler(
-				usecase.NewCommentUsecase(immediateTransaction{}, repo, nil, nil, resolver),
+				usecase.NewCommentUsecase(immediateTransaction{}, repo, &writePostRepository{}, nil, resolver),
 			).RegisterRoutes(router)
 			token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 				"sub": "tester", "uid": 1, "role": tc.role,
@@ -441,7 +450,7 @@ func TestInvalidCommentContentResponses(t *testing.T) {
 			t.Run(route.method+route.path+"/"+strconv.Itoa(len(content)), func(t *testing.T) {
 				repo := &domainCommentRepository{}
 				resolver := handlerSubjectResolver{valid: true, exists: true}
-				comments := usecase.NewCommentUsecase(immediateTransaction{}, repo, nil, nil, resolver)
+				comments := usecase.NewCommentUsecase(immediateTransaction{}, repo, &writePostRepository{}, nil, resolver)
 				router := chi.NewRouter()
 				router.Route("/post", NewPostHandler(nil, comments).RegisterRoutes)
 				router.Route("/comment", NewCommentHandler(comments).RegisterRoutes)

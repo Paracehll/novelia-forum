@@ -38,7 +38,7 @@ func TestPostHandlerPropagatesRequestContext(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), requestKey{}, "request-value"), time.Minute)
 	defer cancel()
 	repo := &requestContextPostRepository{}
-	h := NewPostHandler(usecase.NewPostUsecase(immediateTransaction{}, repo, nil, nil), nil)
+	h := NewPostHandler(usecase.NewPostUsecase(immediateTransaction{}, repo, availableTagRepository{}, nil, nil), nil)
 	request := httptest.NewRequest(http.MethodGet, "/post/", nil).WithContext(ctx)
 	if err := h.list(httptest.NewRecorder(), request); err != nil {
 		t.Fatal(err)

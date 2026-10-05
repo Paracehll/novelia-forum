@@ -54,7 +54,11 @@ func (r *domainCommentRepository) Find(
 	subjectType domain.CommentSubjectType,
 	id int64,
 ) (*domain.Comment, error) {
-	return &domain.Comment{ID: id, AuthorID: 1, SubjectType: subjectType, CreatedAt: time.Now()}, nil
+	return r.Lock(ctx, subjectType, id)
+}
+
+func (r *domainCommentRepository) Lock(ctx context.Context, kind domain.CommentSubjectType, id int64) (*domain.Comment, error) {
+	return &domain.Comment{ID: id, AuthorID: 1, SubjectType: kind, SubjectKey: "web-syosetu-n1234", CreatedAt: time.Now()}, nil
 }
 
 func (r *domainCommentRepository) Create(context.Context, domain.Comment) (*domain.Comment, error) {
@@ -103,7 +107,7 @@ func TestDomainFilterRejectsWrites(t *testing.T) {
 			resolver := handlerSubjectResolver{valid: true, exists: true}
 			commentUsecase := usecase.NewCommentUsecase(immediateTransaction{}, comments, posts, domains, resolver)
 			postHandler := NewPostHandler(
-				usecase.NewPostUsecase(immediateTransaction{}, posts, noFavoriteRepository{}, domains), commentUsecase,
+				usecase.NewPostUsecase(immediateTransaction{}, posts, availableTagRepository{}, noFavoriteRepository{}, domains), commentUsecase,
 			)
 			router.Route("/post", postHandler.RegisterRoutes)
 			router.Route("/comment", NewCommentHandler(commentUsecase).RegisterRoutes)
@@ -132,7 +136,7 @@ func TestDomainFilterErrorMapping(t *testing.T) {
 	}
 	value := strings.Repeat("a", 4097) + ".example"
 	for _, filter := range []*domainfilter.Filter{nil, domains} {
-		posts := usecase.NewPostUsecase(immediateTransaction{}, &writePostRepository{}, nil, filter)
+		posts := usecase.NewPostUsecase(immediateTransaction{}, &writePostRepository{}, availableTagRepository{}, nil, filter)
 		response := httptest.NewRecorder()
 		httpx.EH(func(http.ResponseWriter, *http.Request) error {
 			_, err := posts.Create(context.Background(), usecase.Actor{UserID: 1}, usecase.PostInput{

@@ -7,7 +7,6 @@ import (
 	"forum/.gen/main/public/table"
 
 	. "github.com/go-jet/jet/v2/postgres"
-	"github.com/go-jet/jet/v2/qrm"
 )
 
 type FavoriteRepository interface {
@@ -64,16 +63,6 @@ func (r *favoriteRepository) Set(ctx context.Context, postID, userID int64, favo
 			WHERE(table.PostFavorite.PostID.EQ(Int64(postID)).AND(table.PostFavorite.UserID.EQ(Int64(userID))))
 		_, err := stmt.ExecContext(ctx, queryDB(ctx, r.db))
 		return err
-	}
-	var exists struct{ Exists bool }
-	findPost := SELECT(EXISTS(SELECT(table.Post.ID).
-		FROM(table.Post).
-		WHERE(table.Post.ID.EQ(Int64(postID)).AND(table.Post.Status.EQ(Int16(StatusPublished))))).AS("Exists"))
-	if err := findPost.QueryContext(ctx, queryDB(ctx, r.db), &exists); err != nil {
-		return err
-	}
-	if !exists.Exists {
-		return qrm.ErrNoRows
 	}
 	record := model.PostFavorite{PostID: postID, UserID: userID}
 	stmt := table.PostFavorite.INSERT(table.PostFavorite.PostID, table.PostFavorite.UserID).

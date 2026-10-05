@@ -10,12 +10,12 @@ import (
 	"forum/internal/domain"
 
 	. "github.com/go-jet/jet/v2/postgres"
-	"github.com/go-jet/jet/v2/qrm"
 )
 
 type Tag = domain.Tag
 
 type TagRepository interface {
+	LockByIDs(ctx context.Context, ids []int64) ([]Tag, error)
 	ListByCategory(ctx context.Context, categoryID int64) ([]Tag, error)
 	ListActive(ctx context.Context) ([]Tag, error)
 	ListForPost(ctx context.Context, postID int64) ([]Tag, error)
@@ -35,6 +35,26 @@ type TagRepository interface {
 type tagRepository struct{ db *sql.DB }
 
 func NewTagRepository(db *sql.DB) TagRepository { return &tagRepository{db: db} }
+
+// LockByIDs reads the selected tags without category or availability rules.
+// Shared row locks keep their metadata stable until the usecase commits.
+func (r *tagRepository) LockByIDs(ctx context.Context, ids []int64) ([]Tag, error) {
+	tx, err := requireTransaction(ctx, r.db)
+	if err != nil {
+		return nil, storageError(err, "tag.LockByIDs")
+	}
+	if len(ids) == 0 {
+		return []Tag{}, nil
+	}
+	stmt := SELECT(table.Tag.AllColumns).FROM(table.Tag).
+		WHERE(table.Tag.ID.IN(integerExpressions(ids)...)).
+		ORDER_BY(table.Tag.SortOrder.ASC(), table.Tag.ID.ASC()).FOR(SHARE())
+	var records []model.Tag
+	if err := stmt.QueryContext(ctx, tx, &records); err != nil {
+		return nil, storageError(err, "tag.LockByIDs")
+	}
+	return tagsFromModels(records), nil
+}
 
 func (r *tagRepository) ListByCategory(ctx context.Context, categoryID int64) ([]Tag, error) {
 	stmt := SELECT(table.Tag.AllColumns).
@@ -61,18 +81,12 @@ func (r *tagRepository) ListActive(ctx context.Context) ([]Tag, error) {
 }
 
 func (r *tagRepository) ListForPost(ctx context.Context, postID int64) ([]Tag, error) {
-	return listPostTags(ctx, queryDB(ctx, r.db), postID)
-}
-
-// listPostTags also accepts a transaction so writes can assemble their result
-// before committing, without reading through a separate database connection.
-func listPostTags(ctx context.Context, db qrm.DB, postID int64) ([]Tag, error) {
 	stmt := SELECT(table.Tag.AllColumns).
 		FROM(table.Tag.INNER_JOIN(table.PostTag, table.Tag.ID.EQ(table.PostTag.TagID))).
 		WHERE(table.PostTag.PostID.EQ(Int64(postID))).
 		ORDER_BY(table.Tag.SortOrder.ASC(), table.Tag.ID.ASC())
 	var dest []model.Tag
-	if err := stmt.QueryContext(ctx, db, &dest); err != nil {
+	if err := stmt.QueryContext(ctx, queryDB(ctx, r.db), &dest); err != nil {
 		return nil, storageError(err, "tag.ListForPost")
 	}
 	return tagsFromModels(dest), nil

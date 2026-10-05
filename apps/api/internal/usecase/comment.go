@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -40,15 +41,17 @@ type SubjectResolver interface {
 	Check(ctx context.Context, kind, key string) (bool, error)
 }
 
-// PublishedPostReader provides only the visibility check needed by comment reads.
-type PublishedPostReader interface {
+// CommentPostRepository provides the post operations needed by comment workflows.
+type CommentPostRepository interface {
 	ExistsPublished(ctx context.Context, id int64) (bool, error)
+	Lock(ctx context.Context, id int64) (*domain.Post, error)
+	AdjustCommentsCount(ctx context.Context, id int64, delta int32, activeAt *time.Time) error
 }
 
 type CommentUsecase struct {
 	tx              repository.TransactionRunner
 	commentRepo     repository.CommentRepository
-	postRepo        PublishedPostReader
+	postRepo        CommentPostRepository
 	domainFilter    *domainfilter.Filter
 	subjectResolver SubjectResolver
 }
@@ -56,7 +59,7 @@ type CommentUsecase struct {
 func NewCommentUsecase(
 	tx repository.TransactionRunner,
 	commentRepo repository.CommentRepository,
-	postRepo PublishedPostReader,
+	postRepo CommentPostRepository,
 	domainFilter *domainfilter.Filter,
 	subjectResolver SubjectResolver,
 ) *CommentUsecase {
@@ -232,7 +235,7 @@ func (u *CommentUsecase) findModifiableComment(
 	subjectType domain.CommentSubjectType,
 	id int64,
 ) (*domain.Comment, error) {
-	comment, err := u.commentRepo.Find(ctx, subjectType, id)
+	comment, err := u.commentRepo.Lock(ctx, subjectType, id)
 	switch {
 	case err == nil:
 	case errors.Is(err, repository.ErrNotFound):
@@ -317,28 +320,67 @@ func (u *CommentUsecase) createComment(
 ) (*domain.Comment, error) {
 	input.AuthorID = actor.UserID
 	input.AuthorUsername = actor.Username
+	input.Status = domain.CommentStatusPublished
 	var comment *domain.Comment
 	err := u.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		var postID int64
+		if input.SubjectType == domain.CommentSubjectPost {
+			var err error
+			postID, err = domain.PostIDFromCommentSubjectKey(input.SubjectKey)
+			if err != nil {
+				return Invalid(CodeCommentSubjectKeyInvalid, "评论所属帖子 ID 无效")
+			}
+			post, err := u.postRepo.Lock(txCtx, postID)
+			if errors.Is(err, repository.ErrNotFound) {
+				return NotFound(CodeCommentSubjectNotFound, "评论所属资源不存在")
+			}
+			if err != nil {
+				return fmt.Errorf("comment.lock_post: %w", err)
+			}
+			if post.Status != domain.PostStatusPublished {
+				return NotFound(CodeCommentSubjectNotFound, "评论所属资源不存在")
+			}
+			if post.CommentsLocked {
+				return Conflict(CodeCommentLocked, "评论区已锁定")
+			}
+		}
+		if input.RootID != nil {
+			// Keep this a non-locking read: creation locks the post first,
+			// whereas moderation locks the comment before updating its post.
+			root, err := u.commentRepo.Find(txCtx, input.SubjectType, *input.RootID)
+			if errors.Is(err, repository.ErrNotFound) {
+				return NotFound(CodeCommentRootNotFound, "根评论不存在")
+			}
+			if err != nil {
+				return fmt.Errorf("comment.find_root: %w", err)
+			}
+			if root.SubjectType != input.SubjectType || root.Status != domain.CommentStatusPublished {
+				return NotFound(CodeCommentRootNotFound, "根评论不存在")
+			}
+			if root.SubjectKey != input.SubjectKey || root.RootID != nil {
+				return Invalid(CodeCommentRootInvalid, "根评论无效")
+			}
+		}
 		var err error
 		comment, err = u.commentRepo.Create(txCtx, input)
-		return err
+		if errors.Is(err, repository.ErrConflict) {
+			return Conflict(CodeCommentConflict, "评论数据冲突")
+		}
+		if err != nil {
+			return fmt.Errorf("comment.insert: %w", err)
+		}
+		if input.SubjectType == domain.CommentSubjectPost {
+			now := time.Now()
+			if err := u.postRepo.AdjustCommentsCount(txCtx, postID, 1, &now); err != nil {
+				return fmt.Errorf("comment.increment_count: %w", err)
+			}
+		}
+		return nil
 	})
-	switch {
-	case err == nil:
-		return comment, nil
-	case input.SubjectType == domain.CommentSubjectPost && errors.Is(err, repository.ErrNotFound):
-		return nil, NotFound(CodeCommentSubjectNotFound, "评论所属资源不存在")
-	case input.SubjectType == domain.CommentSubjectPost && errors.Is(err, repository.ErrCommentsLocked):
-		return nil, Conflict(CodeCommentLocked, "评论区已锁定")
-	case errors.Is(err, repository.ErrCommentRootNotFound):
-		return nil, NotFound(CodeCommentRootNotFound, "根评论不存在")
-	case errors.Is(err, repository.ErrInvalidCommentRoot):
-		return nil, Invalid(CodeCommentRootInvalid, "根评论无效")
-	case errors.Is(err, repository.ErrConflict):
-		return nil, Conflict(CodeCommentConflict, "评论数据冲突")
-	default:
+	if err != nil {
 		return nil, fmt.Errorf("%s: %w", operation, err)
 	}
+	return comment, nil
 }
 
 type UpdateCommentCommand struct {
@@ -352,27 +394,28 @@ func (u *CommentUsecase) Update(
 	actor Actor,
 	command UpdateCommentCommand,
 ) (*domain.Comment, error) {
-	existing, err := u.findModifiableComment(ctx, actor, command.SubjectType, command.CommentID)
-	if err != nil {
-		return nil, err
-	}
-	if !existing.CanEditContent() {
-		return nil, Conflict(CodeCommentNotEditable, "只有已发布的评论可以编辑")
-	}
 	if err := u.checkContent(command.Content); err != nil {
 		return nil, err
 	}
-	comment, err := u.commentRepo.Update(ctx, command.SubjectType, command.CommentID, command.Content)
-	switch {
-	case err == nil:
-		return comment, nil
-	case errors.Is(err, repository.ErrNotFound):
-		// The comment existed and was editable above; the conditional update
-		// failed because it changed or disappeared before the write.
-		return nil, Conflict(CodeCommentConflict, "评论数据已变化，请刷新后重试")
-	default:
+	var comment *domain.Comment
+	err := u.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		existing, err := u.findModifiableComment(txCtx, actor, command.SubjectType, command.CommentID)
+		if err != nil {
+			return err
+		}
+		if !existing.CanEditContent() {
+			return Conflict(CodeCommentNotEditable, "只有已发布的评论可以编辑")
+		}
+		comment, err = u.commentRepo.Update(txCtx, command.SubjectType, command.CommentID, command.Content)
+		if errors.Is(err, repository.ErrNotFound) {
+			return Conflict(CodeCommentConflict, "评论数据已变化，请刷新后重试")
+		}
+		return err
+	})
+	if err != nil {
 		return nil, fmt.Errorf("comment.update: %w", err)
 	}
+	return comment, nil
 }
 
 type DeleteCommentCommand struct {
@@ -381,14 +424,17 @@ type DeleteCommentCommand struct {
 }
 
 func (u *CommentUsecase) Delete(ctx context.Context, actor Actor, command DeleteCommentCommand) error {
-	if _, err := u.findModifiableComment(ctx, actor, command.SubjectType, command.CommentID); err != nil {
-		return err
+	err := u.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		existing, err := u.findModifiableComment(txCtx, actor, command.SubjectType, command.CommentID)
+		if err != nil {
+			return err
+		}
+		return u.applyStatus(txCtx, existing, domain.CommentStatusDeleted)
+	})
+	if err != nil {
+		return fmt.Errorf("comment.delete: %w", err)
 	}
-	return u.setStatus(ctx, SetCommentStatusCommand{
-		SubjectType: command.SubjectType,
-		CommentID:   command.CommentID,
-		Status:      domain.CommentStatusDeleted,
-	}, "comment.delete")
+	return nil
 }
 
 type SetCommentStatusCommand struct {
@@ -409,16 +455,51 @@ func (u *CommentUsecase) SetStatus(ctx context.Context, actor Actor, command Set
 
 func (u *CommentUsecase) setStatus(ctx context.Context, command SetCommentStatusCommand, operation string) error {
 	err := u.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
-		return u.commentRepo.SetStatus(txCtx, command.SubjectType, command.CommentID, command.Status)
+		existing, err := u.commentRepo.Lock(txCtx, command.SubjectType, command.CommentID)
+		if errors.Is(err, repository.ErrNotFound) {
+			return NotFound(CodeCommentNotFound, "评论不存在")
+		}
+		if err != nil {
+			return fmt.Errorf("comment.lock: %w", err)
+		}
+		return u.applyStatus(txCtx, existing, command.Status)
 	})
-	switch {
-	case err == nil:
-		return nil
-	case errors.Is(err, repository.ErrNotFound):
-		return NotFound(CodeCommentNotFound, "评论不存在")
-	default:
+	if err != nil {
 		return fmt.Errorf("%s: %w", operation, err)
 	}
+	return nil
+}
+
+// applyStatus uses the caller's transaction and locked pre-change comment.
+func (u *CommentUsecase) applyStatus(ctx context.Context, existing *domain.Comment, status domain.CommentStatus) error {
+	if err := u.commentRepo.SetStatus(ctx, existing.SubjectType, existing.ID, status); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return NotFound(CodeCommentNotFound, "评论不存在")
+		}
+		return fmt.Errorf("comment.write_status: %w", err)
+	}
+	if existing.SubjectType != domain.CommentSubjectPost || existing.Status == status {
+		return nil
+	}
+	var delta int32
+	var activeAt *time.Time
+	if existing.Status == domain.CommentStatusPublished {
+		delta = -1
+	} else if status == domain.CommentStatusPublished {
+		delta = 1
+		now := time.Now()
+		activeAt = &now
+	} else {
+		return nil
+	}
+	postID, err := domain.PostIDFromCommentSubjectKey(existing.SubjectKey)
+	if err != nil {
+		return fmt.Errorf("comment.status_post_id: %w", err)
+	}
+	if err := u.postRepo.AdjustCommentsCount(ctx, postID, delta, activeAt); err != nil {
+		return fmt.Errorf("comment.adjust_count: %w", err)
+	}
+	return nil
 }
 
 type DeleteCommentsByAuthorCommand struct {
@@ -433,7 +514,38 @@ func (u *CommentUsecase) DeleteAllByAuthor(
 	if err := checkCommentAdmin(actor); err != nil {
 		return err
 	}
-	if err := u.commentRepo.DeleteAllByAuthor(ctx, command.AuthorID); err != nil {
+	err := u.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		comments, err := u.commentRepo.SetStatusByAuthor(txCtx, command.AuthorID,
+			[]domain.CommentStatus{domain.CommentStatusPublished, domain.CommentStatusHidden},
+			domain.CommentStatusDeleted)
+		if err != nil {
+			return fmt.Errorf("comment.delete_author_statuses: %w", err)
+		}
+		counts := make(map[int64]int32)
+		for _, comment := range comments {
+			if comment.SubjectType != domain.CommentSubjectPost || comment.Status != domain.CommentStatusPublished {
+				continue
+			}
+			postID, err := domain.PostIDFromCommentSubjectKey(comment.SubjectKey)
+			if err != nil {
+				return fmt.Errorf("comment.delete_author_post_id: %w", err)
+			}
+			counts[postID]++
+		}
+		postIDs := make([]int64, 0, len(counts))
+		for postID := range counts {
+			postIDs = append(postIDs, postID)
+		}
+		// Multiple bulk operations must acquire post locks in the same order.
+		sort.Slice(postIDs, func(i, j int) bool { return postIDs[i] < postIDs[j] })
+		for _, postID := range postIDs {
+			if err := u.postRepo.AdjustCommentsCount(txCtx, postID, -counts[postID], nil); err != nil {
+				return fmt.Errorf("comment.delete_author_count: %w", err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
 		return fmt.Errorf("comment.delete_by_author: %w", err)
 	}
 	return nil

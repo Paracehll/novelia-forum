@@ -50,9 +50,12 @@ func (r *adminCommentRepository) SetStatus(
 	return nil
 }
 
-func (r *adminCommentRepository) DeleteAllByAuthor(context.Context, int64) error {
+func (r *adminCommentRepository) Lock(_ context.Context, kind domain.CommentSubjectType, id int64) (*domain.Comment, error) {
+	return &domain.Comment{ID: id, SubjectType: kind, SubjectKey: "42", Status: domain.CommentStatusPublished}, nil
+}
+func (r *adminCommentRepository) SetStatusByAuthor(context.Context, int64, []domain.CommentStatus, domain.CommentStatus) ([]domain.Comment, error) {
 	r.called = true
-	return nil
+	return nil, nil
 }
 
 func commentStatus(value domain.CommentStatus) *domain.CommentStatus { return &value }
@@ -71,7 +74,7 @@ func TestCommentAdminHandlersPassActor(t *testing.T) {
 			t.Run(route.name+"/"+role, func(t *testing.T) {
 				repo := &adminCommentRepository{}
 				u := usecase.NewCommentUsecase(immediateTransaction{},
-					repo, nil, nil, handlerSubjectResolver{valid: true, exists: true},
+					repo, &writePostRepository{}, nil, handlerSubjectResolver{valid: true, exists: true},
 				)
 				router := chi.NewRouter()
 				router.Use(httpx.OptionalAccessToken)

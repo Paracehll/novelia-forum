@@ -38,6 +38,7 @@ const (
 type PostUsecase struct {
 	tx           repository.TransactionRunner
 	postRepo     repository.PostRepository
+	tagRepo      repository.TagRepository
 	favoriteRepo repository.FavoriteRepository
 	domains      *domainfilter.Filter
 }
@@ -45,6 +46,7 @@ type PostUsecase struct {
 func NewPostUsecase(
 	tx repository.TransactionRunner,
 	postRepo repository.PostRepository,
+	tagRepo repository.TagRepository,
 	favoriteRepo repository.FavoriteRepository,
 	domains *domainfilter.Filter,
 ) *PostUsecase {
@@ -54,6 +56,7 @@ func NewPostUsecase(
 	return &PostUsecase{
 		tx:           tx,
 		postRepo:     postRepo,
+		tagRepo:      tagRepo,
 		favoriteRepo: favoriteRepo,
 		domains:      domains,
 	}
@@ -167,8 +170,16 @@ func (u *PostUsecase) list(
 	if query.Status != nil {
 		status = *query.Status
 	}
+	var categoryID int64
+	if query.CategorySlug != "" {
+		category, ok := forumcategory.FindBySlug(query.CategorySlug)
+		if !ok {
+			return 0, []domain.PostListItem{}, nil
+		}
+		categoryID = category.ID
+	}
 	filter := repository.PostFilter{
-		CategorySlug: query.CategorySlug, Search: query.Search, Sort: query.Sort,
+		CategoryID: categoryID, Search: query.Search, Sort: query.Sort,
 		TagIDs: query.TagIDs, AuthorName: query.AuthorName, AuthorID: query.AuthorID,
 		Status: status, FavoriteUserID: favoriteUserID,
 	}
@@ -281,30 +292,67 @@ func (u *PostUsecase) checkDomainText(field, text string) error {
 	}
 }
 
+// validatePostTags runs inside the write transaction. The repository provides
+// locked data; category membership and availability are application rules.
+func (u *PostUsecase) validatePostTags(ctx context.Context, input PostInput) ([]domain.Tag, error) {
+	if _, ok := forumcategory.FindByID(input.CategoryID); !ok {
+		return nil, Invalid(CodePostCategoryInvalid, "分类无效")
+	}
+	if len(input.TagIDs) == 0 {
+		return []domain.Tag{}, nil
+	}
+	tags, err := u.tagRepo.LockByIDs(ctx, input.TagIDs)
+	if err != nil {
+		return nil, fmt.Errorf("post.find_tags: %w", err)
+	}
+	if len(tags) != len(input.TagIDs) {
+		return nil, Invalid(CodePostTagInvalid, "标签无效")
+	}
+	for _, tag := range tags {
+		if tag.CategoryID != input.CategoryID || !tag.IsActive {
+			return nil, Invalid(CodePostTagInvalid, "标签无效")
+		}
+	}
+	return tags, nil
+}
+
+func postTags(tags []domain.Tag) []domain.PostTag {
+	result := make([]domain.PostTag, len(tags))
+	for i, tag := range tags {
+		result[i] = domain.PostTag{ID: tag.ID, Name: tag.Name, Color: tag.Color}
+	}
+	return result
+}
+
 func (u *PostUsecase) Create(ctx context.Context, actor Actor, input PostInput) (*PostResult, error) {
 	if err := u.validateInput(actor, input); err != nil {
 		return nil, err
 	}
 	var post *domain.Post
 	err := u.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
-		var err error
+		tags, err := u.validatePostTags(txCtx, input)
+		if err != nil {
+			return err
+		}
 		post, err = u.postRepo.Create(txCtx, repository.CreatePostInput{
 			CategoryID:     input.CategoryID,
 			Title:          strings.TrimSpace(input.Title),
 			Content:        input.Content,
-			TagIDs:         input.TagIDs,
 			AuthorID:       actor.UserID,
 			AuthorUsername: actor.Username,
 			Attr:           "{}",
 		})
-		return err
+		if err != nil {
+			return err
+		}
+		if err := u.postRepo.ReplaceTags(txCtx, post.ID, input.TagIDs); err != nil {
+			return err
+		}
+		post.Tags = postTags(tags)
+		return nil
 	})
 	switch {
 	case err == nil:
-	case errors.Is(err, repository.ErrInvalidCategory):
-		return nil, Invalid(CodePostCategoryInvalid, "分类无效")
-	case errors.Is(err, repository.ErrInvalidTag):
-		return nil, Invalid(CodePostTagInvalid, "标签无效")
 	case errors.Is(err, repository.ErrConflict):
 		return nil, Conflict(CodePostConflict, "帖子数据冲突")
 	default:
@@ -317,12 +365,15 @@ func (u *PostUsecase) ownedPost(ctx context.Context, actor Actor, id int64) (*do
 	if err := checkPostID(id); err != nil {
 		return nil, err
 	}
-	post, err := u.postRepo.Find(ctx, id, false)
+	post, err := u.postRepo.Lock(ctx, id)
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, NotFound(CodePostNotFound, "帖子不存在")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("post.find: %w", err)
+	}
+	if post.Status != domain.PostStatusPublished {
+		return nil, NotFound(CodePostNotFound, "帖子不存在")
 	}
 	if !post.IsOwnedBy(actor.UserID) && !actor.IsAdmin {
 		return nil, PermissionDenied(CodePostNotOwner, "只能修改自己的帖子")
@@ -331,23 +382,30 @@ func (u *PostUsecase) ownedPost(ctx context.Context, actor Actor, id int64) (*do
 }
 
 func (u *PostUsecase) Update(ctx context.Context, actor Actor, id int64, input PostInput) (*PostResult, error) {
-	if _, err := u.ownedPost(ctx, actor, id); err != nil {
-		return nil, err
-	}
-	if err := u.validateInput(actor, input); err != nil {
-		return nil, err
-	}
 	var result *PostResult
 	err := u.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		if _, err := u.ownedPost(txCtx, actor, id); err != nil {
+			return err
+		}
+		if err := u.validateInput(actor, input); err != nil {
+			return err
+		}
+		tags, err := u.validatePostTags(txCtx, input)
+		if err != nil {
+			return err
+		}
 		post, err := u.postRepo.Update(txCtx, id, repository.UpdatePostInput{
 			CategoryID: input.CategoryID,
 			Title:      strings.TrimSpace(input.Title),
 			Content:    input.Content,
-			TagIDs:     input.TagIDs,
 		})
 		if err != nil {
 			return err
 		}
+		if err := u.postRepo.ReplaceTags(txCtx, id, input.TagIDs); err != nil {
+			return err
+		}
+		post.Tags = postTags(tags)
 		result, err = u.result(txCtx, actor, post)
 		return err
 	})
@@ -356,10 +414,6 @@ func (u *PostUsecase) Update(ctx context.Context, actor Actor, id int64, input P
 	case errors.Is(err, repository.ErrNotFound):
 		// The post existed above; it changed or disappeared before the write.
 		return nil, Conflict(CodePostConflict, "帖子数据已变化，请刷新后重试")
-	case errors.Is(err, repository.ErrInvalidCategory):
-		return nil, Invalid(CodePostCategoryInvalid, "分类无效")
-	case errors.Is(err, repository.ErrInvalidTag):
-		return nil, Invalid(CodePostTagInvalid, "标签无效")
 	case errors.Is(err, repository.ErrConflict):
 		return nil, Conflict(CodePostConflict, "帖子数据冲突")
 	default:
@@ -369,14 +423,16 @@ func (u *PostUsecase) Update(ctx context.Context, actor Actor, id int64, input P
 }
 
 func (u *PostUsecase) Delete(ctx context.Context, actor Actor, id int64) error {
-	post, err := u.ownedPost(ctx, actor, id)
-	if err != nil {
-		return err
-	}
-	if !actor.IsAdmin && !post.WithinDeletionWindow(time.Now()) {
-		return PermissionDenied(CodePostDeleteExpired, "帖子只能在发布后 20 分钟内删除")
-	}
-	err = u.postRepo.SetStatus(ctx, id, domain.PostStatusDeleted)
+	err := u.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		post, err := u.ownedPost(txCtx, actor, id)
+		if err != nil {
+			return err
+		}
+		if !actor.IsAdmin && !post.WithinDeletionWindow(time.Now()) {
+			return PermissionDenied(CodePostDeleteExpired, "帖子只能在发布后 20 分钟内删除")
+		}
+		return u.postRepo.SetStatus(txCtx, id, domain.PostStatusDeleted)
+	})
 	if errors.Is(err, repository.ErrNotFound) {
 		return NotFound(CodePostNotFound, "帖子不存在")
 	}
@@ -393,7 +449,18 @@ func (u *PostUsecase) SetFavorite(ctx context.Context, actor Actor, id int64, fa
 	if actor.UserID <= 0 {
 		return PermissionDenied(CodePostAuthRequired, "需要登录")
 	}
-	err := u.favoriteRepo.Set(ctx, id, actor.UserID, favorite)
+	err := u.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
+		if favorite {
+			post, err := u.postRepo.Lock(txCtx, id)
+			if err != nil {
+				return err
+			}
+			if post.Status != domain.PostStatusPublished {
+				return NotFound(CodePostNotFound, "帖子不存在")
+			}
+		}
+		return u.favoriteRepo.Set(txCtx, id, actor.UserID, favorite)
+	})
 	if favorite && errors.Is(err, repository.ErrNotFound) {
 		return NotFound(CodePostNotFound, "帖子不存在")
 	}

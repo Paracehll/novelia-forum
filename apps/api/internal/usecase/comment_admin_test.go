@@ -43,10 +43,13 @@ func (r *adminCommentRepoStub) SetStatus(
 	return r.err
 }
 
-func (r *adminCommentRepoStub) DeleteAllByAuthor(ctx context.Context, authorID int64) error {
+func (r *adminCommentRepoStub) Lock(_ context.Context, kind domain.CommentSubjectType, id int64) (*domain.Comment, error) {
+	return &domain.Comment{ID: id, SubjectType: kind, SubjectKey: "42", Status: domain.CommentStatusPublished}, nil
+}
+func (r *adminCommentRepoStub) SetStatusByAuthor(ctx context.Context, authorID int64, _ []domain.CommentStatus, _ domain.CommentStatus) ([]domain.Comment, error) {
 	r.calls++
 	r.authorID = authorID
-	return r.err
+	return nil, r.err
 }
 
 func TestCommentStatusPersistenceErrors(t *testing.T) {
@@ -54,7 +57,7 @@ func TestCommentStatusPersistenceErrors(t *testing.T) {
 	for _, operation := range []string{"comment.delete", "comment.set_status"} {
 		t.Run(operation, func(t *testing.T) {
 			repo := &adminCommentRepoStub{err: repository.ErrNotFound}
-			u := NewCommentUsecase(immediateTransaction{}, repo, nil, nil, nil)
+			u := NewCommentUsecase(immediateTransaction{}, repo, postExistenceStub{exists: true}, nil, nil)
 			command := SetCommentStatusCommand{CommentID: 7, Status: domain.CommentStatusDeleted}
 			if err := u.setStatus(context.Background(), command, operation); !isAppErrorCode(err, CodeCommentNotFound) {
 				t.Fatalf("expected missing comment, got %v", err)
@@ -64,7 +67,7 @@ func TestCommentStatusPersistenceErrors(t *testing.T) {
 				context.Background(),
 				command,
 				operation,
-			); !errors.Is(err, cause) || err.Error() != operation+": "+cause.Error() {
+			); !errors.Is(err, cause) || err.Error() != operation+": comment.write_status: "+cause.Error() {
 				t.Fatalf("expected operation and original cause, got %v", err)
 			}
 		})
@@ -117,7 +120,7 @@ func TestCommentAdminPermissions(t *testing.T) {
 		} {
 			t.Run(operation.name+"/"+tc.name, func(t *testing.T) {
 				repo := &adminCommentRepoStub{}
-				u := NewCommentUsecase(immediateTransaction{}, repo, nil, nil, subjectResolverStub{supported: true})
+				u := NewCommentUsecase(immediateTransaction{}, repo, postExistenceStub{exists: true}, nil, subjectResolverStub{supported: true})
 				err := operation.call(u, tc.actor)
 				if tc.actor.IsAdmin {
 					if err != nil || repo.calls != 1 {
@@ -156,7 +159,7 @@ func TestCommentExternalStatusChecksPermissionBeforeSubject(t *testing.T) {
 
 func TestCommentAdminCommands(t *testing.T) {
 	repo := &adminCommentRepoStub{}
-	u := NewCommentUsecase(immediateTransaction{}, repo, nil, nil, subjectResolverStub{supported: true})
+	u := NewCommentUsecase(immediateTransaction{}, repo, postExistenceStub{exists: true}, nil, subjectResolverStub{supported: true})
 	actor := Actor{UserID: 2, IsAdmin: true}
 	status := domain.CommentStatusHidden
 	query := ListAdminCommentsQuery{Search: "body", AuthorName: "alice", PostID: 42, Status: &status, Limit: 10, Offset: 20}

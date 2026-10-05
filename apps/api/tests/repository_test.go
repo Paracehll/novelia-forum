@@ -4,24 +4,24 @@ package tests
 
 import (
 	"context"
-	"errors"
 	forumcategory "forum/internal/category"
 	"forum/internal/domain"
 	"forum/internal/repository"
+	"forum/internal/usecase"
 	"testing"
 )
 
 func TestJetRepositories(t *testing.T) {
 	resetDatabase()
 	category, _ := forumcategory.FindByID(forumcategory.NovelID)
-	if _, err := postRepo.Create(context.Background(), repository.CreatePostInput{
+	if _, err := postRepo.Create(context.Background(), fixtureCreatePostInput{
 		CategoryID: 999,
 		Title:      "无效分类",
 		Content:    "正文",
 		AuthorID:   7,
 		Attr:       `{}`,
-	}); !errors.Is(err, repository.ErrInvalidCategory) {
-		t.Fatalf("got %v, want ErrInvalidCategory", err)
+	}); !isAppErrorCode(err, usecase.CodePostCategoryInvalid) {
+		t.Fatalf("got %v, want post.category_invalid", err)
 	}
 	tag, err := tagRepo.Create(context.Background(), category.ID, "公告", 1, 10, `{}`)
 	if err != nil {
@@ -79,7 +79,7 @@ func TestJetRepositories(t *testing.T) {
 		t.Fatalf("unexpected category tags: %#v", categoryTags)
 	}
 
-	post, err := postRepo.Create(context.Background(), repository.CreatePostInput{
+	post, err := postRepo.Create(context.Background(), fixtureCreatePostInput{
 		CategoryID: category.ID,
 		Title:      "第一篇帖子", Content: "正文", AuthorID: 7, AuthorUsername: "alice",
 		TagIDs: []int64{tag.ID}, Attr: `{}`,
@@ -152,8 +152,8 @@ func TestJetRepositories(t *testing.T) {
 	total, posts, err := postRepo.List(
 		context.Background(),
 		repository.PostFilter{
-			CategorySlug: category.Slug,
-			TagIDs:       []int64{tag.ID},
+			CategoryID: category.ID,
+			TagIDs:     []int64{tag.ID},
 		},
 		20,
 		0,
@@ -270,8 +270,8 @@ func TestJetRepositories(t *testing.T) {
 		AuthorID:       9,
 		AuthorUsername: "carol",
 	})
-	if !errors.Is(err, repository.ErrCommentsLocked) {
-		t.Fatalf("got %v, want ErrCommentsLocked", err)
+	if !isAppErrorCode(err, usecase.CodeCommentLocked) {
+		t.Fatalf("got %v, want comment.locked", err)
 	}
 	for _, status := range []domain.CommentStatus{domain.CommentStatusHidden, domain.CommentStatusDeleted} {
 		if err := commentRepo.SetStatus(context.Background(), domain.CommentSubjectPost, root.ID, status); err != nil {
@@ -310,7 +310,7 @@ func TestJetRepositories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated, err := postRepo.Update(context.Background(), post.ID, repository.UpdatePostInput{
+	updated, err := postRepo.Update(context.Background(), post.ID, usecase.PostInput{
 		CategoryID: updatedCategory.ID,
 		Title:      "更新标题",
 		Content:    "更新正文",
@@ -385,7 +385,7 @@ func TestJetRepositories(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	secondPost, err := postRepo.Create(context.Background(), repository.CreatePostInput{
+	secondPost, err := postRepo.Create(context.Background(), fixtureCreatePostInput{
 		CategoryID: category.ID,
 		Title:      "CaseSensitiveTitle", Content: "用于排序", AuthorID: 8, AuthorUsername: "bob",
 		Attr: `{}`,

@@ -16,13 +16,8 @@ const (
 )
 
 var (
-	ErrNotFound            = errors.New("record not found")
-	ErrConflict            = errors.New("record conflict")
-	ErrCommentRootNotFound = errors.New("comment root not found")
-	ErrInvalidCommentRoot  = errors.New("invalid comment root")
-	ErrInvalidCategory     = errors.New("invalid category")
-	ErrInvalidTag          = errors.New("invalid or inactive tag")
-	ErrCommentsLocked      = errors.New("comments are locked")
+	ErrNotFound = errors.New("record not found")
+	ErrConflict = errors.New("record conflict")
 )
 
 func IsNotFound(err error) bool {

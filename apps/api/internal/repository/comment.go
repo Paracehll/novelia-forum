@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"time"
 
 	"forum/.gen/main/public/model"
@@ -21,7 +20,7 @@ type CommentFilter struct {
 	Status             *domain.CommentStatus
 }
 
-// Create and SetStatus require a context provided by WithinTransaction.
+// Lock and all write operations require a context provided by WithinTransaction.
 type CommentRepository interface {
 	ListAdmin(ctx context.Context, filter CommentFilter, limit, offset int64) (int64, []domain.Comment, error)
 	ListRoots(
@@ -37,6 +36,7 @@ type CommentRepository interface {
 		rootID, limit, offset int64,
 	) (int64, []domain.Comment, error)
 	Find(ctx context.Context, subjectType domain.CommentSubjectType, id int64) (*domain.Comment, error)
+	Lock(ctx context.Context, subjectType domain.CommentSubjectType, id int64) (*domain.Comment, error)
 	Create(ctx context.Context, comment domain.Comment) (*domain.Comment, error)
 	Update(
 		ctx context.Context,
@@ -45,7 +45,7 @@ type CommentRepository interface {
 		content string,
 	) (*domain.Comment, error)
 	SetStatus(ctx context.Context, subjectType domain.CommentSubjectType, id int64, status domain.CommentStatus) error
-	DeleteAllByAuthor(ctx context.Context, authorID int64) error
+	SetStatusByAuthor(ctx context.Context, authorID int64, from []domain.CommentStatus, to domain.CommentStatus) ([]domain.Comment, error)
 }
 
 type commentRepository struct{ db *sql.DB }
@@ -223,46 +223,34 @@ func (r *commentRepository) Find(
 	return &converted, nil
 }
 
+func (r *commentRepository) Lock(
+	ctx context.Context,
+	subjectType domain.CommentSubjectType,
+	id int64,
+) (result *domain.Comment, err error) {
+	defer func() { err = storageError(err, "comment.Lock") }()
+	tx, err := requireTransaction(ctx, r.db)
+	if err != nil {
+		return nil, err
+	}
+	stmt := SELECT(table.Comment.AllColumns).
+		FROM(table.Comment).
+		WHERE(table.Comment.ID.EQ(Int64(id)).
+			AND(table.Comment.SubjectType.EQ(Int16(int16(subjectType))))).
+		FOR(UPDATE())
+	var record model.Comment
+	if err := stmt.QueryContext(ctx, tx, &record); err != nil {
+		return nil, err
+	}
+	comment := commentFromModel(record)
+	return &comment, nil
+}
+
 func (r *commentRepository) Create(ctx context.Context, input domain.Comment) (result *domain.Comment, err error) {
 	defer func() { err = storageError(err, "comment.Create") }()
 	tx, err := requireTransaction(ctx, r.db)
 	if err != nil {
 		return nil, err
-	}
-	var postID int64
-	if input.SubjectType == domain.CommentSubjectPost {
-		postID, err = domain.PostIDFromCommentSubjectKey(input.SubjectKey)
-		if err != nil {
-			return nil, err
-		}
-		lockPost := SELECT(table.Post.AllColumns).
-			FROM(table.Post).
-			WHERE(table.Post.ID.EQ(Int64(postID)).AND(table.Post.Status.EQ(Int16(StatusPublished)))).
-			FOR(UPDATE())
-		var post model.Post
-		if err := lockPost.QueryContext(ctx, tx, &post); err != nil {
-			return nil, err
-		}
-		if post.CommentsLocked {
-			return nil, ErrCommentsLocked
-		}
-	}
-	if input.RootID != nil {
-		rootStmt := SELECT(table.Comment.AllColumns).
-			FROM(table.Comment).
-			WHERE(table.Comment.ID.EQ(Int64(*input.RootID)).
-				AND(table.Comment.SubjectType.EQ(Int16(int16(input.SubjectType)))).
-				AND(table.Comment.Status.EQ(Int16(StatusPublished))))
-		var root model.Comment
-		if err := rootStmt.QueryContext(ctx, tx, &root); err != nil {
-			if errors.Is(storageError(err, "find root"), ErrNotFound) {
-				return nil, ErrCommentRootNotFound
-			}
-			return nil, err
-		}
-		if root.SubjectKey != input.SubjectKey || root.RootID != nil {
-			return nil, ErrInvalidCommentRoot
-		}
 	}
 	record := model.Comment{
 		SubjectType:    int16(input.SubjectType),
@@ -271,6 +259,7 @@ func (r *commentRepository) Create(ctx context.Context, input domain.Comment) (r
 		Content:        input.Content,
 		AuthorID:       input.AuthorID,
 		AuthorUsername: input.AuthorUsername,
+		Status:         int16(input.Status),
 		Attr:           "{}",
 	}
 	insert := table.Comment.INSERT(
@@ -280,20 +269,13 @@ func (r *commentRepository) Create(ctx context.Context, input domain.Comment) (r
 		table.Comment.Content,
 		table.Comment.AuthorID,
 		table.Comment.AuthorUsername,
+		table.Comment.Status,
 		table.Comment.Attr,
 	).
 		MODEL(record).
 		RETURNING(table.Comment.AllColumns)
 	if err := insert.QueryContext(ctx, tx, &record); err != nil {
 		return nil, err
-	}
-	if input.SubjectType == domain.CommentSubjectPost {
-		touchPost := table.Post.UPDATE(table.Post.CommentsCount, table.Post.ActiveAt).
-			SET(table.Post.CommentsCount.ADD(Int32(1)), TimestampzT(time.Now())).
-			WHERE(table.Post.ID.EQ(Int64(postID)))
-		if _, err := touchPost.ExecContext(ctx, tx); err != nil {
-			return nil, err
-		}
 	}
 	converted := commentFromModel(record)
 	return &converted, nil
@@ -306,14 +288,17 @@ func (r *commentRepository) Update(
 	content string,
 ) (result *domain.Comment, err error) {
 	defer func() { err = storageError(err, "comment.Update") }()
+	tx, err := requireTransaction(ctx, r.db)
+	if err != nil {
+		return nil, err
+	}
 	stmt := table.Comment.UPDATE(table.Comment.Content, table.Comment.UpdatedAt).
 		SET(String(content), TimestampzT(time.Now())).
 		WHERE(table.Comment.ID.EQ(Int64(id)).
-			AND(table.Comment.SubjectType.EQ(Int16(int16(subjectType)))).
-			AND(table.Comment.Status.EQ(Int16(StatusPublished)))).
+			AND(table.Comment.SubjectType.EQ(Int16(int16(subjectType))))).
 		RETURNING(table.Comment.AllColumns)
 	var dest model.Comment
-	if err := stmt.QueryContext(ctx, queryDB(ctx, r.db), &dest); err != nil {
+	if err := stmt.QueryContext(ctx, tx, &dest); err != nil {
 		return nil, err
 	}
 	converted := commentFromModel(dest)
@@ -331,73 +316,68 @@ func (r *commentRepository) SetStatus(
 	if err != nil {
 		return err
 	}
-	lockComment := SELECT(table.Comment.AllColumns).
-		FROM(table.Comment).
-		WHERE(table.Comment.ID.EQ(Int64(id)).
-			AND(table.Comment.SubjectType.EQ(Int16(int16(subjectType))))).
-		FOR(UPDATE())
-	var record model.Comment
-	if err := lockComment.QueryContext(ctx, tx, &record); err != nil {
-		return err
-	}
-	updateComment := table.Comment.UPDATE(table.Comment.Status, table.Comment.UpdatedAt).
+	stmt := table.Comment.UPDATE(table.Comment.Status, table.Comment.UpdatedAt).
 		SET(Int16(int16(status)), TimestampzT(time.Now())).
 		WHERE(table.Comment.ID.EQ(Int64(id)).
 			AND(table.Comment.SubjectType.EQ(Int16(int16(subjectType)))))
-	if _, err := updateComment.ExecContext(ctx, tx); err != nil {
-		return err
-	}
-	if domain.CommentSubjectType(record.SubjectType) != domain.CommentSubjectPost ||
-		domain.CommentStatus(record.Status) == status ||
-		(record.Status != StatusPublished && status != domain.CommentStatusPublished) {
-		return nil
-	}
-	postID, err := domain.PostIDFromCommentSubjectKey(record.SubjectKey)
+	result, err := stmt.ExecContext(ctx, tx)
 	if err != nil {
 		return err
 	}
-	if record.Status == StatusPublished {
-		updatePost := table.Post.UPDATE(table.Post.CommentsCount).
-			SET(IntExp(GREATEST(table.Post.CommentsCount.SUB(Int32(1)), Int32(0)))).
-			WHERE(table.Post.ID.EQ(Int64(postID)))
-		if _, err := updatePost.ExecContext(ctx, tx); err != nil {
-			return err
-		}
-	} else if status == domain.CommentStatusPublished {
-		updatePost := table.Post.UPDATE(table.Post.CommentsCount, table.Post.ActiveAt).
-			SET(table.Post.CommentsCount.ADD(Int32(1)), TimestampzT(time.Now())).
-			WHERE(table.Post.ID.EQ(Int64(postID)))
-		if _, err := updatePost.ExecContext(ctx, tx); err != nil {
-			return err
-		}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrNotFound
 	}
 	return nil
 }
 
-func (r *commentRepository) DeleteAllByAuthor(ctx context.Context, authorID int64) (err error) {
-	defer func() { err = storageError(err, "comment.DeleteAllByAuthor") }()
-	_, err = queryDB(ctx, r.db).ExecContext(ctx, `
-		WITH published_comments AS (
-			UPDATE comment
-			SET status = $2, updated_at = CURRENT_TIMESTAMP
-			WHERE author_id = $1 AND status = $3
-			RETURNING subject_type, subject_key
-		), hidden_comments AS (
-			UPDATE comment
-			SET status = $2, updated_at = CURRENT_TIMESTAMP
-			WHERE author_id = $1 AND status = $4
-		), deleted_post_comments AS (
-			SELECT subject_key, COUNT(*)::integer AS count
-			FROM published_comments
-			WHERE subject_type = $5
-			GROUP BY subject_key
-		)
-		UPDATE post
-		SET comments_count = GREATEST(post.comments_count - deleted_post_comments.count, 0)
-		FROM deleted_post_comments
-		WHERE post.id::text = deleted_post_comments.subject_key
-	`, authorID, StatusDeleted, StatusPublished, StatusHidden, domain.CommentSubjectPost)
-	return err
+// SetStatusByAuthor returns the locked rows as they were before the update.
+// Callers decide which source states to change and handle any cross-table effects.
+func (r *commentRepository) SetStatusByAuthor(
+	ctx context.Context,
+	authorID int64,
+	from []domain.CommentStatus,
+	to domain.CommentStatus,
+) (comments []domain.Comment, err error) {
+	defer func() { err = storageError(err, "comment.SetStatusByAuthor") }()
+	tx, err := requireTransaction(ctx, r.db)
+	if err != nil {
+		return nil, err
+	}
+	if len(from) == 0 {
+		return []domain.Comment{}, nil
+	}
+	states := make([]Expression, len(from))
+	for i, status := range from {
+		states[i] = Int16(int16(status))
+	}
+	stmt := SELECT(table.Comment.AllColumns).
+		FROM(table.Comment).
+		WHERE(table.Comment.AuthorID.EQ(Int64(authorID)).
+			AND(table.Comment.Status.IN(states...))).
+		ORDER_BY(table.Comment.ID.ASC()).
+		FOR(UPDATE())
+	var records []model.Comment
+	if err := stmt.QueryContext(ctx, tx, &records); err != nil {
+		return nil, err
+	}
+	if len(records) == 0 {
+		return []domain.Comment{}, nil
+	}
+	ids := make([]int64, len(records))
+	for i, record := range records {
+		ids[i] = record.ID
+	}
+	update := table.Comment.UPDATE(table.Comment.Status, table.Comment.UpdatedAt).
+		SET(Int16(int16(to)), TimestampzT(time.Now())).
+		WHERE(table.Comment.ID.IN(integerExpressions(ids)...))
+	if _, err := update.ExecContext(ctx, tx); err != nil {
+		return nil, err
+	}
+	return commentsFromModels(records), nil
 }
 
 func commentFromModel(value model.Comment) domain.Comment {

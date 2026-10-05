@@ -73,7 +73,7 @@ func TestPostStatusRequiresExplicitValue(t *testing.T) {
 			repo := &postStatusRepository{}
 			router := chi.NewRouter()
 			router.Use(httpx.RequireAdmin)
-			NewPostHandler(usecase.NewPostUsecase(immediateTransaction{}, repo, nil, nil), nil).RegisterAdminRoutes(router)
+			NewPostHandler(usecase.NewPostUsecase(immediateTransaction{}, repo, availableTagRepository{}, nil, nil), nil).RegisterAdminRoutes(router)
 			request := httptest.NewRequest(http.MethodPut, "/42/status", strings.NewReader(tc.body))
 			request.Header.Set("Content-Type", "application/json")
 			request.Header.Set("Authorization", adminPostRequest(t, "/").Header.Get("Authorization"))
@@ -109,7 +109,7 @@ func TestAdminPostListStatusFilter(t *testing.T) {
 		{"?status=1&status=2", 0, true},
 	} {
 		repo := &capturingPostRepository{}
-		h := NewPostHandler(usecase.NewPostUsecase(immediateTransaction{}, repo, noFavoriteRepository{}, nil), nil)
+		h := NewPostHandler(usecase.NewPostUsecase(immediateTransaction{}, repo, availableTagRepository{}, noFavoriteRepository{}, nil), nil)
 		err := h.listAdminPosts(httptest.NewRecorder(), adminPostRequest(t, "/admin/post/"+tc.query))
 		if (err != nil) != tc.wantError {
 			t.Fatalf("query %q: error=%v, wantError=%v", tc.query, err, tc.wantError)
@@ -125,17 +125,17 @@ func TestAdminPostListStatusFilter(t *testing.T) {
 
 func TestPostListQueryPreservesHTTPFilters(t *testing.T) {
 	repo := &capturingPostRepository{}
-	h := NewPostHandler(usecase.NewPostUsecase(immediateTransaction{}, repo, noFavoriteRepository{}, nil), nil)
+	h := NewPostHandler(usecase.NewPostUsecase(immediateTransaction{}, repo, availableTagRepository{}, noFavoriteRepository{}, nil), nil)
 	request := httptest.NewRequest(
 		http.MethodGet,
-		"/post/?category=discussion&q=%20title%20&sort=newest&tag=2,3&tag=4&page=3&page_size=25&author_id=99&status=1",
+		"/post/?category=novel&q=%20title%20&sort=newest&tag=2,3&tag=4&page=3&page_size=25&author_id=99&status=1",
 		nil,
 	)
 	if err := h.list(httptest.NewRecorder(), request); err != nil {
 		t.Fatal(err)
 	}
 	filter := repo.filter
-	if filter.CategorySlug != "discussion" || filter.Search != "title" ||
+	if filter.CategoryID != 1 || filter.Search != "title" ||
 		filter.Sort != repository.PostSortNewest ||
 		len(filter.TagIDs) != 3 ||
 		filter.TagIDs[0] != 2 || filter.TagIDs[1] != 3 || filter.TagIDs[2] != 4 ||
@@ -163,7 +163,7 @@ func TestAdminPostListAuthorFilter(t *testing.T) {
 		{"?author_id=1&author_id=2", 0, true},
 	} {
 		repo := &capturingPostRepository{}
-		h := NewPostHandler(usecase.NewPostUsecase(immediateTransaction{}, repo, noFavoriteRepository{}, nil), nil)
+		h := NewPostHandler(usecase.NewPostUsecase(immediateTransaction{}, repo, availableTagRepository{}, noFavoriteRepository{}, nil), nil)
 		err := h.listAdminPosts(httptest.NewRecorder(), adminPostRequest(t, "/admin/post/"+tc.query))
 		if (err != nil) != tc.wantError {
 			t.Fatalf("query %q: error=%v, wantError=%v", tc.query, err, tc.wantError)
@@ -187,7 +187,7 @@ func TestAdminPostListAuthorNameFilter(t *testing.T) {
 		{"?author_name=alice&author_id=42&status=1", "alice"},
 	} {
 		repo := &capturingPostRepository{}
-		h := NewPostHandler(usecase.NewPostUsecase(immediateTransaction{}, repo, noFavoriteRepository{}, nil), nil)
+		h := NewPostHandler(usecase.NewPostUsecase(immediateTransaction{}, repo, availableTagRepository{}, noFavoriteRepository{}, nil), nil)
 		err := h.listAdminPosts(httptest.NewRecorder(), adminPostRequest(t, "/admin/post/"+tc.query))
 		if err != nil {
 			t.Fatalf("query %q: %v", tc.query, err)
@@ -203,7 +203,7 @@ func TestAdminPostListAuthorNameFilter(t *testing.T) {
 }
 
 func TestValidatePostTextLimits(t *testing.T) {
-	posts := usecase.NewPostUsecase(immediateTransaction{}, &writePostRepository{}, nil, nil)
+	posts := usecase.NewPostUsecase(immediateTransaction{}, &writePostRepository{}, availableTagRepository{}, nil, nil)
 	for _, tc := range []struct {
 		name    string
 		title   string
@@ -232,7 +232,7 @@ func TestValidatePostTextLimits(t *testing.T) {
 }
 
 func TestValidatePostTagLimit(t *testing.T) {
-	posts := usecase.NewPostUsecase(immediateTransaction{}, &writePostRepository{}, nil, nil)
+	posts := usecase.NewPostUsecase(immediateTransaction{}, &writePostRepository{}, availableTagRepository{}, nil, nil)
 	for _, tc := range []struct {
 		name    string
 		tagIDs  []int64
@@ -285,7 +285,7 @@ func TestPostListOmitsContentAndDetailPreservesIt(t *testing.T) {
 	if err := respondPosts(
 		recorder, request,
 		usecase.NewPostUsecase(immediateTransaction{},
-			listPostRepository{items: []domain.PostListItem{listItem}}, nil, nil,
+			listPostRepository{items: []domain.PostListItem{listItem}}, availableTagRepository{}, nil, nil,
 		).List,
 		usecase.ListPostsQuery{},
 	); err != nil {
@@ -337,6 +337,25 @@ func (r *writePostRepository) Find(context.Context, int64, bool) (*domain.Post, 
 	return &domain.Post{ID: 42, AuthorID: 1}, nil
 }
 
+func (r *writePostRepository) Lock(context.Context, int64) (*domain.Post, error) {
+	return &domain.Post{ID: 42, AuthorID: 1}, nil
+}
+func (r *writePostRepository) ReplaceTags(context.Context, int64, []int64) error { return nil }
+func (r *writePostRepository) AdjustCommentsCount(context.Context, int64, int32, *time.Time) error {
+	return nil
+}
+func (r *writePostRepository) ExistsPublished(context.Context, int64) (bool, error) { return true, nil }
+
+type availableTagRepository struct{ repository.TagRepository }
+
+func (availableTagRepository) LockByIDs(_ context.Context, ids []int64) ([]domain.Tag, error) {
+	tags := make([]domain.Tag, len(ids))
+	for i, id := range ids {
+		tags[i] = domain.Tag{ID: id, CategoryID: 1, IsActive: true}
+	}
+	return tags, nil
+}
+
 func (r *writePostRepository) Create(ctx context.Context, input repository.CreatePostInput) (*domain.Post, error) {
 	r.written = true
 	return &domain.Post{ID: 42, CategoryID: input.CategoryID}, nil
@@ -386,7 +405,7 @@ func TestAnnouncementsPublishingRequiresAdmin(t *testing.T) {
 					repo := &writePostRepository{}
 					router := chi.NewRouter()
 					NewPostHandler(
-						usecase.NewPostUsecase(immediateTransaction{}, repo, noFavoriteRepository{}, nil), nil,
+						usecase.NewPostUsecase(immediateTransaction{}, repo, availableTagRepository{}, noFavoriteRepository{}, nil), nil,
 					).RegisterRoutes(router)
 					path := "/"
 					wantStatus := http.StatusCreated
@@ -431,6 +450,10 @@ func (r *deletePostRepository) Find(context.Context, int64, bool) (*domain.Post,
 	return &r.post, nil
 }
 
+func (r *deletePostRepository) Lock(context.Context, int64) (*domain.Post, error) {
+	return &r.post, nil
+}
+
 func (r *deletePostRepository) SetStatus(ctx context.Context, id int64, status domain.PostStatus) error {
 	r.deleted = true
 	if id != r.post.ID || status != domain.PostStatusDeleted {
@@ -458,7 +481,7 @@ func TestPostDeletionWindow(t *testing.T) {
 			}}
 			router := chi.NewRouter()
 			NewPostHandler(
-				usecase.NewPostUsecase(immediateTransaction{}, repo, noFavoriteRepository{}, nil), nil,
+				usecase.NewPostUsecase(immediateTransaction{}, repo, availableTagRepository{}, noFavoriteRepository{}, nil), nil,
 			).RegisterRoutes(router)
 			token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 				"sub": "tester", "uid": tc.userID, "role": tc.role,

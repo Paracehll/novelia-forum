@@ -17,7 +17,7 @@ func TestCommentEditingStatePolicy(t *testing.T) {
 			for _, status := range []domain.CommentStatus{domain.CommentStatusPublished, domain.CommentStatusHidden, domain.CommentStatusDeleted, -1, 99} {
 				t.Run(fmt.Sprintf("external=%t/user=%d/admin=%t/status=%d", external, actor.UserID, actor.IsAdmin, status), func(t *testing.T) {
 					repo := &commentRepoStub{comment: domain.Comment{ID: 7, AuthorID: 1, Content: "original", Status: status, CreatedAt: time.Now()}}
-					u := NewCommentUsecase(immediateTransaction{}, repo, nil, nil, subjectResolverStub{supported: true})
+					u := NewCommentUsecase(immediateTransaction{}, repo, postExistenceStub{exists: true}, nil, subjectResolverStub{supported: true})
 					var comment *domain.Comment
 					var err error
 					if external {
@@ -69,7 +69,7 @@ func TestCommentDeletingNonPublishedStateRemainsAllowed(t *testing.T) {
 			for _, status := range []domain.CommentStatus{domain.CommentStatusHidden, domain.CommentStatusDeleted} {
 				t.Run(fmt.Sprintf("type=%d/admin=%t/status=%d", subjectType, actor.IsAdmin, status), func(t *testing.T) {
 					repo := &commentRepoStub{comment: domain.Comment{ID: 7, AuthorID: 1, Status: status, CreatedAt: time.Now()}}
-					u := NewCommentUsecase(immediateTransaction{}, repo, nil, nil, nil)
+					u := NewCommentUsecase(immediateTransaction{}, repo, postExistenceStub{exists: true}, nil, nil)
 					if err := u.Delete(
 						context.Background(),
 						actor,
@@ -102,6 +102,10 @@ func (r *changingCommentRepoStub) Find(
 	return &r.comment, nil
 }
 
+func (r *changingCommentRepoStub) Lock(ctx context.Context, kind domain.CommentSubjectType, id int64) (*domain.Comment, error) {
+	return r.Find(ctx, kind, id)
+}
+
 func (r *changingCommentRepoStub) Update(
 	context.Context,
 	domain.CommentSubjectType,
@@ -127,7 +131,7 @@ func TestCommentUpdateStorageFailures(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &changingCommentRepoStub{commentRepoStub: commentRepoStub{comment: domain.Comment{AuthorID: 1, CreatedAt: time.Now()}}, findErr: tc.findErr, updateErr: tc.updateErr}
-			u := NewCommentUsecase(immediateTransaction{}, repo, nil, nil, nil)
+			u := NewCommentUsecase(immediateTransaction{}, repo, postExistenceStub{exists: true}, nil, nil)
 			comment, err := u.Update(
 				context.Background(),
 				Actor{UserID: 1},
@@ -178,7 +182,7 @@ func TestCommentAdminStatusValidation(t *testing.T) {
 			for _, admin := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/status=%d/admin=%t", operation.name, status, admin), func(t *testing.T) {
 					repo := &adminCommentRepoStub{}
-					u := NewCommentUsecase(immediateTransaction{}, repo, nil, nil, subjectResolverStub{supported: true})
+					u := NewCommentUsecase(immediateTransaction{}, repo, postExistenceStub{exists: true}, nil, subjectResolverStub{supported: true})
 					err := operation.call(u, Actor{UserID: 1, IsAdmin: admin})
 					if admin && status.Valid() {
 						if err != nil || repo.calls != 1 {

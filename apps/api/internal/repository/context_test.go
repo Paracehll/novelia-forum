@@ -98,8 +98,9 @@ func TestRepositoriesRespectCanceledContext(t *testing.T) {
 		{"comment status transaction", func() error {
 			return comments.SetStatus(ctx, domain.CommentSubjectNovel, 1, domain.CommentStatusHidden)
 		}},
-		{"comment delete author raw SQL", func() error {
-			return comments.DeleteAllByAuthor(ctx, 1)
+		{"comment status by author", func() error {
+			_, err := comments.SetStatusByAuthor(ctx, 1, []domain.CommentStatus{domain.CommentStatusPublished, domain.CommentStatusHidden}, domain.CommentStatusDeleted)
+			return err
 		}},
 		{"favorite has", func() error {
 			_, err := favorites.Has(ctx, 1, 1)
@@ -143,7 +144,7 @@ func TestRepositoriesRespectCanceledContext(t *testing.T) {
 			return tags.SetActive(ctx, 1, 1, false)
 		}},
 		{"post tag helper", func() error {
-			return replacePostTags(ctx, db, 1, 1, []int64{1})
+			return posts.ReplaceTags(ctx, 1, []int64{1})
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

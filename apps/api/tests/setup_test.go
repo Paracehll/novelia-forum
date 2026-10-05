@@ -5,10 +5,12 @@ package tests
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"forum/internal/domain"
 	"forum/internal/infra"
 	"forum/internal/repository"
+	"forum/internal/usecase"
 	"os"
 	"strconv"
 	"testing"
@@ -18,8 +20,8 @@ import (
 var (
 	testDB       *sql.DB
 	tagRepo      repository.TagRepository
-	postRepo     repository.PostRepository
-	commentRepo  repository.CommentRepository
+	postRepo     postFixture
+	commentRepo  commentFixture
 	favoriteRepo repository.FavoriteRepository
 )
 
@@ -41,13 +43,11 @@ func TestMain(m *testing.M) {
 	}
 	tagRepo = repository.NewTagRepository(testDB)
 	transactions := repository.NewTransactionManager(testDB)
-	postRepo = transactionalPostRepository{
-		PostRepository: repository.NewPostRepository(testDB, tagRepo), tx: transactions,
-	}
-	commentRepo = transactionalCommentRepository{
-		CommentRepository: repository.NewCommentRepository(testDB), tx: transactions,
-	}
+	rawPosts := repository.NewPostRepository(testDB, tagRepo)
+	rawComments := repository.NewCommentRepository(testDB)
 	favoriteRepo = repository.NewFavoriteRepository(testDB)
+	postRepo = postFixture{PostRepository: rawPosts, u: usecase.NewPostUsecase(transactions, rawPosts, tagRepo, favoriteRepo, nil)}
+	commentRepo = commentFixture{CommentRepository: rawComments, u: usecase.NewCommentUsecase(transactions, rawComments, rawPosts, nil, fixtureSubjectResolver{})}
 	resetDatabase()
 	code := m.Run()
 	resetDatabase()
@@ -58,61 +58,73 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// The existing integration cases call repositories directly. Keep those calls
-// atomic without moving transaction ownership back into production repositories.
-type transactionalPostRepository struct {
+// Existing integration cases exercise business writes through real usecases;
+// reads still target the concrete repositories directly.
+type fixtureCreatePostInput struct {
+	CategoryID     int64
+	Title, Content string
+	AuthorID       int64
+	AuthorUsername string
+	TagIDs         []int64
+	Attr           string
+}
+type postFixture struct {
 	repository.PostRepository
-	tx repository.TransactionRunner
+	u *usecase.PostUsecase
 }
 
-func (r transactionalPostRepository) Create(ctx context.Context, input repository.CreatePostInput) (*domain.Post, error) {
-	var post *domain.Post
-	err := r.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
-		var err error
-		post, err = r.PostRepository.Create(txCtx, input)
-		return err
-	})
+func (r postFixture) Create(ctx context.Context, input fixtureCreatePostInput) (*domain.Post, error) {
+	result, err := r.u.Create(ctx, usecase.Actor{UserID: input.AuthorID, Username: input.AuthorUsername, IsAdmin: true}, usecase.PostInput{CategoryID: input.CategoryID, Title: input.Title, Content: input.Content, TagIDs: input.TagIDs})
 	if err != nil {
 		return nil, err
 	}
-	return post, nil
+	return &result.Post, nil
 }
-
-func (r transactionalPostRepository) Update(ctx context.Context, id int64, input repository.UpdatePostInput) (*domain.Post, error) {
-	var post *domain.Post
-	err := r.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
-		var err error
-		post, err = r.PostRepository.Update(txCtx, id, input)
-		return err
-	})
+func (r postFixture) Update(ctx context.Context, id int64, input usecase.PostInput) (*domain.Post, error) {
+	result, err := r.u.Update(ctx, usecase.Actor{IsAdmin: true}, id, input)
 	if err != nil {
 		return nil, err
 	}
-	return post, nil
+	return &result.Post, nil
 }
 
-type transactionalCommentRepository struct {
+type commentFixture struct {
 	repository.CommentRepository
-	tx repository.TransactionRunner
+	u *usecase.CommentUsecase
 }
 
-func (r transactionalCommentRepository) Create(ctx context.Context, input domain.Comment) (*domain.Comment, error) {
-	var comment *domain.Comment
-	err := r.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
-		var err error
-		comment, err = r.CommentRepository.Create(txCtx, input)
-		return err
-	})
-	if err != nil {
-		return nil, err
+func (r commentFixture) Create(ctx context.Context, input domain.Comment) (*domain.Comment, error) {
+	actor := usecase.Actor{UserID: input.AuthorID, Username: input.AuthorUsername, IsAdmin: true}
+	if input.SubjectType == domain.CommentSubjectPost {
+		id, err := domain.PostIDFromCommentSubjectKey(input.SubjectKey)
+		if err != nil {
+			return nil, err
+		}
+		return r.u.Create(ctx, actor, usecase.CreatePostCommentCommand{PostID: id, RootID: input.RootID, Content: input.Content})
 	}
-	return comment, nil
+	return r.u.CreateExternal(ctx, actor, usecase.CreateExternalCommentCommand{Kind: "novel", SubjectKey: input.SubjectKey, RootID: input.RootID, Content: input.Content})
+}
+func (r commentFixture) Update(ctx context.Context, kind domain.CommentSubjectType, id int64, content string) (*domain.Comment, error) {
+	return r.u.Update(ctx, usecase.Actor{IsAdmin: true}, usecase.UpdateCommentCommand{SubjectType: kind, CommentID: id, Content: content})
+}
+func (r commentFixture) SetStatus(ctx context.Context, kind domain.CommentSubjectType, id int64, status domain.CommentStatus) error {
+	return r.u.SetStatus(ctx, usecase.Actor{IsAdmin: true}, usecase.SetCommentStatusCommand{SubjectType: kind, CommentID: id, Status: status})
+}
+func (r commentFixture) DeleteAllByAuthor(ctx context.Context, authorID int64) error {
+	return r.u.DeleteAllByAuthor(ctx, usecase.Actor{IsAdmin: true}, usecase.DeleteCommentsByAuthorCommand{AuthorID: authorID})
 }
 
-func (r transactionalCommentRepository) SetStatus(ctx context.Context, subjectType domain.CommentSubjectType, id int64, status domain.CommentStatus) error {
-	return r.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
-		return r.CommentRepository.SetStatus(txCtx, subjectType, id, status)
-	})
+// External resource availability is fixture data, not a copy of comment rules.
+type fixtureSubjectResolver struct{}
+
+func (fixtureSubjectResolver) Type(kind string) (domain.CommentSubjectType, bool) {
+	return domain.CommentSubjectNovel, kind == "novel"
+}
+func (fixtureSubjectResolver) Valid(string, string) bool                           { return true }
+func (fixtureSubjectResolver) Check(context.Context, string, string) (bool, error) { return true, nil }
+func isAppErrorCode(err error, code string) bool {
+	var appErr *usecase.AppError
+	return errors.As(err, &appErr) && appErr.Code == code
 }
 
 func resetDatabase() {

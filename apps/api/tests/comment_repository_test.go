@@ -4,25 +4,24 @@ package tests
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	forumcategory "forum/internal/category"
 	"forum/internal/domain"
-	"forum/internal/repository"
+	"forum/internal/usecase"
 	"testing"
 )
 
 func TestCommentRepositoryDeleteAllByAuthor(t *testing.T) {
 	resetDatabase()
 	category, _ := forumcategory.FindByID(forumcategory.NovelID)
-	firstPost, err := postRepo.Create(context.Background(), repository.CreatePostInput{
+	firstPost, err := postRepo.Create(context.Background(), fixtureCreatePostInput{
 		CategoryID: category.ID, Title: "第一篇帖子", Content: "正文",
 		AuthorID: 1, AuthorUsername: "author", Attr: `{}`,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondPost, err := postRepo.Create(context.Background(), repository.CreatePostInput{
+	secondPost, err := postRepo.Create(context.Background(), fixtureCreatePostInput{
 		CategoryID: category.ID, Title: "第二篇帖子", Content: "正文",
 		AuthorID: 1, AuthorUsername: "author", Attr: `{}`,
 	})
@@ -167,14 +166,14 @@ func TestCommentRootReplyPreviews(t *testing.T) {
 
 func TestCommentCreationRootErrors(t *testing.T) {
 	resetDatabase()
-	post, err := postRepo.Create(context.Background(), repository.CreatePostInput{
+	post, err := postRepo.Create(context.Background(), fixtureCreatePostInput{
 		CategoryID: forumcategory.NovelID, Title: "帖子", Content: "正文",
 		AuthorID: 1, AuthorUsername: "author", Attr: "{}",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	otherPost, err := postRepo.Create(context.Background(), repository.CreatePostInput{
+	otherPost, err := postRepo.Create(context.Background(), fixtureCreatePostInput{
 		CategoryID: forumcategory.NovelID, Title: "另一帖子", Content: "正文",
 		AuthorID: 1, AuthorUsername: "author", Attr: "{}",
 	})
@@ -228,21 +227,21 @@ func TestCommentCreationRootErrors(t *testing.T) {
 			for _, tc := range []struct {
 				name   string
 				rootID int64
-				want   error
+				want   string
 			}{
-				{"missing", 999999, repository.ErrCommentRootNotFound},
-				{"hidden", hidden.ID, repository.ErrCommentRootNotFound},
-				{"deleted", deleted.ID, repository.ErrCommentRootNotFound},
-				{"reply as root", reply.ID, repository.ErrInvalidCommentRoot},
-				{"other type", otherType.ID, repository.ErrCommentRootNotFound},
-				{"other subject", otherSubject.ID, repository.ErrInvalidCommentRoot},
+				{"missing", 999999, usecase.CodeCommentRootNotFound},
+				{"hidden", hidden.ID, usecase.CodeCommentRootNotFound},
+				{"deleted", deleted.ID, usecase.CodeCommentRootNotFound},
+				{"reply as root", reply.ID, usecase.CodeCommentRootInvalid},
+				{"other type", otherType.ID, usecase.CodeCommentRootNotFound},
+				{"other subject", otherSubject.ID, usecase.CodeCommentRootInvalid},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					_, err := commentRepo.Create(context.Background(), domain.Comment{
 						SubjectType: subjectType, SubjectKey: key, RootID: &tc.rootID,
 						Content: "reply", AuthorID: 1, AuthorUsername: "author",
 					})
-					if !errors.Is(err, tc.want) {
+					if !isAppErrorCode(err, tc.want) {
 						t.Fatalf("got %v, want %v", err, tc.want)
 					}
 				})

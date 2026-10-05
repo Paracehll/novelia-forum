@@ -74,7 +74,7 @@ func main() {
 	commentRepo := repository.NewCommentRepository(db)
 	favoriteRepo := repository.NewFavoriteRepository(db)
 
-	postUsecase := usecase.NewPostUsecase(transactions, postRepo, favoriteRepo, domains)
+	postUsecase := usecase.NewPostUsecase(transactions, postRepo, tagRepo, favoriteRepo, domains)
 	commentUsecase := usecase.NewCommentUsecase(transactions, commentRepo, postRepo, domains, subjects)
 	tagUsecase := usecase.NewTagUsecase(tagRepo)
 

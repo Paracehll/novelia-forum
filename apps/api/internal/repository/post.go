@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"forum/.gen/main/public/model"
 	"forum/.gen/main/public/table"
-	forumcategory "forum/internal/category"
 	"forum/internal/domain"
 	"time"
 
@@ -22,7 +21,8 @@ const (
 )
 
 type PostFilter struct {
-	CategorySlug, Search     string
+	CategoryID               int64
+	Search                   string
 	AuthorName               string
 	Sort                     string
 	TagIDs                   []int64
@@ -35,21 +35,22 @@ type CreatePostInput struct {
 	Title, Content string
 	AuthorID       int64
 	AuthorUsername string
-	TagIDs         []int64
 	Attr           string
 }
 
 type UpdatePostInput struct {
 	CategoryID     int64
 	Title, Content string
-	TagIDs         []int64
 }
 
-// Create and Update require a context provided by WithinTransaction.
+// Lock and write operations spanning multiple statements require a transaction context.
 type PostRepository interface {
 	List(ctx context.Context, filter PostFilter, limit, offset int64) (int64, []domain.PostListItem, error)
 	Find(ctx context.Context, id int64, incrementViews bool) (*domain.Post, error)
 	ExistsPublished(ctx context.Context, id int64) (bool, error)
+	Lock(ctx context.Context, id int64) (*domain.Post, error)
+	AdjustCommentsCount(ctx context.Context, id int64, delta int32, activeAt *time.Time) error
+	ReplaceTags(ctx context.Context, postID int64, tagIDs []int64) error
 	Create(ctx context.Context, input CreatePostInput) (*domain.Post, error)
 	Update(ctx context.Context, id int64, input UpdatePostInput) (*domain.Post, error)
 	SetStatus(ctx context.Context, id int64, status domain.PostStatus) error
@@ -112,13 +113,8 @@ func (filter PostFilter) condition() BoolExpression {
 	if filter.Status != PostStatusAll {
 		expressions = append(expressions, table.Post.Status.EQ(Int16(int16(filter.Status))))
 	}
-	if filter.CategorySlug != "" {
-		category, ok := forumcategory.FindBySlug(filter.CategorySlug)
-		if !ok {
-			expressions = append(expressions, RawBool("FALSE"))
-		} else {
-			expressions = append(expressions, table.Post.CategoryID.EQ(Int64(category.ID)))
-		}
+	if filter.CategoryID > 0 {
+		expressions = append(expressions, table.Post.CategoryID.EQ(Int64(filter.CategoryID)))
 	}
 	if filter.AuthorID > 0 {
 		expressions = append(expressions, table.Post.AuthorID.EQ(Int64(filter.AuthorID)))
@@ -226,6 +222,40 @@ func (r *postRepository) ExistsPublished(ctx context.Context, id int64) (exists 
 	return result.Exists, nil
 }
 
+// Lock returns the stored state without imposing visibility or ownership rules.
+func (r *postRepository) Lock(ctx context.Context, id int64) (result *domain.Post, err error) {
+	defer func() { err = storageError(err, "post.Lock") }()
+	tx, err := requireTransaction(ctx, r.db)
+	if err != nil {
+		return nil, err
+	}
+	var record model.Post
+	if err := SELECT(table.Post.AllColumns).FROM(table.Post).
+		WHERE(table.Post.ID.EQ(Int64(id))).FOR(UPDATE()).
+		QueryContext(ctx, tx, &record); err != nil {
+		return nil, err
+	}
+	post := postFromModel(record, nil)
+	return &post, nil
+}
+
+func (r *postRepository) AdjustCommentsCount(ctx context.Context, id int64, delta int32, activeAt *time.Time) (err error) {
+	defer func() { err = storageError(err, "post.AdjustCommentsCount") }()
+	tx, err := requireTransaction(ctx, r.db)
+	if err != nil {
+		return err
+	}
+	count := IntExp(GREATEST(table.Post.CommentsCount.ADD(Int32(delta)), Int32(0)))
+	stmt := table.Post.UPDATE(table.Post.CommentsCount).SET(count).
+		WHERE(table.Post.ID.EQ(Int64(id)))
+	if activeAt != nil {
+		stmt = table.Post.UPDATE(table.Post.CommentsCount, table.Post.ActiveAt).
+			SET(count, TimestampzT(*activeAt)).WHERE(table.Post.ID.EQ(Int64(id)))
+	}
+	_, err = stmt.ExecContext(ctx, tx)
+	return err
+}
+
 func (r *postRepository) Find(
 	ctx context.Context,
 	id int64,
@@ -258,9 +288,6 @@ func (r *postRepository) Find(
 
 func (r *postRepository) Create(ctx context.Context, input CreatePostInput) (result *domain.Post, err error) {
 	defer func() { err = storageError(err, "post.Create") }()
-	if _, ok := forumcategory.FindByID(input.CategoryID); !ok {
-		return nil, ErrInvalidCategory
-	}
 	tx, err := requireTransaction(ctx, r.db)
 	if err != nil {
 		return nil, err
@@ -287,43 +314,29 @@ func (r *postRepository) Create(ctx context.Context, input CreatePostInput) (res
 	if err := insert.QueryContext(ctx, tx, &record); err != nil {
 		return nil, err
 	}
-	if err := replacePostTags(ctx, tx, record.ID, record.CategoryID, input.TagIDs); err != nil {
-		return nil, err
-	}
-	tags, err := listPostTags(ctx, tx, record.ID)
-	if err != nil {
-		return nil, err
-	}
-	post := postFromModel(record, tags)
+	post := postFromModel(record, nil)
 	return &post, nil
 }
 
-func replacePostTags(ctx context.Context, db qrm.DB, postID, categoryID int64, tagIDs []int64) error {
+func (r *postRepository) ReplaceTags(ctx context.Context, postID int64, tagIDs []int64) (err error) {
+	defer func() { err = storageError(err, "post.ReplaceTags") }()
+	tx, err := requireTransaction(ctx, r.db)
+	if err != nil {
+		return err
+	}
 	deleteStmt := table.PostTag.DELETE().WHERE(table.PostTag.PostID.EQ(Int64(postID)))
-	if _, err := deleteStmt.ExecContext(ctx, db); err != nil {
+	if _, err := deleteStmt.ExecContext(ctx, tx); err != nil {
 		return err
 	}
 	if len(tagIDs) == 0 {
 		return nil
 	}
-	validStmt := SELECT(table.Tag.AllColumns).
-		FROM(table.Tag).
-		WHERE(table.Tag.CategoryID.EQ(Int64(categoryID)).
-			AND(table.Tag.IsActive.IS_TRUE()).
-			AND(table.Tag.ID.IN(integerExpressions(tagIDs)...)))
-	var valid []Tag
-	if err := validStmt.QueryContext(ctx, db, &valid); err != nil {
-		return err
-	}
-	if len(valid) != len(tagIDs) {
-		return ErrInvalidTag
-	}
-	links := make([]model.PostTag, len(valid))
-	for i, tag := range valid {
-		links[i] = model.PostTag{PostID: postID, TagID: tag.ID}
+	links := make([]model.PostTag, len(tagIDs))
+	for i, tagID := range tagIDs {
+		links[i] = model.PostTag{PostID: postID, TagID: tagID}
 	}
 	insertStmt := table.PostTag.INSERT(table.PostTag.PostID, table.PostTag.TagID).MODELS(links)
-	_, err := insertStmt.ExecContext(ctx, db)
+	_, err = insertStmt.ExecContext(ctx, tx)
 	return err
 }
 
@@ -333,29 +346,19 @@ func (r *postRepository) Update(
 	input UpdatePostInput,
 ) (result *domain.Post, err error) {
 	defer func() { err = storageError(err, "post.Update") }()
-	if _, ok := forumcategory.FindByID(input.CategoryID); !ok {
-		return nil, ErrInvalidCategory
-	}
 	tx, err := requireTransaction(ctx, r.db)
 	if err != nil {
 		return nil, err
 	}
 	stmt := table.Post.UPDATE(table.Post.CategoryID, table.Post.Title, table.Post.Content, table.Post.UpdatedAt).
 		SET(Int64(input.CategoryID), String(input.Title), String(input.Content), TimestampzT(time.Now())).
-		WHERE(table.Post.ID.EQ(Int64(id)).AND(table.Post.Status.EQ(Int16(int16(domain.PostStatusPublished))))).
+		WHERE(table.Post.ID.EQ(Int64(id))).
 		RETURNING(table.Post.AllColumns)
 	var record model.Post
 	if err := stmt.QueryContext(ctx, tx, &record); err != nil {
 		return nil, err
 	}
-	if err := replacePostTags(ctx, tx, id, input.CategoryID, input.TagIDs); err != nil {
-		return nil, err
-	}
-	tags, err := listPostTags(ctx, tx, id)
-	if err != nil {
-		return nil, err
-	}
-	post := postFromModel(record, tags)
+	post := postFromModel(record, nil)
 	return &post, nil
 }
 

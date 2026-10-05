@@ -55,6 +55,19 @@ func (r contextPostRepository) Find(ctx context.Context, _ int64, _ bool) (*doma
 	r.recorder.record(ctx, "post.find")
 	return &domain.Post{ID: 7, AuthorID: 1, CreatedAt: time.Now()}, nil
 }
+func (r contextPostRepository) Lock(ctx context.Context, _ int64) (*domain.Post, error) {
+	r.recorder.record(ctx, "post.lock")
+	return &domain.Post{ID: 7, AuthorID: 1, CreatedAt: time.Now()}, nil
+}
+func (r contextPostRepository) ReplaceTags(ctx context.Context, _ int64, _ []int64) error {
+	r.recorder.record(ctx, "post.replace_tags")
+	return nil
+}
+func (r contextPostRepository) AdjustCommentsCount(ctx context.Context, _ int64, _ int32, _ *time.Time) error {
+	r.recorder.record(ctx, "post.adjust_comments")
+	return nil
+}
+
 func (r contextPostRepository) Update(
 	ctx context.Context,
 	_ int64,
@@ -114,14 +127,14 @@ func TestPostContextSurvivesHelpersAndMultipleRepositories(t *testing.T) {
 		{"update", func(u *PostUsecase) error {
 			_, err := u.Update(ctx, actor, 7, PostInput{CategoryID: 1, Title: "标题", Content: "body"})
 			return err
-		}, []string{"post.find", "post.update", "favorite.has"}},
+		}, []string{"post.lock", "post.update", "post.replace_tags", "favorite.has"}},
 		{"delete", func(u *PostUsecase) error {
 			return u.Delete(ctx, actor, 7)
-		}, []string{"post.find", "post.status"}},
+		}, []string{"post.lock", "post.status"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := &contextRecorder{t: t, want: ctx}
-			u := NewPostUsecase(immediateTransaction{}, contextPostRepository{recorder: r}, contextFavoriteRepository{recorder: r}, nil)
+			u := NewPostUsecase(immediateTransaction{}, contextPostRepository{recorder: r}, &postTagRepoStub{}, contextFavoriteRepository{recorder: r}, nil)
 			if err := tc.call(u); err != nil {
 				t.Fatal(err)
 			}
