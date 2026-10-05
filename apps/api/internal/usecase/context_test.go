@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	forumcategory "forum/internal/category"
 	"forum/internal/domain"
 	"forum/internal/repository"
 )
@@ -129,7 +130,7 @@ func TestPostContextSurvivesHelpersAndMultipleRepositories(t *testing.T) {
 			return err
 		}, []string{"post.find", "favorite.has", "post.increment_views"}},
 		{"update", func(u *PostUsecase) error {
-			_, err := u.Update(ctx, actor, 7, PostInput{CategoryID: 1, Title: "标题", Content: "body"})
+			_, err := u.Update(ctx, actor, 7, PostInput{CategoryID: forumcategory.NovelID, Title: "标题", Content: "body"})
 			return err
 		}, []string{"post.lock", "post.update", "post.replace_tags", "favorite.has"}},
 		{"delete", func(u *PostUsecase) error {

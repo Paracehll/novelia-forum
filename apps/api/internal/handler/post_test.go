@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	forumcategory "forum/internal/category"
 	"forum/internal/domain"
 	"forum/internal/repository"
 	"forum/internal/usecase"
@@ -135,7 +136,7 @@ func TestPostListQueryPreservesHTTPFilters(t *testing.T) {
 		t.Fatal(err)
 	}
 	filter := repo.filter
-	if filter.CategoryID != 1 || filter.Search != "title" ||
+	if filter.CategoryID != forumcategory.NovelID || filter.Search != "title" ||
 		filter.Sort != domain.PostSortNewest ||
 		len(filter.TagIDs) != 3 ||
 		filter.TagIDs[0] != 2 || filter.TagIDs[1] != 3 || filter.TagIDs[2] != 4 ||
@@ -222,7 +223,7 @@ func TestValidatePostTextLimits(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := posts.Create(context.Background(), usecase.Actor{UserID: 1}, usecase.PostInput{
-				CategoryID: 1, Title: tc.title, Content: tc.content,
+				CategoryID: forumcategory.NovelID, Title: tc.title, Content: tc.content,
 			})
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("validatePost() error = %v, want error %v", err, tc.wantErr)
@@ -244,7 +245,7 @@ func TestValidatePostTagLimit(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := posts.Create(context.Background(), usecase.Actor{UserID: 1}, usecase.PostInput{
-				CategoryID: 1, Title: "标题", Content: "正文", TagIDs: tc.tagIDs,
+				CategoryID: forumcategory.NovelID, Title: "标题", Content: "正文", TagIDs: tc.tagIDs,
 			})
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("validatePost() error = %v, want error %v", err, tc.wantErr)
@@ -266,7 +267,7 @@ func TestPostListOmitsContentAndDetailPreservesIt(t *testing.T) {
 	pinOrder := int32(1)
 	createdAt := time.Date(2026, time.January, 1, 12, 0, 0, 0, time.UTC)
 	post := domain.Post{
-		ID: 42, CategoryID: 1, Title: "标题", Content: "完整正文",
+		ID: 42, CategoryID: forumcategory.NovelID, Title: "标题", Content: "完整正文",
 		AuthorID: 7, AuthorUsername: "alice", Status: domain.PostStatusPublished,
 		ViewsCount: 10, CommentsCount: 3, CommentsLocked: true, PinOrder: &pinOrder,
 		CreatedAt: createdAt, UpdatedAt: createdAt.Add(time.Hour), ActiveAt: createdAt.Add(2 * time.Hour),
@@ -355,7 +356,7 @@ type availableTagRepository struct{ repository.TagRepository }
 func (availableTagRepository) LockByIDs(_ context.Context, ids []int64) ([]domain.Tag, error) {
 	tags := make([]domain.Tag, len(ids))
 	for i, id := range ids {
-		tags[i] = domain.Tag{ID: id, CategoryID: 1, IsActive: true}
+		tags[i] = domain.Tag{ID: id, CategoryID: forumcategory.NovelID, IsActive: true}
 	}
 	return tags, nil
 }
@@ -404,7 +405,7 @@ func adminPostRequest(t *testing.T, path string) *http.Request {
 func TestAnnouncementsPublishingRequiresAdmin(t *testing.T) {
 	for _, method := range []string{http.MethodPost, http.MethodPatch} {
 		for _, role := range []string{"member", "trusted", "admin"} {
-			for _, categoryID := range []int64{1, 2, 3} {
+			for _, categoryID := range []int64{forumcategory.AnnouncementsID, forumcategory.FeedbackID, forumcategory.NovelID} {
 				t.Run(fmt.Sprintf("%s/%s/%d", method, role, categoryID), func(t *testing.T) {
 					repo := &writePostRepository{}
 					router := chi.NewRouter()
@@ -417,7 +418,7 @@ func TestAnnouncementsPublishingRequiresAdmin(t *testing.T) {
 						path = "/42/"
 						wantStatus = http.StatusOK
 					}
-					allowed := categoryID != 2 || role == "admin"
+					allowed := categoryID != forumcategory.AnnouncementsID || role == "admin"
 					if !allowed {
 						wantStatus = http.StatusForbidden
 					}

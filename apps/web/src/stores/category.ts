@@ -11,13 +11,13 @@ const CATEGORY_TITLES: Record<string, string> = {
   feedback: '意见反馈',
 };
 const FALLBACK_CATEGORIES: CategoryListItem[] = [
-  { id: 2, slug: 'announcements', tags: [] },
-  { id: 1, slug: 'novel', tags: [] },
-  { id: 3, slug: 'feedback', tags: [] },
+  { id: 1, slug: 'announcements', tags: [] },
+  { id: 2, slug: 'feedback', tags: [] },
+  { id: 100, slug: 'novel', tags: [] },
 ];
 
 const QUERY_KEY = ['categories'];
-const STORAGE_KEY = 'forum:categories:v2';
+const STORAGE_KEY = 'forum:categories:v4';
 interface CategorySnapshot {
   items: CategoryListItem[];
   fetchedAt: number;

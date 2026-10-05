@@ -6,9 +6,9 @@ type Definition struct {
 }
 
 const (
-	NovelID         int64 = 1
-	AnnouncementsID int64 = 2
-	FeedbackID      int64 = 3
+	AnnouncementsID int64 = 1
+	FeedbackID      int64 = 2
+	NovelID         int64 = 100
 )
 
 var definitions = [...]Definition{

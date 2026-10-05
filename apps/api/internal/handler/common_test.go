@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	forumcategory "forum/internal/category"
 	"forum/internal/domain"
 	"forum/internal/domainfilter"
 	"forum/internal/httpx"
@@ -90,10 +91,10 @@ func TestDomainFilterRejectsWrites(t *testing.T) {
 	cases := []struct {
 		name, method, path, body string
 	}{
-		{"post title create", http.MethodPost, "/post/", `{"categoryId":1,"title":"evil.example","content":"正文"}`},
-		{"post content create", http.MethodPost, "/post/", `{"categoryId":1,"title":"标题","content":"evil.example"}`},
-		{"post title update", http.MethodPatch, "/post/42/", `{"categoryId":1,"title":"evil.example","content":"正文"}`},
-		{"post content update", http.MethodPatch, "/post/42/", `{"categoryId":1,"title":"标题","content":"evil.example"}`},
+		{"post title create", http.MethodPost, "/post/", `{"categoryId":100,"title":"evil.example","content":"正文"}`},
+		{"post content create", http.MethodPost, "/post/", `{"categoryId":100,"title":"标题","content":"evil.example"}`},
+		{"post title update", http.MethodPatch, "/post/42/", `{"categoryId":100,"title":"evil.example","content":"正文"}`},
+		{"post content update", http.MethodPatch, "/post/42/", `{"categoryId":100,"title":"标题","content":"evil.example"}`},
 		{"post comment create", http.MethodPost, "/post/42/comment", `{"content":"evil.example"}`},
 		{"post comment update", http.MethodPatch, "/comment/7", `{"content":"evil.example"}`},
 		{"external comment create", http.MethodPost, "/external/comment/novel/wenku-book", `{"content":"evil.example"}`},
@@ -140,7 +141,7 @@ func TestDomainFilterErrorMapping(t *testing.T) {
 		response := httptest.NewRecorder()
 		httpx.EH(func(http.ResponseWriter, *http.Request) error {
 			_, err := posts.Create(context.Background(), usecase.Actor{UserID: 1}, usecase.PostInput{
-				CategoryID: 1, Title: "标题", Content: value,
+				CategoryID: forumcategory.NovelID, Title: "标题", Content: value,
 			})
 			return transportError(err)
 		})(response, httptest.NewRequest(http.MethodPost, "/", nil))

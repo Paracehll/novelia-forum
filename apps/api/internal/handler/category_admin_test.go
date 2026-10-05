@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	forumcategory "forum/internal/category"
 	"forum/internal/domain"
 	"forum/internal/httpx"
 	"forum/internal/repository"
@@ -68,7 +69,7 @@ func (r *capturingTagRepository) ListByCategory(ctx context.Context, cid int64) 
 }
 
 func (r *capturingTagRepository) ListActive(ctx context.Context) ([]domain.Tag, error) {
-	return []domain.Tag{{ID: 9, CategoryID: 1, Name: "标签", IsActive: true}}, r.err
+	return []domain.Tag{{ID: 9, CategoryID: forumcategory.NovelID, Name: "标签", IsActive: true}}, r.err
 }
 
 func tagAdminToken(t *testing.T, role string) string {
