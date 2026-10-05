@@ -214,10 +214,17 @@ export const useCommentStore = defineStore('comment', () => {
     if (viewer === viewerKey.value) applyStatus(id, 1);
   }
 
+  async function unhideComment(id: number) {
+    const viewer = viewerKey.value;
+    await setPostCommentStatus(id, 'published');
+    if (viewer === viewerKey.value) applyStatus(id, 0);
+  }
+
   return {
     createComment,
     deleteComment,
     hideComment,
+    unhideComment,
     registerCreatedComment,
     registerDeletedCommentsByAuthor,
     updateComment,

@@ -1,9 +1,15 @@
 <script setup lang="ts">
+import { MoreVertOutlined } from '@vicons/material';
+import {
+  DropdownMenuContent,
+  DropdownMenuPortal,
+  DropdownMenuRoot,
+  DropdownMenuTrigger,
+} from 'reka-ui';
 import { computed, onBeforeUnmount, ref } from 'vue';
 
 import { authUser, type PostComment } from '@/api';
 import { XButton } from '@novelia/web-kit';
-import { XActionMenu } from '@novelia/web-kit';
 import { XActionMenuItem } from '@novelia/web-kit';
 import { XConfirmDialog } from '@novelia/web-kit';
 import UserModerationDialog from '@/components/UserModerationDialog.vue';
@@ -42,10 +48,16 @@ const expiryTimer = window.setTimeout(
 
 const isAdmin = computed(() => authUser.value?.role === 'admin');
 const isOwner = computed(() => authUser.value?.id === props.comment.authorId);
-const canReply = computed(() => Boolean(authUser.value) && !props.locked);
-const canEdit = computed(
-  () => isAdmin.value || (isOwner.value && now.value <= modificationDeadline),
+const isPublished = computed(() => props.comment.status === 0);
+const canReply = computed(
+  () => isPublished.value && Boolean(authUser.value) && !props.locked,
 );
+const canEdit = computed(
+  () =>
+    isPublished.value &&
+    (isAdmin.value || (isOwner.value && now.value <= modificationDeadline)),
+);
+const canDelete = computed(() => isAdmin.value || canEdit.value);
 const canModerateAuthor = computed(() => isAdmin.value && !isOwner.value);
 const moderationEvidence = computed(() =>
   [
@@ -98,6 +110,20 @@ async function removeComment() {
   }
 }
 
+async function unhideComment() {
+  if (submitting.value || !isAdmin.value || props.comment.status !== 1) return;
+  submitting.value = true;
+  try {
+    await commentStore.unhideComment(props.comment.id);
+    Notify.success('评论已解除隐藏');
+    emit('statusChanged', 0);
+  } catch (reason) {
+    Notify.error(await getApiErrorMessage(reason, '解除隐藏失败'));
+  } finally {
+    submitting.value = false;
+  }
+}
+
 async function hideComment() {
   submitting.value = true;
   try {
@@ -141,42 +167,69 @@ function handleUserModerationOpenChange(open: boolean) {
     <XButton v-if="canEdit" variant="ghost" size="xs" @click="emit('edit')">
       编辑
     </XButton>
-    <XActionMenu compact side="bottom" align="end">
-      <XActionMenuItem :disabled="copying" @activate="copyComment">
-        复制原文
-      </XActionMenuItem>
-      <XActionMenuItem
-        v-if="isAdmin"
-        :disabled="submitting"
-        @activate="confirmationAction = 'hide'"
-      >
-        隐藏评论
-      </XActionMenuItem>
-      <XActionMenuItem
-        v-if="canEdit"
-        danger
-        :disabled="submitting"
-        @activate="confirmationAction = 'delete'"
-      >
-        删除评论
-      </XActionMenuItem>
-      <template v-if="canModerateAuthor">
-        <XActionMenuItem
-          danger
-          :disabled="submitting"
-          @activate="userModerationAction = 'strike'"
+    <DropdownMenuRoot>
+      <DropdownMenuTrigger as-child>
+        <XButton
+          variant="ghost"
+          size="icon-xs"
+          aria-label="更多操作"
+          title="更多操作"
         >
-          处罚作者
-        </XActionMenuItem>
-        <XActionMenuItem
-          danger
-          :disabled="submitting"
-          @activate="userModerationAction = 'ban'"
+          <MoreVertOutlined class="size-4" aria-hidden="true" />
+        </XButton>
+      </DropdownMenuTrigger>
+      <DropdownMenuPortal>
+        <DropdownMenuContent
+          side="bottom"
+          align="end"
+          :side-offset="6"
+          :collision-padding="8"
+          class="z-30 w-32 rounded-md border border-border bg-surface p-1 shadow-xl outline-none"
         >
-          封禁作者
-        </XActionMenuItem>
-      </template>
-    </XActionMenu>
+          <XActionMenuItem :disabled="copying" @activate="copyComment">
+            复制原文
+          </XActionMenuItem>
+          <XActionMenuItem
+            v-if="isAdmin && isPublished"
+            :disabled="submitting"
+            @activate="confirmationAction = 'hide'"
+          >
+            隐藏评论
+          </XActionMenuItem>
+          <XActionMenuItem
+            v-if="isAdmin && comment.status === 1"
+            :disabled="submitting"
+            @activate="unhideComment"
+          >
+            解除隐藏
+          </XActionMenuItem>
+          <XActionMenuItem
+            v-if="canDelete"
+            danger
+            :disabled="submitting"
+            @activate="confirmationAction = 'delete'"
+          >
+            删除评论
+          </XActionMenuItem>
+          <template v-if="canModerateAuthor">
+            <XActionMenuItem
+              danger
+              :disabled="submitting"
+              @activate="userModerationAction = 'strike'"
+            >
+              处罚作者
+            </XActionMenuItem>
+            <XActionMenuItem
+              danger
+              :disabled="submitting"
+              @activate="userModerationAction = 'ban'"
+            >
+              封禁作者
+            </XActionMenuItem>
+          </template>
+        </DropdownMenuContent>
+      </DropdownMenuPortal>
+    </DropdownMenuRoot>
 
     <XConfirmDialog
       :open="confirmationAction != null"

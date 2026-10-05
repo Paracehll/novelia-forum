@@ -103,7 +103,7 @@ async function saveEdit() {
         {{ formatDate(comment.createdAt) }}
       </time>
       <CommentActions
-        v-if="isPublished && !editing"
+        v-if="!editing && (isPublished || (isAdmin && comment.status === 1))"
         :comment="comment"
         :locked="locked"
         :post-id="postId"

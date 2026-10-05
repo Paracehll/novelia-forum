@@ -141,12 +141,9 @@ function startReply(comment: PostComment) {
 }
 
 function handleCommentStatusChanged(id: number) {
-  if (post.value) {
-    postStore.setPost({
-      ...post.value,
-      commentsCount: Math.max(0, post.value.commentsCount - 1),
-    });
-  }
+  // Refresh the authoritative count for both hiding/deletion and restoration.
+  // Deleting an already hidden comment must not decrement the count twice.
+  void loadPost();
   if (replyTo.value?.id === id) replyTo.value = undefined;
 }
 
