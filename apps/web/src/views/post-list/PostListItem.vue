@@ -74,7 +74,7 @@ function formatDate(value: string) {
         </span>
         <RouterLink
           :to="{ name: 'post-detail', params: { id: post.id } }"
-          class="text-ink transition-colors duration-300 before:absolute before:inset-0 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary group-hover:text-primary"
+          class="text-primary transition-colors duration-300 before:absolute before:inset-0 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
         >
           {{ post.title }}
         </RouterLink>
