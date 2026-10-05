@@ -13,7 +13,7 @@ const webKit = createWebKit({
   auth: {
     app: 'f',
     url: __AUTH_URL__,
-    storageKey: 'f-session',
+    storageKey: 'forum:session:v1',
   },
   brand: '论坛',
   repository: {
@@ -21,7 +21,7 @@ const webKit = createWebKit({
     buildTime: __BUILD_TIME__,
     commitSha: __COMMIT_SHA__,
   },
-  themeStorageKey: 'forum:theme',
+  themeStorageKey: 'forum:theme:v1',
 });
 initializeApi(webKit.api, webKit.profile);
 

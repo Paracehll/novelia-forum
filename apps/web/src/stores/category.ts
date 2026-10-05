@@ -17,7 +17,7 @@ const FALLBACK_CATEGORIES: CategoryListItem[] = [
 ];
 
 const QUERY_KEY = ['categories'];
-const STORAGE_KEY = 'forum:categories:v4';
+const STORAGE_KEY = 'forum:categories:v1';
 interface CategorySnapshot {
   items: CategoryListItem[];
   fetchedAt: number;
