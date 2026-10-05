@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { ChatBubbleOutlineOutlined } from '@vicons/material';
+import { XButton } from '@novelia/web-kit';
 import type { Post } from '@/api';
 import MarkdownContent from '@/components/markdown/MarkdownContent.vue';
 
 defineProps<{
   post: Post;
 }>();
+defineEmits<{ comments: [] }>();
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('zh-CN', {
@@ -39,6 +42,24 @@ function formatDate(value: string) {
       </div>
     </div>
 
+    <div
+      class="mt-4 flex flex-wrap items-center gap-2"
+      aria-label="帖子快捷操作"
+    >
+      <slot name="favorite" />
+      <XButton
+        as="a"
+        href="#comments"
+        variant="outline"
+        size="sm"
+        aria-controls="comments"
+        @click.prevent="$emit('comments')"
+      >
+        <ChatBubbleOutlineOutlined class="size-4" aria-hidden="true" />
+        评论
+      </XButton>
+      <slot name="more" />
+    </div>
     <div class="my-6 h-px bg-divider" />
     <MarkdownContent mode="article" :source="post.content" />
   </article>

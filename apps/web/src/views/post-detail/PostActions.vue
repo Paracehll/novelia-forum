@@ -1,26 +1,27 @@
 <script setup lang="ts">
-import { StarBorderOutlined, StarFilled } from '@vicons/material';
-import { computed, ref, watch } from 'vue';
+import { EditOutlined } from '@vicons/material';
+import { computed, ref } from 'vue';
+import { XButton } from '@novelia/web-kit';
 
 import {
   authUser,
   deletePost,
   lockPost,
   pinPost,
-  setPostFavorite,
   setPostStatus,
   type Post,
   unlockPost,
   unpinPost,
 } from '@/api';
-import { XButton } from '@novelia/web-kit';
 import { XActionMenu } from '@novelia/web-kit';
 import { XActionMenuItem } from '@novelia/web-kit';
 import { XConfirmDialog } from '@novelia/web-kit';
 import UserModerationDialog from '@/components/UserModerationDialog.vue';
 import { getApiErrorMessage, Notify } from '@novelia/web-kit';
 
-const props = defineProps<{ post: Post }>();
+const props = withDefaults(defineProps<{ post: Post; inline?: boolean }>(), {
+  inline: false,
+});
 
 const emit = defineEmits<{
   edit: [];
@@ -29,8 +30,6 @@ const emit = defineEmits<{
   authorCommentsDeleted: [];
 }>();
 
-const favorited = ref(props.post.favorited);
-const favoriteLoading = ref(false);
 const actionLoading = ref(false);
 const confirmationAction = ref<'delete' | 'hide'>();
 const userModerationAction = ref<'strike' | 'ban'>();
@@ -63,22 +62,6 @@ const confirmation = computed(() =>
         confirmLabel: '隐藏帖子',
       },
 );
-
-async function toggleFavorite() {
-  if (!authUser.value || favoriteLoading.value) return;
-  favoriteLoading.value = true;
-  const nextValue = !favorited.value;
-  try {
-    await setPostFavorite(props.post.id, nextValue);
-    favorited.value = nextValue;
-    emit('updated', { ...props.post, favorited: nextValue });
-    Notify.success(nextValue ? '帖子已收藏' : '已取消收藏');
-  } catch (reason) {
-    Notify.error(await getApiErrorMessage(reason, '更新收藏失败'));
-  } finally {
-    favoriteLoading.value = false;
-  }
-}
 
 function editPost() {
   emit('edit');
@@ -169,36 +152,28 @@ function toggleLock() {
     commentsLocked ? '锁定评论失败' : '开放评论失败',
   );
 }
-
-watch(
-  () => props.post.favorited,
-  (value) => {
-    favorited.value = value;
-  },
-);
 </script>
 
 <template>
-  <section class="relative border-t border-divider py-3" aria-label="帖子操作">
+  <section
+    v-if="!inline || canManagePost"
+    :class="inline ? 'relative' : 'relative border-t border-divider py-3'"
+    aria-label="帖子操作"
+  >
     <div class="flex flex-wrap items-center gap-2">
+      <slot name="favorite" />
       <XButton
-        v-if="authUser"
-        :variant="favorited ? 'ghost-active' : 'ghost'"
+        v-if="canManagePost"
+        variant="outline"
         size="sm"
-        :disabled="favoriteLoading"
-        :aria-pressed="favorited"
-        @click="toggleFavorite"
+        :disabled="actionLoading"
+        @click="editPost"
       >
-        <StarFilled v-if="favorited" class="size-4" aria-hidden="true" />
-        <StarBorderOutlined v-else class="size-4" aria-hidden="true" />
-        {{ favoriteLoading ? '处理中…' : favorited ? '取消收藏' : '收藏' }}
+        <EditOutlined class="size-4" aria-hidden="true" />
+        编辑
       </XButton>
-
-      <div v-if="canManagePost">
+      <div v-if="isAdmin || canDelete" class="post-more-menu">
         <XActionMenu>
-          <XActionMenuItem :disabled="actionLoading" @activate="editPost">
-            编辑帖子
-          </XActionMenuItem>
           <template v-if="isAdmin">
             <XActionMenuItem :disabled="actionLoading" @activate="togglePin">
               {{ post.pinOrder == null ? '置顶帖子' : '取消置顶' }}
@@ -262,3 +237,9 @@ watch(
     />
   </section>
 </template>
+
+<style scoped>
+.post-more-menu :deep(button[aria-label='更多操作'] > svg) {
+  transform: rotate(90deg);
+}
+</style>

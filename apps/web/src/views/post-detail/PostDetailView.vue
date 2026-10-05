@@ -3,7 +3,8 @@ import { ArrowBackOutlined } from '@vicons/material';
 import { computed, nextTick, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
-import { type Post, type PostComment } from '@/api';
+import { authUser, setPostFavorite, type Post, type PostComment } from '@/api';
+import { getApiErrorMessage, Notify } from '@novelia/web-kit';
 import { XButton } from '@novelia/web-kit';
 import { XAsyncContent } from '@novelia/web-kit';
 import PostTagList from '@/components/PostTagList.vue';
@@ -16,6 +17,7 @@ import CommentComposer from './CommentComposer.vue';
 import CommentList from './CommentList.vue';
 import PostActions from './PostActions.vue';
 import PostContent from './PostContent.vue';
+import PostFavoriteButton from './PostFavoriteButton.vue';
 
 const COMMENT_PAGE_SIZE = 50;
 
@@ -68,6 +70,42 @@ const commentTotalPages = computed(() =>
 const category = computed(() =>
   categoryStore.categories.find((item) => item.id === post.value?.categoryId),
 );
+
+const favoriteLoading = ref(false);
+
+async function toggleFavorite() {
+  const currentPost = post.value;
+  const userId = authUser.value?.id;
+  if (!currentPost || !userId || favoriteLoading.value) return;
+  const nextValue = !currentPost.favorited;
+  favoriteLoading.value = true;
+  try {
+    await setPostFavorite(currentPost.id, nextValue);
+    // Do not apply a response to a different post or signed-in viewer.
+    if (post.value?.id !== currentPost.id || authUser.value?.id !== userId)
+      return;
+    postStore.setPost({ ...post.value, favorited: nextValue });
+    Notify.success(nextValue ? '帖子已收藏' : '已取消收藏');
+  } catch (reason) {
+    if (post.value?.id === currentPost.id && authUser.value?.id === userId) {
+      Notify.error(await getApiErrorMessage(reason, '更新收藏失败'));
+    }
+  } finally {
+    favoriteLoading.value = false;
+  }
+}
+
+function jumpToComments() {
+  const target = document.getElementById('comments');
+  if (!target) return;
+  target.focus({ preventScroll: true });
+  target.scrollIntoView({
+    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ? 'auto'
+      : 'smooth',
+    block: 'start',
+  });
+}
 
 function changeCommentPage(nextPage: number) {
   void router.push({
@@ -232,15 +270,38 @@ function returnToList() {
         </template>
 
         <template v-if="post">
-          <PostContent :post="post" />
-          <PostActions
-            :post="post"
-            @edit="editPost"
-            @deleted="leaveDeletedPost"
-            @updated="handlePostUpdated"
-            @author-comments-deleted="handleAuthorCommentsDeleted"
-          />
-          <div id="comments">
+          <PostContent :post="post" @comments="jumpToComments">
+            <template #favorite>
+              <PostFavoriteButton
+                prominent
+                :favorited="post.favorited"
+                :loading="favoriteLoading"
+                @toggle="toggleFavorite"
+              />
+            </template>
+            <template #more>
+              <PostActions
+                :key="post.id"
+                inline
+                :post="post"
+                @edit="editPost"
+                @deleted="leaveDeletedPost"
+                @updated="handlePostUpdated"
+                @author-comments-deleted="handleAuthorCommentsDeleted"
+              />
+            </template>
+          </PostContent>
+          <section
+            class="relative border-t border-divider py-3"
+            aria-label="帖子操作"
+          >
+            <PostFavoriteButton
+              :favorited="post.favorited"
+              :loading="favoriteLoading"
+              @toggle="toggleFavorite"
+            />
+          </section>
+          <div id="comments" tabindex="-1" class="scroll-mt-20">
             <CommentList
               :comments="comments"
               :loading="commentsLoading"
