@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, useId, watch } from 'vue';
 
-import { authUser, type PostComment } from '@/api';
+import type { PostComment } from '@/api';
 import CommentRulesNotice from './CommentRulesNotice.vue';
 import MarkdownEditor from '@/components/markdown/MarkdownEditor.vue';
 import MarkdownHelpDialog from '@/components/markdown/MarkdownHelpDialog.vue';
@@ -9,7 +9,7 @@ import { useCommentValidation } from '@/composables/useCommentValidation';
 import { getApiErrorMessage, Notify } from '@novelia/web-kit';
 import { useCommentStore } from '@/stores/comment';
 import { useDraftStore } from '@/stores/draft';
-import { XButton } from '@novelia/web-kit';
+import { useWebKit, XButton } from '@novelia/web-kit';
 
 const props = defineProps<{
   postId: number;
@@ -22,6 +22,7 @@ const emit = defineEmits<{
   cancelReply: [];
 }>();
 
+const { whoami } = useWebKit();
 const commentStore = useCommentStore();
 const draftStore = useDraftStore();
 const content = ref('');
@@ -38,11 +39,12 @@ const {
   hint: commentHint,
   canSubmit,
 } = useCommentValidation(content, submitting);
-const draftKey = computed(() =>
-  authUser.value
-    ? `${props.postId}:${authUser.value.id}:${props.replyTo ? `reply:${props.replyTo.id}` : 'root'}`
-    : '',
-);
+const draftKey = computed(() => {
+  const user = whoami.value.user;
+  return user
+    ? `${props.postId}:${user.id}:${props.replyTo ? `reply:${props.replyTo.id}` : 'root'}`
+    : '';
+});
 
 watch(
   draftKey,
@@ -89,7 +91,7 @@ async function submitComment() {
     </div>
 
     <div
-      v-else-if="!authUser"
+      v-else-if="!whoami.isSignedIn"
       :class="['py-2 text-sm text-muted', { 'mt-4': replyTo }]"
     >
       登录后即可参与评论，请使用页面右上角的登录入口。

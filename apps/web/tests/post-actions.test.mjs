@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { registerHooks, stripTypeScriptTypes } from 'node:module';
 import test from 'node:test';
 import { compileScript, parse } from 'vue/compiler-sfc';
-import { effectScope, reactive, ref } from 'vue';
+import { computed, effectScope, reactive, ref } from 'vue';
 
 // Exercise the real composable and SFC setup with mocked API/cache boundaries.
 // Node 22.15+ provides registerHooks; no test framework dependency is needed.
@@ -15,6 +15,7 @@ const fixture = {
   requests: [],
 };
 globalThis.__postActionsTest = fixture;
+globalThis.__postActionsVue = { computed };
 
 const favoriteUrl = new URL(
   '../src/composables/usePostFavorite.ts',
@@ -27,14 +28,26 @@ const actionsUrl = new URL(
 const mocks = {
   '@/api': `
     const f = globalThis.__postActionsTest;
-    export const authUser = f.auth;
     ${['setPostFavorite', 'deletePost', 'lockPost', 'unlockPost', 'pinPost', 'unpinPost', 'setPostStatus'].map((name) => `export const ${name} = (...args) => { f.calls.push(['${name}', ...args]); return f.requests.shift().promise; };`).join('\n')}
   `,
   '@/stores/post': `
     export const usePostStore = () => ({ setPost: post => { globalThis.__postActionsTest.post.value = post; } });
   `,
+  // Mirror web-kit: components read the session view from the kit, not a token profile.
   '@novelia/web-kit': `
     const f = globalThis.__postActionsTest;
+    const { computed } = globalThis.__postActionsVue;
+    const isAdmin = user => user?.role === 'admin';
+    const whoami = computed(() => {
+      const user = f.auth.value;
+      return {
+        user,
+        isSignedIn: user !== undefined,
+        isAdmin: isAdmin(user),
+        asAdmin: isAdmin(user) && user?.adminMode === true,
+      };
+    });
+    export const useWebKit = () => ({ whoami });
     export const Notify = {
       success: message => f.notices.push(['success', message]),
       error: message => f.notices.push(['error', message]),
@@ -98,7 +111,9 @@ function deferred() {
 }
 
 function setup(role = 'admin') {
-  fixture.auth.value = role ? { id: 7, role } : undefined;
+  fixture.auth.value = role
+    ? { id: 7, role, adminMode: role === 'admin' }
+    : undefined;
   fixture.post.value = {
     id: 10,
     authorId: 7,
@@ -215,7 +230,8 @@ test('viewer change and scope disposal suppress late favorite responses', async 
     const request = deferred();
     fixture.requests.push(request);
     const pending = favorite.toggle();
-    if (change === 'viewer') fixture.auth.value = { id: 8, role: 'admin' };
+    if (change === 'viewer')
+      fixture.auth.value = { id: 8, role: 'admin', adminMode: true };
     else scope.stop();
     await settle(request);
     await pending;
@@ -269,7 +285,8 @@ test('management disposal or viewer change suppresses late events and notificati
     const request = deferred();
     fixture.requests.push(request);
     actions.togglePin();
-    if (change === 'viewer') fixture.auth.value = { id: 8, role: 'admin' };
+    if (change === 'viewer')
+      fixture.auth.value = { id: 8, role: 'admin', adminMode: true };
     else scope.stop();
     await settle(request);
     assert.equal(events.length, 0);
@@ -299,20 +316,61 @@ test('management failure does not patch data and releases lock', async () => {
   }
 });
 
+test('toggling admin mode does not reset the favorite lock', async () => {
+  // Favoriting has no admin-mode variant, so the mode is not part of the
+  // viewer identity that invalidates in-flight work.
+  const { scope, favorite } = setup();
+  try {
+    const request = deferred();
+    fixture.requests.push(request);
+    const pending = favorite.toggle();
+    assert.equal(favorite.loading.value, true);
+
+    fixture.auth.value = { id: 7, role: 'admin', adminMode: false };
+    assert.equal(favorite.loading.value, true);
+
+    await settle(request);
+    await pending;
+    assert.equal(fixture.post.value.favorited, true);
+    assert.deepEqual(fixture.calls, [['setPostFavorite', 10, true]]);
+  } finally {
+    scope.stop();
+  }
+});
+
 test('permissions retain owner/admin editing and deletion rules', () => {
-  const { scope, actions, props } = setup('user');
+  const { scope, actions, props } = setup('member');
   try {
     assert.equal(actions.canManagePost.value, true);
     assert.equal(actions.canDelete.value, true);
     props.post = { ...props.post, createdAt: '2000-01-01T00:00:00Z' };
     assert.equal(actions.canManagePost.value, true);
     assert.equal(actions.canDelete.value, false);
-    fixture.auth.value = { id: 8, role: 'user' };
+    fixture.auth.value = { id: 8, role: 'member', adminMode: false };
     assert.equal(actions.canManagePost.value, false);
-    fixture.auth.value = { id: 8, role: 'admin' };
+    fixture.auth.value = { id: 8, role: 'admin', adminMode: true };
     assert.equal(actions.canManagePost.value, true);
     assert.equal(actions.canDelete.value, true);
     assert.equal(actions.canModerateAuthor.value, true);
+  } finally {
+    scope.stop();
+  }
+});
+
+test('admin UI follows the admin-mode toggle, not the role alone', () => {
+  // An admin browsing in normal mode must see the same page as a regular user;
+  // moderation affordances appear only after the account menu enables admin mode.
+  const { scope, actions } = setup('member');
+  try {
+    fixture.auth.value = { id: 8, role: 'admin', adminMode: false };
+    assert.equal(actions.canManagePost.value, false);
+    assert.equal(actions.canModerateAuthor.value, false);
+    assert.equal(actions.canDelete.value, false);
+
+    fixture.auth.value = { id: 8, role: 'admin', adminMode: true };
+    assert.equal(actions.canManagePost.value, true);
+    assert.equal(actions.canModerateAuthor.value, true);
+    assert.equal(actions.canDelete.value, true);
   } finally {
     scope.stop();
   }

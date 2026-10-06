@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { StarBorderOutlined } from '@vicons/material';
-import { useWebKitLayout } from '@novelia/web-kit';
+import { useWebKit, useWebKitLayout } from '@novelia/web-kit';
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
-import { authUser } from '@/api';
 import { usePostListQuery } from '@/stores/post';
 import PostList from './PostList.vue';
 
@@ -12,6 +11,7 @@ const PAGE_SIZE = 20;
 
 const route = useRoute();
 const router = useRouter();
+const { whoami } = useWebKit();
 const { scrollToTop } = useWebKitLayout();
 
 const page = computed(() => {
@@ -51,7 +51,7 @@ function changePage(nextPage: number) {
         <p class="mt-1 text-sm text-muted">查看你收藏过的帖子。</p>
       </header>
 
-      <section v-if="!authUser" class="py-8 text-center">
+      <section v-if="!whoami.isSignedIn" class="py-8 text-center">
         <div
           class="mx-auto grid size-12 place-items-center rounded-full bg-primary-soft text-primary"
           aria-hidden="true"

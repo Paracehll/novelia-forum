@@ -2,7 +2,8 @@ import { computed } from 'vue';
 import { defineStore } from 'pinia';
 import { useQuery } from '@pinia/colada';
 
-import { authUser, getCategories, type CategoryListItem } from '@/api';
+import { getCategories, type CategoryListItem } from '@/api';
+import { whoami } from '@/session';
 
 const CACHE_MAX_AGE = 15 * 60 * 1000;
 const CATEGORY_TITLES: Record<string, string> = {
@@ -49,7 +50,7 @@ export const useCategoryStore = defineStore('category', () => {
   );
 
   function canPublish(slug: string) {
-    return slug !== 'announcements' || authUser.value?.role === 'admin';
+    return slug !== 'announcements' || whoami.value.asAdmin;
   }
 
   function tagsByCategoryId(categoryId: number) {

@@ -2,8 +2,8 @@
 import { computed, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 
-import { authUser, updatePost, type Post } from '@/api';
-import { XButton } from '@novelia/web-kit';
+import { updatePost, type Post } from '@/api';
+import { useWebKit, XButton } from '@novelia/web-kit';
 import { XAsyncContent } from '@novelia/web-kit';
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard';
 import { getApiErrorMessage, Notify } from '@novelia/web-kit';
@@ -12,6 +12,7 @@ import { usePostQuery, usePostStore } from '@/stores/post';
 
 import PostForm from './PostForm.vue';
 
+const { whoami } = useWebKit();
 const route = useRoute();
 const router = useRouter();
 const categoryStore = useCategoryStore();
@@ -38,14 +39,14 @@ const {
 const loading = computed(() => !categoriesReady.value || postLoading.value);
 const canEdit = computed(
   () =>
-    post.value != null &&
-    categoryStore.canPublish(
-      categoryStore.categories.find(
-        (item) => item.id === post.value?.categoryId,
-      )?.slug ?? '',
-    ) &&
-    (authUser.value?.id === post.value.authorId ||
-      authUser.value?.role === 'admin'),
+    (post.value != null &&
+      categoryStore.canPublish(
+        categoryStore.categories.find(
+          (item) => item.id === post.value?.categoryId,
+        )?.slug ?? '',
+      ) &&
+      whoami.value.user?.id === post.value.authorId) ||
+    whoami.value.asAdmin,
 );
 const selectedCategory = computed(
   () =>
@@ -190,7 +191,7 @@ void categoryStore.initialize().then(() => {
           <h1 class="text-xl font-bold text-ink">无法编辑帖子</h1>
           <p class="mt-2 text-sm text-muted">
             {{
-              authUser
+              whoami.isSignedIn
                 ? '只有具有该板块发帖权限的作者或管理员可以编辑这篇帖子。'
                 : '登录后才能编辑帖子，请使用页面右上角的登录入口。'
             }}

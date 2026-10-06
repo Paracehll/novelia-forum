@@ -6,20 +6,24 @@ import {
   watch,
   type MaybeRefOrGetter,
 } from 'vue';
-import { getApiErrorMessage, Notify } from '@novelia/web-kit';
+import { getApiErrorMessage, Notify, useWebKit } from '@novelia/web-kit';
 
-import { authUser, setPostFavorite, type Post } from '@/api';
+import { setPostFavorite, type Post } from '@/api';
 import { usePostStore } from '@/stores/post';
 
 // Create once per detail page; both favorite buttons share this request lock.
 export function usePostFavorite(post: MaybeRefOrGetter<Post | undefined>) {
+  const { whoami } = useWebKit();
   const postStore = usePostStore();
   const loading = ref(false);
-  const canFavorite = computed(() => !!authUser.value);
+  const canFavorite = computed(() => whoami.value.isSignedIn);
   let context = 0;
 
+  // Cancel in-flight work when the post or the signed-in account changes. The
+  // account id (not `isSignedIn`) is what distinguishes one viewer from another,
+  // and favoriting has no admin-mode variant, so the mode must not reset the lock.
   watch(
-    () => [toValue(post)?.id, authUser.value?.id, authUser.value?.role],
+    () => [toValue(post)?.id, whoami.value.user?.id],
     (next, previous) => {
       if (next.some((value, index) => value !== previous[index])) {
         context++;

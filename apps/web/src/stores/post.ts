@@ -3,7 +3,6 @@ import { defineStore } from 'pinia';
 import { useQuery, useQueryCache } from '@pinia/colada';
 
 import {
-  authUser,
   getFavoritePosts,
   getMyPosts,
   getPost,
@@ -12,11 +11,12 @@ import {
   type Post,
   type PostSummary,
 } from '@/api';
+import { whoami } from '@/session';
 
-// Even public responses contain viewer-specific fields such as favorited.
-const viewerKey = computed(
-  () => `${authUser.value?.id ?? 'guest'}:${authUser.value?.role ?? ''}`,
-);
+// Post payloads vary by viewer only through `favorited`, which the backend
+// derives from the account id; admin mode cannot change a post response, so
+// keying on it would needlessly drop the cache on every mode toggle.
+const viewerKey = computed(() => whoami.value.user?.id ?? 'guest');
 const postKey = (id: number) => ['posts', viewerKey.value, 'detail', id];
 const listKey = () => ['posts', viewerKey.value, 'list'];
 
@@ -104,7 +104,7 @@ export function usePostListQuery(
   usePostStore();
   const query = useQuery({
     key: () => [...listKey(), kind, toValue(params)],
-    enabled: () => kind === 'category' || !!authUser.value,
+    enabled: () => kind === 'category' || whoami.value.isSignedIn,
     query: ({ signal }) => {
       const value = toValue(params);
       return kind === 'category'

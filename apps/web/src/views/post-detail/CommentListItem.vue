@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, useId, watch } from 'vue';
 
-import { authUser, type PostComment } from '@/api';
-import { XButton } from '@novelia/web-kit';
+import type { PostComment } from '@/api';
+import { useWebKit, XButton } from '@novelia/web-kit';
 import MarkdownContent from '@/components/markdown/MarkdownContent.vue';
 import MarkdownEditor from '@/components/markdown/MarkdownEditor.vue';
 import MarkdownHelpDialog from '@/components/markdown/MarkdownHelpDialog.vue';
@@ -29,6 +29,7 @@ const emit = defineEmits<{
   authorCommentsDeleted: [];
 }>();
 
+const { whoami } = useWebKit();
 const commentStore = useCommentStore();
 const editing = ref(false);
 const content = ref(props.comment.content);
@@ -42,12 +43,18 @@ const {
 const showModeratedContent = ref(false);
 
 const isPublished = computed(() => props.comment.status === 0);
-const isAdmin = computed(() => authUser.value?.role === 'admin');
+const asAdmin = computed(() => whoami.value.asAdmin);
 const statusLabel = computed(() =>
   props.comment.status === 2 ? '该评论已删除' : '该评论已隐藏',
 );
 watch(
-  [() => props.comment.id, () => props.comment.status, () => authUser.value],
+  // Only a different account invalidates the reveal toggle; a session refresh
+  // hands back a new user object for the same person and must not reset it.
+  [
+    () => props.comment.id,
+    () => props.comment.status,
+    () => whoami.value.user?.id,
+  ],
   () => {
     showModeratedContent.value = false;
   },
@@ -103,7 +110,7 @@ async function saveEdit() {
         {{ formatDate(comment.createdAt) }}
       </time>
       <CommentActions
-        v-if="!editing && (isPublished || (isAdmin && comment.status === 1))"
+        v-if="!editing && (isPublished || (asAdmin && comment.status === 1))"
         :comment="comment"
         :locked="locked"
         :post-id="postId"
@@ -116,7 +123,7 @@ async function saveEdit() {
     </header>
     <div v-if="!isPublished" class="mt-2">
       <XButton
-        v-if="isAdmin"
+        v-if="asAdmin"
         variant="plain"
         size="none"
         class="text-sm leading-6 text-muted hover:text-primary"
@@ -127,7 +134,7 @@ async function saveEdit() {
         {{ statusLabel }}
       </XButton>
       <p v-else class="text-sm leading-6 text-muted">{{ statusLabel }}</p>
-      <div v-if="isAdmin" :id="`comment-${comment.id}-moderated-content`">
+      <div v-if="asAdmin" :id="`comment-${comment.id}-moderated-content`">
         <MarkdownContent
           v-if="showModeratedContent"
           class="mt-2"

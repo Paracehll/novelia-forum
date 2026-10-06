@@ -5,10 +5,9 @@ import {
   MoreVertOutlined,
 } from '@vicons/material';
 import { computed, onScopeDispose, ref, watch } from 'vue';
-import { XButton } from '@novelia/web-kit';
+import { useWebKit, XButton } from '@novelia/web-kit';
 
 import {
-  authUser,
   deletePost,
   lockPost,
   pinPost,
@@ -44,12 +43,13 @@ const emit = defineEmits<{
   authorCommentsDeleted: [];
 }>();
 
+const { whoami } = useWebKit();
 const actionLoading = ref(false);
 const confirmationAction = ref<'delete' | 'hide'>();
 const userModerationAction = ref<'strike' | 'ban'>();
 let context = 0;
 watch(
-  () => [props.post.id, authUser.value?.id, authUser.value?.role],
+  () => [props.post.id, whoami.value.user?.id],
   (next, previous) => {
     if (next.some((value, index) => value !== previous[index])) {
       context++;
@@ -61,16 +61,16 @@ watch(
   { flush: 'sync' },
 );
 onScopeDispose(() => context++);
-const isAdmin = computed(() => authUser.value?.role === 'admin');
-const isOwner = computed(() => authUser.value?.id === props.post.authorId);
-const canManagePost = computed(() => isOwner.value || isAdmin.value);
+const asAdmin = computed(() => whoami.value.asAdmin);
+const isOwner = computed(() => whoami.value.user?.id === props.post.authorId);
+const canManagePost = computed(() => isOwner.value || asAdmin.value);
 const canDelete = computed(
   () =>
-    isAdmin.value ||
+    asAdmin.value ||
     (isOwner.value &&
       Date.now() <= new Date(props.post.createdAt).getTime() + 20 * 60_000),
 );
-const canModerateAuthor = computed(() => isAdmin.value && !isOwner.value);
+const canModerateAuthor = computed(() => asAdmin.value && !isOwner.value);
 const moderationEvidence = computed(() =>
   [
     `论坛帖子 #${props.post.id}：${props.post.title}`,
@@ -213,7 +213,7 @@ function toggleLock() {
         <EditOutlined class="size-4" aria-hidden="true" />
         编辑
       </XButton>
-      <div v-if="isAdmin || canDelete">
+      <div v-if="asAdmin || canDelete">
         <DropdownMenuRoot>
           <DropdownMenuTrigger as-child>
             <XButton
@@ -235,7 +235,7 @@ function toggleLock() {
               :collision-padding="8"
               class="z-30 w-40 rounded-md border border-border bg-surface p-1 shadow-xl outline-none"
             >
-              <template v-if="isAdmin">
+              <template v-if="asAdmin">
                 <XActionMenuItem
                   :disabled="actionLoading"
                   @activate="togglePin"

@@ -10,8 +10,8 @@ import {
   DialogTitle,
 } from 'reka-ui';
 
-import { authApi, deleteCommentsByAuthor } from '@/api';
-import { XButton } from '@novelia/web-kit';
+import { deleteCommentsByAuthor } from '@/api';
+import { useWebKit, XButton } from '@novelia/web-kit';
 import { getApiErrorMessage, Notify } from '@novelia/web-kit';
 import { useCommentStore } from '@/stores/comment';
 
@@ -28,6 +28,7 @@ const emit = defineEmits<{
   commentsDeleted: [];
 }>();
 
+const { api: authApi } = useWebKit();
 const reason = ref('');
 const commentStore = useCommentStore();
 const point = ref(1);

@@ -2,15 +2,21 @@
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
-import { authUser, createPost } from '@/api';
+import { createPost } from '@/api';
 import { usePostStore } from '@/stores/post';
-import { getApiErrorMessage, Notify, XAsyncContent } from '@novelia/web-kit';
+import {
+  getApiErrorMessage,
+  Notify,
+  useWebKit,
+  XAsyncContent,
+} from '@novelia/web-kit';
 import { useCategoryStore } from '@/stores/category';
 import { useDraftStore } from '@/stores/draft';
 import PostPublishingNotice from './PostPublishingNotice.vue';
 
 import PostForm from './PostForm.vue';
 
+const { whoami } = useWebKit();
 const postStore = usePostStore();
 const route = useRoute();
 const router = useRouter();
@@ -33,7 +39,7 @@ const selectedCategory = computed(
     ) ?? categoryStore.defaultCategory,
 );
 const tags = computed(() => selectedCategory.value.tags);
-const draftUserId = computed(() => authUser.value?.id ?? 0);
+const draftUserId = computed(() => whoami.value.user?.id ?? 0);
 const categoriesReady = computed(() => categoryStore.items.length > 0);
 
 watch(
@@ -78,7 +84,8 @@ function changeCategory() {
 }
 
 async function submitPost() {
-  if (!authUser.value || !categoriesReady.value || submitting.value) return;
+  if (!whoami.value.isSignedIn || !categoriesReady.value || submitting.value)
+    return;
   submitting.value = true;
   try {
     const post = await createPost({
@@ -108,7 +115,7 @@ async function submitPost() {
       <section>
         <h1 class="text-xl font-bold text-ink">发表帖子</h1>
 
-        <div v-if="!authUser" class="mt-6 py-4 text-sm text-muted">
+        <div v-if="!whoami.isSignedIn" class="mt-6 py-4 text-sm text-muted">
           登录后才能发表帖子，请使用页面右上角的登录入口。
         </div>
 

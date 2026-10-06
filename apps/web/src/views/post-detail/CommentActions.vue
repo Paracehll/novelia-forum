@@ -8,8 +8,8 @@ import {
 } from 'reka-ui';
 import { computed, onBeforeUnmount, ref } from 'vue';
 
-import { authUser, type PostComment } from '@/api';
-import { XButton } from '@novelia/web-kit';
+import type { PostComment } from '@/api';
+import { useWebKit, XButton } from '@novelia/web-kit';
 import { XActionMenuItem } from '@novelia/web-kit';
 import { XConfirmDialog } from '@novelia/web-kit';
 import UserModerationDialog from '@/components/UserModerationDialog.vue';
@@ -30,6 +30,7 @@ const emit = defineEmits<{
   authorCommentsDeleted: [];
 }>();
 
+const { whoami } = useWebKit();
 const commentStore = useCommentStore();
 const submitting = ref(false);
 const copying = ref(false);
@@ -46,19 +47,21 @@ const expiryTimer = window.setTimeout(
   Math.max(0, modificationDeadline - Date.now() + 50),
 );
 
-const isAdmin = computed(() => authUser.value?.role === 'admin');
-const isOwner = computed(() => authUser.value?.id === props.comment.authorId);
+const asAdmin = computed(() => whoami.value.asAdmin);
+const isOwner = computed(
+  () => whoami.value.user?.id === props.comment.authorId,
+);
 const isPublished = computed(() => props.comment.status === 0);
 const canReply = computed(
-  () => isPublished.value && Boolean(authUser.value) && !props.locked,
+  () => isPublished.value && whoami.value.isSignedIn && !props.locked,
 );
 const canEdit = computed(
   () =>
     isPublished.value &&
-    (isAdmin.value || (isOwner.value && now.value <= modificationDeadline)),
+    (asAdmin.value || (isOwner.value && now.value <= modificationDeadline)),
 );
-const canDelete = computed(() => isAdmin.value || canEdit.value);
-const canModerateAuthor = computed(() => isAdmin.value && !isOwner.value);
+const canDelete = computed(() => asAdmin.value || canEdit.value);
+const canModerateAuthor = computed(() => asAdmin.value && !isOwner.value);
 const moderationEvidence = computed(() =>
   [
     `论坛评论 #${props.comment.id}（帖子 #${props.postId}）`,
@@ -100,7 +103,7 @@ async function copyComment() {
 async function removeComment() {
   submitting.value = true;
   try {
-    await commentStore.deleteComment(props.comment.id, isAdmin.value);
+    await commentStore.deleteComment(props.comment.id, asAdmin.value);
     Notify.success('评论已删除');
     emit('statusChanged', 2);
   } catch (reason) {
@@ -111,7 +114,7 @@ async function removeComment() {
 }
 
 async function unhideComment() {
-  if (submitting.value || !isAdmin.value || props.comment.status !== 1) return;
+  if (submitting.value || !asAdmin.value || props.comment.status !== 1) return;
   submitting.value = true;
   try {
     await commentStore.unhideComment(props.comment.id);
@@ -190,14 +193,14 @@ function handleUserModerationOpenChange(open: boolean) {
             复制原文
           </XActionMenuItem>
           <XActionMenuItem
-            v-if="isAdmin && isPublished"
+            v-if="asAdmin && isPublished"
             :disabled="submitting"
             @activate="confirmationAction = 'hide'"
           >
             隐藏评论
           </XActionMenuItem>
           <XActionMenuItem
-            v-if="isAdmin && comment.status === 1"
+            v-if="asAdmin && comment.status === 1"
             :disabled="submitting"
             @activate="unhideComment"
           >

@@ -3,7 +3,6 @@ import { defineStore } from 'pinia';
 import { useQuery, useQueryCache, type UseQueryEntry } from '@pinia/colada';
 
 import {
-  authUser,
   createPostComment,
   deletePostComment,
   getPostCommentReplies,
@@ -14,13 +13,12 @@ import {
   type Page,
   type PostComment,
 } from '@/api';
+import { whoami } from '@/session';
 
 export const COMMENT_REPLY_PAGE_SIZE = 20;
 const CACHE_MAX_PAGES = 30;
-// Admin responses include hidden comment bodies, so never share them across viewers.
-const viewerKey = computed(
-  () => `${authUser.value?.id ?? 'guest'}:${authUser.value?.role ?? ''}`,
-);
+// Keep each account's cache stable when toggling admin mode.
+const viewerKey = computed(() => whoami.value.user?.id ?? 'guest');
 const commentsKey = () => ['comments', viewerKey.value];
 const pageKey = (postId: number, page: number, pageSize: number) => [
   ...commentsKey(),
@@ -179,7 +177,7 @@ export const useCommentStore = defineStore('comment', () => {
         ? {
             ...comment,
             status,
-            content: authUser.value?.role === 'admin' ? comment.content : '',
+            content: whoami.value.isAdmin ? comment.content : '',
           }
         : comment,
     );
@@ -191,7 +189,7 @@ export const useCommentStore = defineStore('comment', () => {
         ? {
             ...comment,
             status: 2,
-            content: authUser.value?.role === 'admin' ? comment.content : '',
+            content: whoami.value.isAdmin ? comment.content : '',
           }
         : comment,
     );

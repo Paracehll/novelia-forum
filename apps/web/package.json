@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@novelia/forum-api": "workspace:*",
-    "@novelia/web-kit": "github:auto-novel/auth#730c065bee8062946738b1fb2ff2f28369b78b8a&path:packages/web-kit",
+    "@novelia/web-kit": "github:auto-novel/auth#16cde8bd1b2b329bd3e3c272d37c153d4bbd4c38&path:packages/web-kit",
     "@pinia/colada": "^1.4.4",
     "@tailwindcss/vite": "^4.3.3",
     "@vicons/material": "^0.13.0",

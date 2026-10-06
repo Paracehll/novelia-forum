@@ -9,6 +9,7 @@ import {
   StarBorderOutlined,
 } from '@vicons/material';
 import {
+  useWebKit,
   WebKitApp,
   WebKitLayout,
   type WebKitMenuOption,
@@ -16,18 +17,18 @@ import {
 import { computed, watch, type Component } from 'vue';
 import { RouterView, useRoute } from 'vue-router';
 
-import { authUser } from '@/api';
 import { useCategoryStore } from '@/stores/category';
 import { useDraftStore } from '@/stores/draft';
 import { usePostStore } from '@/stores/post';
 
+const { whoami } = useWebKit();
 const route = useRoute();
 const categoryStore = useCategoryStore();
 const postStore = usePostStore();
 const draftStore = useDraftStore();
 
 watch(
-  () => authUser.value?.id,
+  () => whoami.value.user?.id,
   (userId, previousUserId) => {
     if (previousUserId && userId !== previousUserId) {
       draftStore.clearAllDrafts();

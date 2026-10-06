@@ -5,6 +5,7 @@ import { createApp } from 'vue';
 import App from './App.vue';
 import { initializeApi } from './api';
 import router from './router';
+import { initializeSession } from './session';
 import { pinia } from './stores';
 import { useCategoryStore } from './stores/category';
 import './styles.css';
@@ -23,7 +24,8 @@ const webKit = createWebKit({
   },
   themeStorageKey: 'forum:theme:v1',
 });
-initializeApi(webKit.api, webKit.profile);
+initializeSession(webKit);
+initializeApi(webKit.api);
 
 createApp(App)
   .use(webKit)
