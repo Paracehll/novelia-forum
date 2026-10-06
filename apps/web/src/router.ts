@@ -1,4 +1,8 @@
-import { createRouter, createWebHistory } from 'vue-router';
+import {
+  createRouter,
+  createWebHistory,
+  type RouteLocationNormalized,
+} from 'vue-router';
 
 import { useCategoryStore } from '@/stores/category';
 import { setPostListReturn } from '@/utils/postNavigation';
@@ -29,7 +33,7 @@ const router = createRouter({
       path: '/c/:slug',
       name: 'posts',
       component: PostListView,
-      meta: { title: '讨论' },
+      meta: { title: '帖子列表' },
       beforeEnter: (to) => {
         const categoryStore = useCategoryStore();
         return categoryStore.categories.some(
@@ -94,6 +98,17 @@ const router = createRouter({
   ],
 });
 
+function pageTitle(to: RouteLocationNormalized) {
+  if (to.name === 'posts') {
+    const slug = typeof to.params.slug === 'string' ? to.params.slug : '';
+    const category = useCategoryStore().categories.find(
+      (item) => item.slug === slug,
+    );
+    if (category) return category.title;
+  }
+  return String(to.meta.title ?? '社区');
+}
+
 router.afterEach((to, from, failure) => {
   if (failure) return;
   if (
@@ -111,7 +126,7 @@ router.afterEach((to, from, failure) => {
   )) {
     setPostListReturn();
   }
-  document.title = `${String(to.meta.title ?? '社区')} | Novelia Forum`;
+  document.title = `${pageTitle(to)} | Novelia Forum`;
 });
 
 export default router;
