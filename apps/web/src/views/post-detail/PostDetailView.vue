@@ -48,6 +48,23 @@ watch(
   { immediate: true },
 );
 
+// The browser's initial fragment scroll runs before an async post is rendered.
+watch(
+  [() => route.hash, () => post.value?.id, postLoading, postError],
+  async ([hash]) => {
+    if (!hash || !post.value || postLoading.value || postError.value) return;
+    await nextTick();
+    let id = hash.slice(1);
+    try {
+      id = decodeURIComponent(id);
+    } catch {
+      // A literal percent sign is also valid in a heading ID.
+    }
+    document.getElementById(id)?.scrollIntoView({ block: 'start' });
+  },
+  { immediate: true, flush: 'post' },
+);
+
 const commentPage = computed(() => {
   const value = Number(route.query.commentPage);
   return Number.isInteger(value) && value > 0 ? value : 1;

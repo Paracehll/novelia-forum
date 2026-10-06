@@ -2,6 +2,7 @@ import { container } from '@mdit/plugin-container';
 import { spoiler } from '@mdit/plugin-spoiler';
 import DOMPurify, { type Config } from 'dompurify';
 import MarkdownIt, { type RendererRule, type Token } from 'markdown-it';
+import anchor from 'markdown-it-anchor';
 
 export type MarkdownMode = 'article' | 'comment';
 
@@ -74,7 +75,14 @@ function createMarkdown(mode: MarkdownMode) {
     closeRenderer: () => '',
   });
 
-  if (mode === 'comment') markdown.disable(COMMENT_DISABLED_RULES);
+  if (mode === 'article') {
+    markdown.use(anchor, {
+      // Keep Unicode IDs so existing percent-encoded Chinese fragments match.
+      slugify: (title: string) => title.trim().toLowerCase().replace(/\s+/g, '-'),
+    });
+  } else {
+    markdown.disable(COMMENT_DISABLED_RULES);
+  }
 
   const defaultLinkOpen: RendererRule =
     markdown.renderer.rules.link_open ??

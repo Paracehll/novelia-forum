@@ -16,7 +16,8 @@
     "@mdit/plugin-container": "^2.0.1",
     "@mdit/plugin-spoiler": "^2.1.1",
     "dompurify": "^3.4.15",
-    "markdown-it": "^15.0.1"
+    "markdown-it": "^15.0.1",
+    "markdown-it-anchor": "^10.0.0"
   },
   "devDependencies": {
     "ky": "^2.1.0",
