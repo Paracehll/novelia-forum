@@ -64,7 +64,7 @@ const sortOrder = defineModel<number>('sortOrder', { required: true });
 </template>
 
 <style scoped>
-.form-modal {
+:global(.form-modal) {
   width: min(520px, calc(100vw - 32px));
 }
 
