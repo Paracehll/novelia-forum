@@ -56,10 +56,11 @@ const mocks = {
     export const XButton = {}, XActionMenuItem = {}, XConfirmDialog = {};
   `,
   '@vicons/material':
-    'export const ChatBubbleOutlineOutlined = {}, EditOutlined = {}, MoreVertOutlined = {};',
+    'export const ChatBubbleOutlineOutlined = {}, EditOutlined = {}, MoreVertOutlined = {}, ShareOutlined = {};',
   'reka-ui':
     'export const DropdownMenuContent = {}, DropdownMenuPortal = {}, DropdownMenuRoot = {}, DropdownMenuTrigger = {};',
   './PostFavoriteButton.vue': 'export default {};',
+  './PostShareDialog.vue': 'export default {};',
   '@/components/UserModerationDialog.vue': 'export default {};',
 };
 

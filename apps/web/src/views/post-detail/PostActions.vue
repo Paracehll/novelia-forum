@@ -3,6 +3,7 @@ import {
   ChatBubbleOutlineOutlined,
   EditOutlined,
   MoreVertOutlined,
+  ShareOutlined,
 } from '@vicons/material';
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import { useWebKit, XButton } from '@novelia/web-kit';
@@ -23,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from 'reka-ui';
 import PostFavoriteButton from './PostFavoriteButton.vue';
+import PostShareDialog from './PostShareDialog.vue';
 import { XActionMenuItem } from '@novelia/web-kit';
 import { XConfirmDialog } from '@novelia/web-kit';
 import UserModerationDialog from '@/components/UserModerationDialog.vue';
@@ -45,6 +47,7 @@ const emit = defineEmits<{
 
 const { whoami } = useWebKit();
 const actionLoading = ref(false);
+const shareOpen = ref(false);
 const confirmationAction = ref<'delete' | 'hide'>();
 const userModerationAction = ref<'strike' | 'ban'>();
 let context = 0;
@@ -54,6 +57,7 @@ watch(
     if (next.some((value, index) => value !== previous[index])) {
       context++;
       actionLoading.value = false;
+      shareOpen.value = false;
       confirmationAction.value = undefined;
       userModerationAction.value = undefined;
     }
@@ -213,77 +217,86 @@ function toggleLock() {
         <EditOutlined class="size-4" aria-hidden="true" />
         编辑
       </XButton>
-      <div v-if="asAdmin || canDelete">
-        <DropdownMenuRoot>
-          <DropdownMenuTrigger as-child>
-            <XButton
-              variant="ghost"
-              size="icon"
-              class="text-ink!"
-              aria-label="更多操作"
-              title="更多操作"
-              :disabled="actionLoading"
-            >
-              <MoreVertOutlined class="size-5" aria-hidden="true" />
-            </XButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuPortal>
-            <DropdownMenuContent
-              side="bottom"
-              align="end"
-              :side-offset="6"
-              :collision-padding="8"
-              class="z-30 w-40 rounded-md border border-border bg-surface p-1 shadow-xl outline-none"
-            >
-              <template v-if="asAdmin">
-                <XActionMenuItem
-                  :disabled="actionLoading"
-                  @activate="togglePin"
-                >
-                  {{ post.pinOrder == null ? '置顶帖子' : '取消置顶' }}
-                </XActionMenuItem>
-                <XActionMenuItem
-                  :disabled="actionLoading"
-                  @activate="toggleLock"
-                >
-                  {{ post.commentsLocked ? '开放评论' : '锁定评论' }}
-                </XActionMenuItem>
-                <XActionMenuItem
-                  :disabled="actionLoading"
-                  @activate="confirmationAction = 'hide'"
-                >
-                  隐藏帖子
-                </XActionMenuItem>
-              </template>
+      <XButton
+        variant="ghost"
+        size="none"
+        class="min-h-9 px-1.5 text-ink!"
+        aria-label="分享帖子"
+        title="分享帖子"
+        aria-haspopup="dialog"
+        :aria-expanded="shareOpen"
+        @click="shareOpen = true"
+      >
+        <ShareOutlined class="size-5" aria-hidden="true" />
+      </XButton>
+      <DropdownMenuRoot v-if="asAdmin || canDelete">
+        <DropdownMenuTrigger as-child>
+          <XButton
+            variant="ghost"
+            size="none"
+            class="min-h-9 px-1.5 text-ink!"
+            aria-label="更多操作"
+            title="更多操作"
+            :disabled="actionLoading"
+          >
+            <MoreVertOutlined class="size-5" aria-hidden="true" />
+          </XButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuPortal>
+          <DropdownMenuContent
+            side="bottom"
+            align="end"
+            :side-offset="6"
+            :collision-padding="8"
+            class="z-30 w-40 rounded-md border border-border bg-surface p-1 shadow-xl outline-none"
+          >
+            <template v-if="asAdmin">
+              <XActionMenuItem :disabled="actionLoading" @activate="togglePin">
+                {{ post.pinOrder == null ? '置顶帖子' : '取消置顶' }}
+              </XActionMenuItem>
+              <XActionMenuItem :disabled="actionLoading" @activate="toggleLock">
+                {{ post.commentsLocked ? '开放评论' : '锁定评论' }}
+              </XActionMenuItem>
               <XActionMenuItem
-                v-if="canDelete"
+                :disabled="actionLoading"
+                @activate="confirmationAction = 'hide'"
+              >
+                隐藏帖子
+              </XActionMenuItem>
+            </template>
+            <XActionMenuItem
+              v-if="canDelete"
+              danger
+              :disabled="actionLoading"
+              @activate="confirmationAction = 'delete'"
+            >
+              删除帖子
+            </XActionMenuItem>
+            <template v-if="canModerateAuthor">
+              <XActionMenuItem
                 danger
                 :disabled="actionLoading"
-                @activate="confirmationAction = 'delete'"
+                @activate="userModerationAction = 'strike'"
               >
-                删除帖子
+                处罚作者
               </XActionMenuItem>
-              <template v-if="canModerateAuthor">
-                <XActionMenuItem
-                  danger
-                  :disabled="actionLoading"
-                  @activate="userModerationAction = 'strike'"
-                >
-                  处罚作者
-                </XActionMenuItem>
-                <XActionMenuItem
-                  danger
-                  :disabled="actionLoading"
-                  @activate="userModerationAction = 'ban'"
-                >
-                  封禁作者
-                </XActionMenuItem>
-              </template>
-            </DropdownMenuContent>
-          </DropdownMenuPortal>
-        </DropdownMenuRoot>
-      </div>
+              <XActionMenuItem
+                danger
+                :disabled="actionLoading"
+                @activate="userModerationAction = 'ban'"
+              >
+                封禁作者
+              </XActionMenuItem>
+            </template>
+          </DropdownMenuContent>
+        </DropdownMenuPortal>
+      </DropdownMenuRoot>
     </div>
+    <PostShareDialog
+      :open="shareOpen"
+      :post="post"
+      @update:open="shareOpen = $event"
+    />
     <XConfirmDialog
       :open="confirmationAction != null"
       :title="confirmation.title"
