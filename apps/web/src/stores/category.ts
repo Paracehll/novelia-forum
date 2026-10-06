@@ -5,7 +5,7 @@ import { useQuery } from '@pinia/colada';
 import { authUser, getCategories, type CategoryListItem } from '@/api';
 
 const CACHE_MAX_AGE = 15 * 60 * 1000;
-const LAST_CATEGORY_KEY = 'last-category';
+const LAST_CATEGORY_KEY = 'forum:last-category';
 
 const CATEGORY_TITLES: Record<string, string> = {
   novel: '小说讨论',
