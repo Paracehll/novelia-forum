@@ -12,7 +12,7 @@ import PostListView from '@/views/post-list/PostListView.vue';
 import { MyStrikeListView } from '@novelia/web-kit';
 
 function defaultCategorySlug() {
-  return useCategoryStore().defaultCategory.slug;
+  return useCategoryStore().getLastVisitedCategory();
 }
 
 const router = createRouter({
@@ -20,10 +20,10 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: {
+      redirect: () => ({
         name: 'posts',
-        params: { slug: 'announcements' },
-      },
+        params: { slug: defaultCategorySlug() },
+      }),
     },
     {
       path: '/c/:slug',
@@ -38,7 +38,7 @@ const router = createRouter({
           ? true
           : {
               name: 'posts',
-              params: { slug: categoryStore.defaultCategory.slug },
+              params: { slug: categoryStore.getLastVisitedCategory() },
             };
       },
     },
@@ -96,6 +96,10 @@ const router = createRouter({
 
 router.afterEach((to, from, failure) => {
   if (failure) return;
+  if (to.name === 'posts' && typeof to.params.slug === 'string') {
+    const categoryStore = useCategoryStore();
+    categoryStore.saveLastVisitedCategory(to.params.slug);
+  }
   if (
     to.name === 'post-detail' &&
     ['posts', 'favorites', 'my-posts'].includes(String(from.name))
