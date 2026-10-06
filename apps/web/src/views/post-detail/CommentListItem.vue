@@ -119,14 +119,14 @@ async function saveEdit() {
         v-if="isAdmin"
         variant="plain"
         size="none"
-        class="text-sm text-muted hover:text-primary"
+        class="text-sm leading-6 text-muted hover:text-primary"
         :aria-expanded="showModeratedContent"
         :aria-controls="`comment-${comment.id}-moderated-content`"
         @click="showModeratedContent = !showModeratedContent"
       >
         {{ statusLabel }}
       </XButton>
-      <p v-else class="text-sm text-muted">{{ statusLabel }}</p>
+      <p v-else class="text-sm leading-6 text-muted">{{ statusLabel }}</p>
       <div v-if="isAdmin" :id="`comment-${comment.id}-moderated-content`">
         <MarkdownContent
           v-if="showModeratedContent"
