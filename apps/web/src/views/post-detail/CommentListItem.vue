@@ -2,7 +2,7 @@
 import { computed, ref, useId, watch } from 'vue';
 
 import type { PostComment } from '@/api';
-import { useWebKit, XButton } from '@novelia/web-kit';
+import { useWebKit, XButton, XTime } from '@novelia/web-kit';
 import MarkdownContent from '@/components/markdown/MarkdownContent.vue';
 import MarkdownEditor from '@/components/markdown/MarkdownEditor.vue';
 import MarkdownHelpDialog from '@/components/markdown/MarkdownHelpDialog.vue';
@@ -65,16 +65,6 @@ const hasUnsavedChanges = computed(
 
 useUnsavedChangesGuard(hasUnsavedChanges);
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value));
-}
-
 function startEditing() {
   if (props.replying) emit('cancelReply');
   content.value = props.comment.content;
@@ -106,9 +96,7 @@ async function saveEdit() {
     <header class="flex items-center gap-2 text-xs text-muted">
       <span class="font-medium text-ink">{{ comment.authorUsername }}</span>
       <span aria-hidden="true">·</span>
-      <time :datetime="comment.createdAt">
-        {{ formatDate(comment.createdAt) }}
-      </time>
+      <XTime :time="comment.createdAt" preset="relative" />
       <CommentActions
         v-if="!editing && (isPublished || (asAdmin && comment.status === 1))"
         :comment="comment"

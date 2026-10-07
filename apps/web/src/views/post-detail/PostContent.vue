@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { XTime } from '@novelia/web-kit';
 import { computed } from 'vue';
 
 import type { Post } from '@/api';
@@ -13,16 +14,6 @@ const hasBeenUpdated = computed(
     new Date(props.post.updatedAt).getTime() >
     new Date(props.post.createdAt).getTime(),
 );
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value));
-}
 </script>
 
 <template>
@@ -41,17 +32,13 @@ function formatDate(value: string) {
         <span aria-hidden="true">·</span>
         <span>
           发布于
-          <time :datetime="post.createdAt">
-            {{ formatDate(post.createdAt) }}
-          </time>
+          <XTime :time="post.createdAt" preset="relative" />
         </span>
         <template v-if="hasBeenUpdated">
           <span aria-hidden="true">·</span>
           <span>
             更新于
-            <time :datetime="post.updatedAt">
-              {{ formatDate(post.updatedAt) }}
-            </time>
+            <XTime :time="post.updatedAt" preset="relative" />
           </span>
         </template>
       </div>

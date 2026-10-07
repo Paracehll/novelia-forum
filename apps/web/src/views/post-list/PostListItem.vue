@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { XTime } from '@novelia/web-kit';
 import {
   ChatBubbleOutlineOutlined,
   LockOutlined,
@@ -32,19 +33,6 @@ const countFormatter = new Intl.NumberFormat('en-US', {
 
 function formatCount(value: number) {
   return countFormatter.format(value).toLowerCase();
-}
-
-function formatDate(value: string) {
-  const date = new Date(value);
-  const now = new Date();
-  const sameYear = date.getFullYear() === now.getFullYear();
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: sameYear ? undefined : 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date);
 }
 </script>
 
@@ -88,12 +76,7 @@ function formatDate(value: string) {
           <span aria-hidden="true">·</span>
           <span>
             {{ timestamp.label }}
-            <time
-              :datetime="timestamp.value"
-              :title="new Date(timestamp.value).toLocaleString('zh-CN')"
-            >
-              {{ formatDate(timestamp.value) }}
-            </time>
+            <XTime :time="timestamp.value" preset="relative" />
           </span>
         </div>
         <div class="flex items-center gap-4 sm:hidden" aria-label="帖子数据">
