@@ -50,8 +50,12 @@ watch(
   draftKey,
   (key) => {
     const draft = key ? draftStore.getCommentDraft(key) : '';
-    content.value =
-      draft || (props.replyTo ? `@${props.replyTo.authorUsername} ` : '');
+    const replyTo = props.replyTo;
+    const mention =
+      replyTo?.rootId != null && replyTo.authorId !== whoami.value.user?.id
+        ? `@${replyTo.authorUsername} `
+        : '';
+    content.value = draft || mention;
   },
   { immediate: true },
 );
