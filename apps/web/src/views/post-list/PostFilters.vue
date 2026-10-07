@@ -18,12 +18,14 @@ const emit = defineEmits<{
 }>();
 const categoryStore = useCategoryStore();
 
+const ALL_TAGS = 'all';
+
 const queryInput = ref(props.query);
-const tagInput = ref(props.tagId ? String(props.tagId) : '');
+const tagInput = ref(props.tagId ? String(props.tagId) : ALL_TAGS);
 const sortInput = ref<PostSort>(props.sort);
 const tags = computed(() => categoryStore.tagsByCategoryId(props.categoryId));
 const tagOptions = computed(() => [
-  { label: '全部标签', value: '' },
+  { label: '全部标签', value: ALL_TAGS },
   ...tags.value.map((tag) => ({ label: tag.name, value: String(tag.id) })),
 ]);
 const sortOptions = [
@@ -35,7 +37,7 @@ const sortOptions = [
 
 function syncInputs() {
   queryInput.value = props.query;
-  tagInput.value = props.tagId ? String(props.tagId) : '';
+  tagInput.value = props.tagId ? String(props.tagId) : ALL_TAGS;
   sortInput.value = props.sort;
 }
 
@@ -52,7 +54,7 @@ watch(() => [props.query, props.tagId, props.sort], syncInputs);
 watch(
   () => props.categoryId,
   (_categoryId, previousCategoryId) => {
-    if (previousCategoryId != null) tagInput.value = '';
+    if (previousCategoryId != null) tagInput.value = ALL_TAGS;
   },
 );
 </script>
