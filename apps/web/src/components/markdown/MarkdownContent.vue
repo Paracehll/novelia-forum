@@ -66,7 +66,8 @@ function handleKeydown(event: KeyboardEvent) {
 
 .markdown-content--comment {
   font-size: 0.875rem;
-  line-height: 1.5rem;
+  /* 与小说站前端一致：Naive UI common.lineHeight */
+  line-height: 1.6;
 }
 
 .markdown-content :deep(> :first-child) {

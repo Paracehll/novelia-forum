@@ -1,2 +1,17 @@
 @import 'tailwindcss';
 @import '@novelia/web-kit/styles.css';
+
+/*
+ * Naive UI 的卡片嵌入背景（common.actionColor），小说站前端用它作为评论
+ * 内容的底色。web-kit 尚未暴露该语义，这里沿用相同的 @theme +
+ * [data-theme='dark'] 写法补充，避免使用固定的 dark: 变体。
+ */
+@theme {
+  --color-embedded: #fafafc;
+}
+
+@layer base {
+  :root[data-theme='dark'] {
+    --color-embedded: rgb(255 255 255 / 6%);
+  }
+}

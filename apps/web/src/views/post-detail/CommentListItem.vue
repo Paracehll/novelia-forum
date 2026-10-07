@@ -91,10 +91,10 @@ async function saveEdit() {
   <article
     :id="`comment-${comment.id}`"
     class="py-4"
-    :class="comment.rootId != null ? 'ml-6 pl-4 sm:ml-10 sm:pl-5' : ''"
+    :class="comment.rootId != null ? 'ml-8' : ''"
   >
     <header class="flex items-center gap-2 text-xs text-muted">
-      <span class="font-medium text-ink">{{ comment.authorUsername }}</span>
+      <span class="text-sm font-bold text-ink">{{ comment.authorUsername }}</span>
       <span aria-hidden="true">·</span>
       <XTime :time="comment.createdAt" preset="relative" />
       <CommentActions
@@ -109,7 +109,10 @@ async function saveEdit() {
         @author-comments-deleted="emit('authorCommentsDeleted')"
       />
     </header>
-    <div v-if="!isPublished" class="mt-2">
+    <div
+      v-if="!isPublished"
+      class="mt-0.5 rounded-floating bg-embedded px-4 py-3"
+    >
       <XButton
         v-if="asAdmin"
         variant="plain"
@@ -168,12 +171,9 @@ async function saveEdit() {
         </div>
       </div>
     </form>
-    <MarkdownContent
-      v-else
-      class="mt-2"
-      mode="comment"
-      :source="comment.content"
-    />
+    <div v-else class="mt-0.5 rounded-floating bg-embedded px-4 py-3">
+      <MarkdownContent mode="comment" :source="comment.content" />
+    </div>
 
     <CommentComposer
       v-if="replying"
