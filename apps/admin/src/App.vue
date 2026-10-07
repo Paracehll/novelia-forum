@@ -44,6 +44,10 @@ const menuOptions: WebKitMenuOption[] = [
     to: { name: 'comments' },
     icon: CommentOutlined,
   },
+  {
+    type: 'divider',
+    key: 'theme-divider',
+  },
 ];
 </script>
 
