@@ -1,7 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router';
 
-import { AdminLoginView } from '@novelia/admin-kit';
-
 import CategoriesView from '@/views/categories/CategoriesView.vue';
 import CommentsView from '@/views/comments/CommentsView.vue';
 import OverviewView from '@/views/overview/OverviewView.vue';
@@ -15,13 +13,11 @@ const router = createRouter({
     {
       path: '/login',
       name: 'login',
-      component: AdminLoginView,
-      meta: { title: '登录', guestOnly: true },
+      redirect: { name: 'overview' },
     },
     {
       path: '/',
       redirect: { name: 'overview' },
-      meta: { requiresAuth: true },
       children: [
         {
           path: 'overview',

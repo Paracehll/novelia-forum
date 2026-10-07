@@ -1,3 +1,4 @@
+import tailwindcss from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, URL } from 'node:url';
@@ -86,7 +87,7 @@ export default defineConfig(({ command, mode }) => {
       __BUILD_TIME__: JSON.stringify(buildTime),
       __COMMIT_SHA__: JSON.stringify(commitSha),
     },
-    plugins: [vue()],
+    plugins: [vue(), tailwindcss()],
     build: {
       cssCodeSplit: false,
       rolldownOptions: {
@@ -99,7 +100,7 @@ export default defineConfig(({ command, mode }) => {
       },
     },
     optimizeDeps: {
-      exclude: ['@novelia/admin-kit'],
+      exclude: ['@novelia/auth-api', '@novelia/web-kit'],
       include: ['@vicons/material', 'naive-ui'],
     },
     server: {

@@ -1,17 +1,21 @@
 import { createApp } from 'vue';
 import App from './App.vue';
 
-import { createAdminAuthGuard, createAdminKit } from '@novelia/admin-kit';
+import { createWebKit } from '@novelia/web-kit';
+import './style.css';
 
 import { createForumApi, forumApiKey } from './api';
 import router from './router';
 
-const adminKit = createAdminKit({
+const webKit = createWebKit({
   auth: {
     app: 'f',
     url: __AUTH_URL__,
+    storageKey: 'f-admin-session',
   },
   brand: 'Forum',
+  themeStorageKey: 'f-admin-theme',
+  strikes: { enabled: false },
   repository: {
     url: 'https://github.com/auto-novel/forum',
     buildTime: __BUILD_TIME__,
@@ -19,10 +23,12 @@ const adminKit = createAdminKit({
   },
 });
 
-router.beforeEach(createAdminAuthGuard(adminKit));
+router.beforeEach(async () => {
+  await webKit.api.checkSignedIn();
+});
 
 createApp(App)
-  .provide(forumApiKey, createForumApi(adminKit.api))
-  .use(adminKit)
+  .provide(forumApiKey, createForumApi(webKit.api))
+  .use(webKit)
   .use(router)
   .mount('#app');
