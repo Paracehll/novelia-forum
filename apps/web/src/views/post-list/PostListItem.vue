@@ -6,25 +6,14 @@ import {
   PushPinOutlined,
   VisibilityOutlined,
 } from '@vicons/material';
-import { computed } from 'vue';
 import { RouterLink } from 'vue-router';
 
 import type { PostSummary } from '@/api';
 import PostTagList from '@/components/PostTagList.vue';
 
-const props = defineProps<{
+defineProps<{
   post: PostSummary;
 }>();
-
-const timestamp = computed(() => {
-  const updated =
-    new Date(props.post.updatedAt).getTime() >
-    new Date(props.post.createdAt).getTime();
-  return {
-    label: updated ? '更新于' : '发布于',
-    value: updated ? props.post.updatedAt : props.post.createdAt,
-  };
-});
 
 const countFormatter = new Intl.NumberFormat('en-US', {
   notation: 'compact',
@@ -41,8 +30,6 @@ function formatCount(value: number) {
     class="group relative py-4 transition-colors duration-300 sm:grid sm:grid-cols-[minmax(0,1fr)_6rem_6rem] sm:items-center sm:gap-x-4"
   >
     <div class="min-w-0">
-      <PostTagList class="mb-2" :tags="post.tags" />
-
       <h2 class="text-base leading-snug font-medium">
         <span
           v-if="post.pinOrder != null"
@@ -72,11 +59,11 @@ function formatCount(value: number) {
         class="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-muted"
       >
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <PostTagList :tags="post.tags" />
           <span class="font-medium text-ink/80">{{ post.authorUsername }}</span>
-          <span aria-hidden="true">·</span>
           <span>
-            {{ timestamp.label }}
-            <XTime :time="timestamp.value" preset="relative" />
+            发布于
+            <XTime :time="post.createdAt" preset="relative" />
           </span>
         </div>
         <div class="flex items-center gap-4 sm:hidden" aria-label="帖子数据">
