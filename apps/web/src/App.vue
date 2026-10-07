@@ -56,11 +56,35 @@ const navigationOptions = computed<WebKitMenuOption[]>(() => [
     key: 'categories-divider',
   },
   {
-    type: 'external',
+    type: 'group',
     key: 'light-novels',
     label: '小说站',
     icon: LanguageOutlined,
-    href: 'https://n.novelia.cc',
+    children: [
+      {
+        type: 'external',
+        key: 'web-novels',
+        label: '网络小说',
+        icon: LanguageOutlined,
+        href: 'https://n.novelia.cc/novel',
+      },
+      {
+        type: 'external',
+        key: 'wenku-novels',
+        label: '文库小说',
+        icon: MenuBookOutlined,
+        href: 'https://n.novelia.cc/wenku',
+      },
+      {
+        type: 'external',
+        key: 'novel-favorites',
+        label: '我的收藏',
+        icon: StarBorderOutlined,
+        href: whoami.value.isSignedIn
+          ? 'https://n.novelia.cc/favorite/web'
+          : 'https://n.novelia.cc/favorite/local',
+      },
+    ],
   },
   {
     type: 'divider',
