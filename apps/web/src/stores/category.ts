@@ -6,6 +6,8 @@ import { getCategories, type CategoryListItem } from '@/api';
 import { whoami } from '@/session';
 
 const CACHE_MAX_AGE = 15 * 60 * 1000;
+const LAST_CATEGORY_KEY = 'forum:last-category';
+
 const CATEGORY_TITLES: Record<string, string> = {
   novel: '小说讨论',
   announcements: '站务公告',
@@ -16,6 +18,22 @@ const FALLBACK_CATEGORIES: CategoryListItem[] = [
   { id: 2, slug: 'feedback', tags: [] },
   { id: 100, slug: 'novel', tags: [] },
 ];
+
+function getStoredCategorySlug(): string | null {
+  try {
+    return localStorage.getItem(LAST_CATEGORY_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function setStoredCategorySlug(slug: string): void {
+  try {
+    localStorage.setItem(LAST_CATEGORY_KEY, slug);
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 export const useCategoryStore = defineStore('category', () => {
   const query = useQuery({
@@ -65,6 +83,26 @@ export const useCategoryStore = defineStore('category', () => {
     if (!items.value.length) await pending;
   }
 
+  function saveLastVisitedCategory(slug: string) {
+    if (categories.value.some((category) => category.slug === slug)) {
+      setStoredCategorySlug(slug);
+    }
+  }
+
+  function getLastVisitedCategory(): string {
+    const stored = getStoredCategorySlug();
+    if (
+      stored &&
+      categories.value.some((category) => category.slug === stored)
+    ) {
+      return stored;
+    }
+    return (
+      categories.value.find((category) => category.slug === 'announcements')
+        ?.slug ?? defaultCategory.value.slug
+    );
+  }
+
   return {
     categories,
     writableCategories,
@@ -73,6 +111,8 @@ export const useCategoryStore = defineStore('category', () => {
     items,
     tagsByCategoryId,
     initialize,
+    saveLastVisitedCategory,
+    getLastVisitedCategory,
     loading: query.isLoading,
     error: computed(() => query.error.value?.message ?? ''),
     refresh: () => query.refetch(),
