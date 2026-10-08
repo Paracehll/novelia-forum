@@ -97,7 +97,7 @@ func (r *tagRepository) ListForPosts(ctx context.Context, postIDs []int64) (map[
 	}
 
 	var records []struct {
-		PostID int64
+		PostID int64 `sql:"primary_key"`
 		model.Tag
 	}
 	stmt := SELECT(table.PostTag.PostID.AS("PostID"), table.Tag.AllColumns).
