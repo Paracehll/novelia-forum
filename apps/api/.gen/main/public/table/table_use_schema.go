@@ -15,4 +15,5 @@ func UseSchema(schema string) {
 	PostFavorite = PostFavorite.FromSchema(schema)
 	PostTag = PostTag.FromSchema(schema)
 	Tag = Tag.FromSchema(schema)
+	UserBlacklist = UserBlacklist.FromSchema(schema)
 }

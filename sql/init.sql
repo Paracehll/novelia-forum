@@ -111,3 +111,14 @@ create table if not exists post_favorite
 
 create index if not exists idx_post_favorite_user_created
     on post_favorite (user_id, created_at desc, post_id desc);
+
+create table if not exists user_blacklist
+(
+    user_id          bigint      not null,
+    blocked_user_id  bigint      not null,
+    created_at       timestamptz not null default current_timestamp,
+    primary key (user_id, blocked_user_id)
+);
+
+create index if not exists idx_user_blacklist_user_created
+    on user_blacklist (user_id, created_at desc, blocked_user_id desc);

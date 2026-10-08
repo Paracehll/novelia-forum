@@ -73,17 +73,19 @@ func main() {
 	postRepo := repository.NewPostRepository(db, tagRepo)
 	commentRepo := repository.NewCommentRepository(db)
 	favoriteRepo := repository.NewFavoriteRepository(db)
+	blacklistRepo := repository.NewBlacklistRepository(db)
 
 	postUsecase := usecase.NewPostUsecase(transactions, postRepo, tagRepo, favoriteRepo, domains)
 	commentUsecase := usecase.NewCommentUsecase(transactions, commentRepo, postRepo, domains, subjects)
 	tagUsecase := usecase.NewTagUsecase(tagRepo)
+	blacklistUsecase := usecase.NewBlacklistUsecase(transactions, blacklistRepo)
 
 	// handler
 	categoryHandler := handler.NewCategoryHandler(tagUsecase)
 	postHandler := handler.NewPostHandler(postUsecase, commentUsecase)
 	commentHandler := handler.NewCommentHandler(commentUsecase)
 	externalCommentHandler := handler.NewExternalCommentHandler(commentUsecase)
-	meHandler := handler.NewMeHandler(postUsecase)
+	meHandler := handler.NewMeHandler(postUsecase, blacklistUsecase)
 
 	// router
 	router := chi.NewRouter()
