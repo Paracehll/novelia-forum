@@ -25,7 +25,9 @@ const webKit = createWebKit({
   themeStorageKey: 'forum:theme:v1',
 });
 initializeSession(webKit);
-initializeApi(webKit.api);
+initializeApi(
+  webKit.createClient(new URL('/api/v1/', window.location.origin).toString()),
+);
 
 createApp(App)
   .use(webKit)

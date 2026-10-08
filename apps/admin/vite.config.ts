@@ -100,7 +100,7 @@ export default defineConfig(({ command, mode }) => {
       },
     },
     optimizeDeps: {
-      exclude: ['@novelia/auth-api', '@novelia/web-kit'],
+      exclude: ['@novelia/web-kit'],
       include: ['@vicons/material', 'naive-ui'],
     },
     server: {

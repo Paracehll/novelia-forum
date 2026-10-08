@@ -101,7 +101,7 @@ export default defineConfig(({ command, mode }) => {
       },
     },
     optimizeDeps: {
-      exclude: ['@novelia/auth-api', '@novelia/web-kit'],
+      exclude: ['@novelia/web-kit'],
     },
     server: {
       port: 5173,

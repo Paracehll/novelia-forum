@@ -28,7 +28,7 @@ const emit = defineEmits<{
   commentsDeleted: [];
 }>();
 
-const { api: authApi } = useWebKit();
+const { createStrike, banUser } = useWebKit();
 const reason = ref('');
 const commentStore = useCommentStore();
 const point = ref(1);
@@ -71,7 +71,7 @@ async function submit() {
   submitting.value = true;
   try {
     if (isStrike.value) {
-      await authApi.createStrike({
+      await createStrike({
         username: props.username,
         reason: value,
         evidence: props.evidence,
@@ -79,7 +79,7 @@ async function submit() {
       });
       Notify.success(`已处罚 @${props.username}`);
     } else {
-      await authApi.banUser({ username: props.username, reason: value });
+      await banUser({ username: props.username, reason: value });
       if (removeComments.value) {
         try {
           await deleteCommentsByAuthor(props.userId);

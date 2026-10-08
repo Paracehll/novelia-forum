@@ -9,5 +9,3 @@ allowBuilds:
 blockExoticSubdeps: false
 minimumReleaseAgeExclude:
   - vite@8.2.2
-overrides:
-  '@novelia/auth-api': github:auto-novel/auth#16cde8bd1b2b329bd3e3c272d37c153d4bbd4c38&path:packages/auth-api

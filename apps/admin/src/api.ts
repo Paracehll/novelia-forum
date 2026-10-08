@@ -2,7 +2,7 @@ import { inject, type InjectionKey } from 'vue';
 
 import type { WebKitContext } from '@novelia/web-kit';
 
-type AuthApi = WebKitContext['api'];
+type ApiClient = ReturnType<WebKitContext['createClient']>;
 
 export interface Page<T> {
   total: number;
@@ -170,11 +170,7 @@ function endpoint(path: string) {
   return new URL(path, new URL('/api/v1/', window.location.origin));
 }
 
-export function createForumApi(authApi: AuthApi) {
-  const client = authApi.createClient(
-    new URL('/api/v1/', window.location.origin).toString(),
-  );
-
+export function createForumApi(client: ApiClient) {
   return {
     getCategories() {
       return client.get(endpoint('category/')).json<CategoryListItem[]>();

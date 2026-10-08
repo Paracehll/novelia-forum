@@ -24,11 +24,18 @@ const webKit = createWebKit({
 });
 
 router.beforeEach(async () => {
-  await webKit.api.checkSignedIn();
+  await webKit.checkSignedIn();
 });
 
 createApp(App)
-  .provide(forumApiKey, createForumApi(webKit.api))
+  .provide(
+    forumApiKey,
+    createForumApi(
+      webKit.createClient(
+        new URL('/api/v1/', window.location.origin).toString(),
+      ),
+    ),
+  )
   .use(webKit)
   .use(router)
   .mount('#app');

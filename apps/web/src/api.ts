@@ -1,11 +1,9 @@
 import type { WebKitContext } from '@novelia/web-kit';
 
-let client: ReturnType<WebKitContext['api']['createClient']>;
+let client: ReturnType<WebKitContext['createClient']>;
 
-export function initializeApi(api: WebKitContext['api']) {
-  client = api.createClient(
-    new URL('/api/v1/', window.location.origin).toString(),
-  );
+export function initializeApi(apiClient: typeof client) {
+  client = apiClient;
 }
 
 export interface Page<T> {
