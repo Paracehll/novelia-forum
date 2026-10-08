@@ -297,9 +297,11 @@ function handleKeydown(event: KeyboardEvent) {
 .markdown-content :deep([data-markdown-spoiler]) {
   cursor: pointer;
   border-radius: 0.2em;
-  background: var(--color-ink);
+  background: var(--color-spoiler);
   padding: 0.05em 0.25em;
-  transition: color 150ms ease;
+  transition:
+    background 150ms ease,
+    color 150ms ease;
 }
 
 .markdown-content :deep([data-markdown-spoiler][data-hide='true']),
@@ -309,6 +311,6 @@ function handleKeydown(event: KeyboardEvent) {
 
 .markdown-content :deep([data-markdown-spoiler][data-hide='false']),
 .markdown-content :deep([data-markdown-spoiler][data-hide='false'] *) {
-  color: var(--color-surface);
+  color: var(--color-spoiler-ink);
 }
 </style>

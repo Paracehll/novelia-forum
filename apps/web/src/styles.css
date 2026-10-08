@@ -8,10 +8,18 @@
  */
 @theme {
   --color-embedded: #fafafc;
+  --color-spoiler: #1f2225;
+  --color-spoiler-ink: #ffffff;
 }
 
 @layer base {
   :root[data-theme='dark'] {
     --color-embedded: rgb(255 255 255 / 6%);
+    /*
+     * 剧透遮罩不能沿用正文色：深色主题的 --color-ink 是近白色，直接当底色
+     * 会变成刺眼的白方块。改用半透明白，既能在深色背景上可辨识，又不会过亮。
+     */
+    --color-spoiler: rgb(255 255 255 / 20%);
+    --color-spoiler-ink: #f2f2f5;
   }
 }
