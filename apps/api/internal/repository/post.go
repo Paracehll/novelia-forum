@@ -14,6 +14,7 @@ import (
 const PostStatusAll = -1
 
 type PostFilter struct {
+	BlacklistUserID          int64
 	CategoryID               int64
 	Search                   string
 	AuthorName               string
@@ -95,7 +96,7 @@ func integerExpressions(ids []int64) []Expression {
 }
 
 func (filter PostFilter) condition() BoolExpression {
-	expressions := []BoolExpression{RawBool("TRUE")}
+	expressions := []BoolExpression{authorNotBlocked(table.Post.AuthorID, filter.BlacklistUserID)}
 	if filter.Status != PostStatusAll {
 		expressions = append(expressions, table.Post.Status.EQ(Int16(int16(filter.Status))))
 	}

@@ -108,6 +108,7 @@ func TestJetRepositories(t *testing.T) {
 		"novel:chapter-1",
 		20,
 		0,
+		0,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -135,6 +136,7 @@ func TestJetRepositories(t *testing.T) {
 		otherSubjectType,
 		"novel:chapter-1",
 		20,
+		0,
 		0,
 	)
 	if err != nil {
@@ -215,6 +217,7 @@ func TestJetRepositories(t *testing.T) {
 		domain.PostCommentSubjectKey(post.ID),
 		20,
 		0,
+		0,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -228,6 +231,7 @@ func TestJetRepositories(t *testing.T) {
 		domain.PostCommentSubjectKey(post.ID),
 		root.ID,
 		20,
+		0,
 		0,
 	)
 	if err != nil {
@@ -285,6 +289,7 @@ func TestJetRepositories(t *testing.T) {
 			domain.PostCommentSubjectKey(post.ID),
 			1,
 			0,
+			0,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -298,6 +303,7 @@ func TestJetRepositories(t *testing.T) {
 			domain.PostCommentSubjectKey(post.ID),
 			root.ID,
 			1,
+			0,
 			0,
 		)
 		if err != nil {

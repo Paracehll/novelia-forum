@@ -76,11 +76,11 @@ func TestRepositoriesRespectCanceledContext(t *testing.T) {
 			return err
 		}},
 		{"comment roots", func() error {
-			_, _, err := comments.ListRoots(ctx, domain.CommentSubjectNovel, "book", 20, 0)
+			_, _, err := comments.ListRoots(ctx, domain.CommentSubjectNovel, "book", 20, 0, 0)
 			return err
 		}},
 		{"comment replies", func() error {
-			_, _, err := comments.ListReplies(ctx, domain.CommentSubjectNovel, "book", 1, 20, 0)
+			_, _, err := comments.ListReplies(ctx, domain.CommentSubjectNovel, "book", 1, 20, 0, 0)
 			return err
 		}},
 		{"comment find", func() error {

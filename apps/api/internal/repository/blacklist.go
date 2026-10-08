@@ -92,3 +92,17 @@ func (r *blacklistRepository) Remove(ctx context.Context, userID, blockedUserID 
 	_, err = stmt.ExecContext(ctx, tx)
 	return storageError(err, "blacklist.Remove")
 }
+
+// authorNotBlocked applies the viewer's own blacklist to a content query.
+// A zero viewer ID represents an anonymous or unfiltered administrative read.
+func authorNotBlocked(authorID IntegerExpression, viewerID int64) BoolExpression {
+	if viewerID <= 0 {
+		return Bool(true)
+	}
+	return NOT(EXISTS(
+		SELECT(table.UserBlacklist.BlockedUserID).
+			FROM(table.UserBlacklist).
+			WHERE(table.UserBlacklist.UserID.EQ(Int64(viewerID)).
+				AND(table.UserBlacklist.BlockedUserID.EQ(authorID))),
+	))
+}

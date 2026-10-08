@@ -28,12 +28,14 @@ type CommentRepository interface {
 		subjectType domain.CommentSubjectType,
 		subjectKey string,
 		limit, offset int64,
+		viewerID int64,
 	) (int64, []domain.CommentThreadPreview, error)
 	ListReplies(
 		ctx context.Context,
 		subjectType domain.CommentSubjectType,
 		subjectKey string,
 		rootID, limit, offset int64,
+		viewerID int64,
 	) (int64, []domain.Comment, error)
 	Find(ctx context.Context, subjectType domain.CommentSubjectType, id int64) (*domain.Comment, error)
 	Lock(ctx context.Context, subjectType domain.CommentSubjectType, id int64) (*domain.Comment, error)
@@ -57,11 +59,13 @@ func (r *commentRepository) ListRoots(
 	subjectType domain.CommentSubjectType,
 	subjectKey string,
 	limit, offset int64,
+	viewerID int64,
 ) (total int64, items []domain.CommentThreadPreview, err error) {
 	defer func() { err = storageError(err, "comment.ListRoots") }()
 	condition := table.Comment.SubjectType.EQ(Int16(int16(subjectType))).
 		AND(table.Comment.SubjectKey.EQ(String(subjectKey))).
-		AND(table.Comment.RootID.IS_NULL())
+		AND(table.Comment.RootID.IS_NULL()).
+		AND(authorNotBlocked(table.Comment.AuthorID, viewerID))
 	countStmt := SELECT(COUNT(STAR)).FROM(table.Comment).WHERE(condition)
 	var count struct{ Count int64 }
 	if err := countStmt.QueryContext(ctx, executor(ctx, r.db), &count); err != nil {
@@ -94,7 +98,8 @@ func (r *commentRepository) ListRoots(
 			FROM(table.Comment).
 			WHERE(table.Comment.SubjectType.EQ(Int16(int16(subjectType))).
 				AND(table.Comment.SubjectKey.EQ(String(subjectKey))).
-				AND(table.Comment.RootID.IN(integerExpressions(rootIDs)...))).
+				AND(table.Comment.RootID.IN(integerExpressions(rootIDs)...)).
+				AND(authorNotBlocked(table.Comment.AuthorID, viewerID))).
 			GROUP_BY(table.Comment.RootID).
 			QueryContext(ctx, executor(ctx, r.db), &replyCounts)
 		if err != nil {
@@ -118,7 +123,8 @@ func (r *commentRepository) ListRoots(
 			SELECT(table.Comment.AllColumns).FROM(table.Comment).
 				WHERE(table.Comment.SubjectType.EQ(Int16(int16(subjectType))).
 					AND(table.Comment.SubjectKey.EQ(String(subjectKey))).
-					AND(table.Comment.RootID.EQ(roots.ID))).
+					AND(table.Comment.RootID.EQ(roots.ID)).
+					AND(authorNotBlocked(table.Comment.AuthorID, viewerID))).
 				ORDER_BY(table.Comment.CreatedAt.ASC(), table.Comment.ID.ASC()).
 				LIMIT(CommentReplyPageSize),
 		).AS("preview")
@@ -150,13 +156,15 @@ func (r *commentRepository) ListReplies(
 	subjectType domain.CommentSubjectType,
 	subjectKey string,
 	rootID, limit, offset int64,
+	viewerID int64,
 ) (total int64, items []domain.Comment, err error) {
 	defer func() { err = storageError(err, "comment.ListReplies") }()
 	rootStmt := SELECT(table.Comment.ID).FROM(table.Comment).WHERE(
 		table.Comment.ID.EQ(Int64(rootID)).
 			AND(table.Comment.SubjectType.EQ(Int16(int16(subjectType)))).
 			AND(table.Comment.SubjectKey.EQ(String(subjectKey))).
-			AND(table.Comment.RootID.IS_NULL()),
+			AND(table.Comment.RootID.IS_NULL()).
+			AND(authorNotBlocked(table.Comment.AuthorID, viewerID)),
 	)
 	var root struct{ ID int64 }
 	if err := rootStmt.QueryContext(ctx, executor(ctx, r.db), &root); err != nil {
@@ -164,7 +172,8 @@ func (r *commentRepository) ListReplies(
 	}
 	condition := table.Comment.SubjectType.EQ(Int16(int16(subjectType))).
 		AND(table.Comment.SubjectKey.EQ(String(subjectKey))).
-		AND(table.Comment.RootID.EQ(Int64(rootID)))
+		AND(table.Comment.RootID.EQ(Int64(rootID))).
+		AND(authorNotBlocked(table.Comment.AuthorID, viewerID))
 	var count struct{ Count int64 }
 	if err := SELECT(COUNT(STAR)).FROM(table.Comment).WHERE(condition).QueryContext(ctx, executor(ctx, r.db), &count); err != nil {
 		return 0, nil, err

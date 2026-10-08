@@ -135,7 +135,7 @@ func TestCommentRootReplyPreviews(t *testing.T) {
 	}
 	other := create("other", nil)
 	create("other", &other.ID)
-	total, threads, err := commentRepo.ListRoots(context.Background(), domain.CommentSubjectNovel, "preview", 3, 0)
+	total, threads, err := commentRepo.ListRoots(context.Background(), domain.CommentSubjectNovel, "preview", 3, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,6 +159,7 @@ func TestCommentRootReplyPreviews(t *testing.T) {
 			thread.Root.ID,
 			20,
 			0,
+			0,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -180,11 +181,11 @@ func TestCommentRootReplyPreviews(t *testing.T) {
 			}
 		}
 	}
-	_, page, err := commentRepo.ListRoots(context.Background(), domain.CommentSubjectNovel, "preview", 1, 1)
+	_, page, err := commentRepo.ListRoots(context.Background(), domain.CommentSubjectNovel, "preview", 1, 1, 0)
 	if err != nil || len(page) != 1 || page[0].Root.ID != roots[1].ID || len(page[0].Replies) != 20 {
 		t.Fatalf("root pagination: %#v %v", page, err)
 	}
-	_, empty, err := commentRepo.ListRoots(context.Background(), domain.CommentSubjectNovel, "preview", 3, 3)
+	_, empty, err := commentRepo.ListRoots(context.Background(), domain.CommentSubjectNovel, "preview", 3, 3, 0)
 	if err != nil || len(empty) != 0 {
 		t.Fatalf("empty page: %#v %v", empty, err)
 	}

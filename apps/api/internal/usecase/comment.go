@@ -156,6 +156,7 @@ func (u *CommentUsecase) List(
 	total, items, err := u.commentRepo.ListRoots(
 		ctx,
 		query.SubjectType, query.SubjectKey, query.Limit, query.Offset,
+		actor.UserID,
 	)
 	if err != nil {
 		return 0, nil, fmt.Errorf("comment.list_roots: %w", err)
@@ -190,6 +191,7 @@ func (u *CommentUsecase) ListReplies(
 	total, items, err := u.commentRepo.ListReplies(
 		ctx,
 		query.SubjectType, query.SubjectKey, query.RootID, query.Limit, query.Offset,
+		actor.UserID,
 	)
 	if errors.Is(err, repository.ErrNotFound) {
 		return 0, nil, NotFound(CodeCommentRootNotFound, "根评论不存在")

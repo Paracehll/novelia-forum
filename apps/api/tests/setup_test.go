@@ -128,7 +128,7 @@ func isAppErrorCode(err error, code string) bool {
 }
 
 func resetDatabase() {
-	if _, err := testDB.Exec("TRUNCATE post_favorite, post_tag, comment, post, tag RESTART IDENTITY"); err != nil {
+	if _, err := testDB.Exec("TRUNCATE user_blacklist, post_favorite, post_tag, comment, post, tag RESTART IDENTITY"); err != nil {
 		panic(err)
 	}
 }

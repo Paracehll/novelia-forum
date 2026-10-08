@@ -158,6 +158,7 @@ func (r contextCommentRepository) ListRoots(
 	_ domain.CommentSubjectType,
 	_ string,
 	_, _ int64,
+	_ int64,
 ) (int64, []domain.CommentThreadPreview, error) {
 	r.recorder.record(ctx, "comment.list")
 	return 0, nil, nil

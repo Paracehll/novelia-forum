@@ -29,6 +29,7 @@ func (r *listingCommentRepository) ListRoots(
 	_ domain.CommentSubjectType,
 	subjectKey string,
 	limit, offset int64,
+	_ int64,
 ) (int64, []domain.CommentThreadPreview, error) {
 	return 1, []domain.CommentThreadPreview{{
 		Root:       domain.Comment{ID: r.rootID, SubjectKey: subjectKey, Content: "一级评论"},
@@ -41,6 +42,7 @@ func (r *listingCommentRepository) ListReplies(
 	_ domain.CommentSubjectType,
 	subjectKey string,
 	rootID, limit, offset int64,
+	_ int64,
 ) (int64, []domain.Comment, error) {
 	return 2, []domain.Comment{{
 		ID: 9, SubjectKey: subjectKey, RootID: &rootID, Content: "二级评论",

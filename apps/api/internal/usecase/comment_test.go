@@ -61,6 +61,7 @@ func (r *commentRepoStub) ListRoots(
 	string,
 	int64,
 	int64,
+	int64,
 ) (int64, []domain.CommentThreadPreview, error) {
 	return 1, []domain.CommentThreadPreview{{Root: r.comment, ReplyCount: 1, Replies: []domain.Comment{r.comment}}}, nil
 }
@@ -68,6 +69,7 @@ func (r *commentRepoStub) ListReplies(
 	context.Context,
 	domain.CommentSubjectType,
 	string,
+	int64,
 	int64,
 	int64,
 	int64,
@@ -354,6 +356,7 @@ func (r failingCommentRepository) ListReplies(
 	context.Context,
 	domain.CommentSubjectType,
 	string,
+	int64,
 	int64,
 	int64,
 	int64,

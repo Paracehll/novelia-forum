@@ -93,7 +93,7 @@ func (u *PostUsecase) List(
 	actor Actor,
 	query ListPostsQuery,
 ) (int64, []domain.PostListItem, error) {
-	return u.list(ctx, actor, publicPostQuery(query), 0)
+	return u.list(ctx, actor, publicPostQuery(query), 0, actor.UserID)
 }
 
 func (u *PostUsecase) ListAdmin(
@@ -111,7 +111,7 @@ func (u *PostUsecase) ListAdmin(
 		return 0, nil, Invalid(CodePostAuthorInvalid, "用户 ID 必须为正整数")
 	}
 	query.AuthorName = strings.TrimSpace(query.AuthorName)
-	return u.list(ctx, actor, query, 0)
+	return u.list(ctx, actor, query, 0, 0)
 }
 
 func (u *PostUsecase) ListMine(
@@ -124,7 +124,7 @@ func (u *PostUsecase) ListMine(
 	}
 	query = publicPostQuery(query)
 	query.AuthorID = actor.UserID
-	return u.list(ctx, actor, query, 0)
+	return u.list(ctx, actor, query, 0, actor.UserID)
 }
 
 func (u *PostUsecase) ListFavorites(
@@ -136,14 +136,14 @@ func (u *PostUsecase) ListFavorites(
 		return 0, nil, PermissionDenied(CodePostAuthRequired, "需要登录")
 	}
 	query = publicPostQuery(query)
-	return u.list(ctx, actor, query, actor.UserID)
+	return u.list(ctx, actor, query, actor.UserID, actor.UserID)
 }
 
 func (u *PostUsecase) list(
 	ctx context.Context,
 	actor Actor,
 	query ListPostsQuery,
-	favoriteUserID int64,
+	favoriteUserID, blacklistUserID int64,
 ) (int64, []domain.PostListItem, error) {
 	if query.Limit <= 0 || query.Limit > 100 || query.Offset < 0 {
 		return 0, nil, Invalid(CodePostPaginationInvalid, "limit 必须为 1 到 100，offset 不能为负数")
@@ -176,6 +176,7 @@ func (u *PostUsecase) list(
 		CategoryID: categoryID, Search: query.Search, Sort: query.Sort,
 		TagIDs: query.TagIDs, AuthorName: query.AuthorName, AuthorID: query.AuthorID,
 		Status: status, FavoriteUserID: favoriteUserID,
+		BlacklistUserID: blacklistUserID,
 	}
 	total, posts, err := u.postRepo.List(ctx, filter, query.Limit, query.Offset)
 	if err != nil {
