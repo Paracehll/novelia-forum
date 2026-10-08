@@ -5,7 +5,15 @@ import {
   UnfoldMoreOutlined,
   VisibilityOffOutlined,
 } from '@vicons/material';
-import { nextTick, onMounted, ref, useTemplateRef, watch } from 'vue';
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  useTemplateRef,
+  watch,
+} from 'vue';
 
 import { XButton } from '@novelia/web-kit';
 
@@ -35,22 +43,95 @@ const textarea = useTemplateRef<HTMLTextAreaElement>('textarea');
 const activeTab = ref<'edit' | 'preview'>('edit');
 const editorTabClass =
   'relative min-w-16 border-r border-border px-[0.9rem] py-[0.55rem] text-[0.8125rem] font-semibold';
+// 文章编辑时工具栏吸顶，用哨兵判断是否已经离开滚动区顶部。
+const isArticle = computed(() => props.mode === 'article');
+const editorRoot = useTemplateRef<HTMLElement>('editorRoot');
+const toolbarSentinel = useTemplateRef<HTMLElement>('toolbarSentinel');
+const toolbarStuck = ref(false);
+let toolbarObserver: IntersectionObserver | undefined;
+let widthObserver: ResizeObserver | undefined;
+let editorScroller: HTMLElement | null = null;
+let editorWidth = 0;
 
-function resizeCommentEditor() {
+// 输入框不出现内部滚动条，也没必要手动缩放：高度始终跟内容走，
+// rows 只作为最小高度（height: auto 时的固有高度就是 rows）。
+function resizeEditor() {
   const element = textarea.value;
-  if (!element || props.mode !== 'comment') return;
+  if (!element) return;
+  // 只有先把高度重置为 auto 才能测出内容真实高度，但这一瞬间编辑器会塌回
+  // rows 的高度，页面随之变矮，浏览器会把滚动位置夹到新的最大值；高度恢复
+  // 后滚动位置并不会自己回来，于是看起来「一打字/一切标签页面就跳」。
+  // 所以测量前后要手动保住滚动位置。
+  const scrollTop = editorScroller?.scrollTop;
   element.style.height = 'auto';
   element.style.height = `${element.scrollHeight}px`;
+  if (
+    editorScroller &&
+    scrollTop !== undefined &&
+    editorScroller.scrollTop !== scrollTop
+  ) {
+    editorScroller.scrollTop = scrollTop;
+  }
 }
 
 onMounted(async () => {
   await nextTick();
-  resizeCommentEditor();
+  editorScroller = editorRoot.value
+    ? findScrollContainer(editorRoot.value)
+    : null;
+  resizeEditor();
+  observeEditorWidth();
+  observeToolbar();
 });
 
-watch(value, () => void nextTick(resizeCommentEditor));
+onBeforeUnmount(() => {
+  toolbarObserver?.disconnect();
+  widthObserver?.disconnect();
+});
+
+// 换行宽度变化（窗口缩放、侧边栏折叠）会改变实际行数，需要重新测量。
+function observeEditorWidth() {
+  const element = editorRoot.value;
+  if (!element || typeof ResizeObserver === 'undefined') return;
+  widthObserver = new ResizeObserver(([entry]) => {
+    const width = entry?.contentRect.width ?? 0;
+    if (width === editorWidth) return;
+    editorWidth = width;
+    resizeEditor();
+  });
+  widthObserver.observe(element);
+}
+
+function observeToolbar() {
+  if (!isArticle.value) return;
+  const sentinel = toolbarSentinel.value;
+  if (!sentinel) return;
+  toolbarObserver = new IntersectionObserver(
+    ([entry]) => {
+      // 哨兵在滚动区上方才是真正的吸顶，落在下方（编辑器还在折叠线以下）不算。
+      toolbarStuck.value =
+        !entry.isIntersecting &&
+        entry.boundingClientRect.top < (entry.rootBounds?.top ?? 0);
+    },
+    editorScroller ? { root: editorScroller } : undefined,
+  );
+  toolbarObserver.observe(sentinel);
+}
+
+function findScrollContainer(element: HTMLElement): HTMLElement | null {
+  let current = element.parentElement;
+  while (current) {
+    if (/(auto|scroll|overlay)/.test(getComputedStyle(current).overflowY)) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return null;
+}
+
+watch(value, () => void nextTick(resizeEditor));
 watch(activeTab, (tab) => {
-  if (tab === 'edit') void nextTick(resizeCommentEditor);
+  if (tab === 'edit') void nextTick(resizeEditor);
 });
 
 async function restoreSelection(start: number, end: number) {
@@ -97,8 +178,28 @@ defineExpose({ focus });
 </script>
 
 <template>
-  <div class="overflow-hidden rounded-md border border-border">
-    <div class="flex flex-wrap items-stretch border-b border-border">
+  <div
+    ref="editorRoot"
+    class="rounded-md border border-border"
+    :class="isArticle ? 'relative' : 'overflow-hidden'"
+  >
+    <span
+      v-if="isArticle"
+      ref="toolbarSentinel"
+      class="pointer-events-none absolute inset-x-0 top-0 h-px"
+      aria-hidden="true"
+    />
+    <div
+      class="flex flex-wrap items-stretch border-b border-border"
+      :class="
+        isArticle
+          ? [
+              'sticky top-0 z-20 rounded-t-md bg-body',
+              toolbarStuck && 'editor-toolbar-stuck',
+            ]
+          : ''
+      "
+    >
       <div class="flex flex-none" role="tablist" aria-label="Markdown 编辑模式">
         <XButton
           variant="plain"
@@ -208,8 +309,7 @@ defineExpose({ focus });
       <textarea
         ref="textarea"
         v-model="value"
-        class="block min-h-24 w-full border-0 bg-transparent px-3 py-3 text-sm leading-6 text-ink outline-none placeholder:text-muted/70 disabled:cursor-not-allowed disabled:opacity-50"
-        :class="mode === 'comment' ? 'resize-none overflow-hidden' : 'resize-y'"
+        class="block min-h-24 w-full resize-none overflow-hidden border-0 bg-transparent px-3 py-3 text-sm leading-6 text-ink outline-none placeholder:text-muted/70 disabled:cursor-not-allowed disabled:opacity-50"
         :rows="rows"
         :maxlength="maxlength"
         :placeholder="placeholder"
@@ -227,3 +327,10 @@ defineExpose({ focus });
     </div>
   </div>
 </template>
+
+<style scoped>
+/* 吸顶后加一点投影，和正在滚动的正文区分开。 */
+.editor-toolbar-stuck {
+  box-shadow: 0 4px 10px -6px rgb(0 0 0 / 30%);
+}
+</style>
