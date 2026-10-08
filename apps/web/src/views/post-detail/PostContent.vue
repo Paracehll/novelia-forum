@@ -17,15 +17,15 @@ const hasBeenUpdated = computed(
 </script>
 
 <template>
-  <article class="pb-6">
+  <article class="pb-3">
     <h1
-      class="text-2xl leading-tight font-bold tracking-tight text-ink sm:text-3xl"
+      class="text-xl leading-snug font-bold tracking-tight text-ink wrap-anywhere sm:text-2xl"
     >
       {{ post.title }}
     </h1>
 
     <div
-      class="mt-5 flex flex-wrap items-center justify-between gap-3 text-xs text-muted"
+      class="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted"
     >
       <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span class="font-medium text-ink/80">{{ post.authorUsername }}</span>
@@ -48,10 +48,10 @@ const hasBeenUpdated = computed(
       </div>
     </div>
 
-    <div v-if="$slots.actions" class="mt-4">
+    <div v-if="$slots.actions" class="mt-2">
       <slot name="actions" />
     </div>
-    <div class="my-6 h-px bg-divider" />
+    <div class="my-4 h-px bg-divider" />
     <MarkdownContent mode="article" :source="post.content" />
   </article>
 </template>

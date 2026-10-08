@@ -56,14 +56,21 @@ const emit = defineEmits<{
     >
       <template #loading>
         <div class="divide-y divide-divider" aria-label="正在加载帖子">
-          <div v-for="index in 5" :key="index" class="py-4">
-            <div class="h-3 w-24 animate-pulse rounded-sm bg-divider" />
-            <div class="mt-3 h-5 w-3/4 animate-pulse rounded-sm bg-border" />
-            <div class="mt-3 h-3 w-1/3 animate-pulse rounded-sm bg-divider" />
+          <div v-for="index in 5" :key="index" class="py-2.5">
+            <div class="h-5 w-3/4 animate-pulse rounded-sm bg-border" />
+            <div class="mt-1.5 h-5 w-1/3 animate-pulse rounded-sm bg-divider" />
           </div>
         </div>
       </template>
 
+      <div
+        class="hidden grid-cols-[minmax(0,1fr)_6rem_6rem] items-center gap-x-4 border-b border-divider pb-2 text-xs font-bold text-ink sm:grid"
+        aria-hidden="true"
+      >
+        <span>帖子</span>
+        <span class="text-center">查看</span>
+        <span class="text-center">评论</span>
+      </div>
       <div class="divide-y divide-divider">
         <PostListItem v-for="post in posts" :key="post.id" :post="post" />
       </div>

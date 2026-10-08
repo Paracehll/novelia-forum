@@ -64,6 +64,12 @@ function handleKeydown(event: KeyboardEvent) {
   overflow-wrap: anywhere;
 }
 
+.markdown-content--article {
+  --markdown-heading-margin: 1.25em 0.5em;
+  --markdown-block-margin: 0 0.75em;
+  line-height: 1.7;
+}
+
 .markdown-content--comment {
   font-size: 0.875rem;
   /* 与小说站前端一致：Naive UI common.lineHeight */
@@ -82,7 +88,7 @@ function handleKeydown(event: KeyboardEvent) {
 .markdown-content :deep(h2),
 .markdown-content :deep(h3),
 .markdown-content :deep(h4) {
-  margin-block: 1.6em 0.65em;
+  margin-block: var(--markdown-heading-margin, 1.6em 0.65em);
   color: var(--color-ink);
   font-weight: 700;
   line-height: 1.3;
@@ -123,7 +129,7 @@ function handleKeydown(event: KeyboardEvent) {
 .markdown-content :deep(blockquote),
 .markdown-content :deep(pre),
 .markdown-content :deep(table) {
-  margin-block: 0 1em;
+  margin-block: var(--markdown-block-margin, 0 1em);
 }
 
 .markdown-content :deep(ul),

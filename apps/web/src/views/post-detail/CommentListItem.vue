@@ -94,7 +94,9 @@ async function saveEdit() {
     :class="comment.rootId != null ? 'ml-8' : ''"
   >
     <header class="flex items-center gap-2 text-xs text-muted">
-      <span class="text-sm font-bold text-ink">{{ comment.authorUsername }}</span>
+      <span class="text-sm font-bold text-ink">
+        {{ comment.authorUsername }}
+      </span>
       <span aria-hidden="true">·</span>
       <XTime :time="comment.createdAt" preset="relative" />
       <CommentActions
