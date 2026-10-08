@@ -6,6 +6,7 @@ import "time"
 const (
 	PostSortActive   = "active"
 	PostSortNewest   = "newest"
+	PostSortUpdated  = "updated"
 	PostSortViews    = "views"
 	PostSortComments = "comments"
 )

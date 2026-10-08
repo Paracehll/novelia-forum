@@ -118,9 +118,9 @@ func parsePostListQuery(r *http.Request) (usecase.ListPostsQuery, error) {
 		sort = domain.PostSortActive
 	}
 	switch sort {
-	case domain.PostSortActive, domain.PostSortNewest, domain.PostSortViews, domain.PostSortComments:
+	case domain.PostSortActive, domain.PostSortNewest, domain.PostSortUpdated, domain.PostSortViews, domain.PostSortComments:
 	default:
-		return usecase.ListPostsQuery{}, httpx.BadRequest("sort 必须为 active、newest、views 或 comments")
+		return usecase.ListPostsQuery{}, httpx.BadRequest("sort 必须为 active、newest、updated、views 或 comments")
 	}
 	listQuery := usecase.ListPostsQuery{
 		CategorySlug: query.Get("category"),

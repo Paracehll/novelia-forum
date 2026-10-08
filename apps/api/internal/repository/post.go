@@ -143,6 +143,8 @@ func postOrderBy(sort string) []OrderByClause {
 	switch sort {
 	case domain.PostSortNewest:
 		return []OrderByClause{pinned, table.Post.CreatedAt.DESC(), table.Post.ID.DESC()}
+	case domain.PostSortUpdated:
+		return []OrderByClause{pinned, table.Post.UpdatedAt.DESC(), table.Post.ID.DESC()}
 	case domain.PostSortViews:
 		return []OrderByClause{pinned, table.Post.ViewsCount.DESC(), table.Post.ActiveAt.DESC(), table.Post.ID.DESC()}
 	case domain.PostSortComments:

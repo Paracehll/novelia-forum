@@ -31,6 +31,7 @@ const tagOptions = computed(() => [
 const sortOptions = [
   { label: '最近活跃', value: 'active' },
   { label: '最新发布', value: 'newest' },
+  { label: '最新更新', value: 'updated' },
   { label: '浏览最多', value: 'views' },
   { label: '评论最多', value: 'comments' },
 ];

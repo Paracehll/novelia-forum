@@ -11,7 +11,13 @@ import PostFilters from './PostFilters.vue';
 import PostList from './PostList.vue';
 
 const PAGE_SIZE = 20;
-const POST_SORTS = new Set<PostSort>(['active', 'newest', 'views', 'comments']);
+const POST_SORTS = new Set<PostSort>([
+  'active',
+  'newest',
+  'updated',
+  'views',
+  'comments',
+]);
 
 const route = useRoute();
 const router = useRouter();

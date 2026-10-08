@@ -152,9 +152,9 @@ func (u *PostUsecase) list(
 		query.Sort = domain.PostSortActive
 	}
 	switch query.Sort {
-	case domain.PostSortActive, domain.PostSortNewest, domain.PostSortViews, domain.PostSortComments:
+	case domain.PostSortActive, domain.PostSortNewest, domain.PostSortUpdated, domain.PostSortViews, domain.PostSortComments:
 	default:
-		return 0, nil, Invalid(CodePostSortInvalid, "sort 必须为 active、newest、views 或 comments")
+		return 0, nil, Invalid(CodePostSortInvalid, "sort 必须为 active、newest、updated、views 或 comments")
 	}
 	if !uniquePostTagIDs(query.TagIDs) {
 		return 0, nil, Invalid(CodePostTagInvalid, "tag 必须为不重复的正整数")
