@@ -97,7 +97,6 @@ async function saveEdit() {
       <span class="text-sm font-bold text-ink">
         {{ comment.authorUsername }}
       </span>
-      <span aria-hidden="true">·</span>
       <XTime :time="comment.createdAt" preset="relative" />
       <CommentActions
         v-if="!editing && (isPublished || (asAdmin && comment.status === 1))"

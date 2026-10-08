@@ -28,14 +28,14 @@ const hasBeenUpdated = computed(
       class="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted"
     >
       <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span class="font-medium text-ink/80">{{ post.authorUsername }}</span>
-        <span aria-hidden="true">·</span>
+        <span class="text-sm font-bold text-ink">
+          {{ post.authorUsername }}
+        </span>
         <span>
           发布于
           <XTime :time="post.createdAt" preset="relative" />
         </span>
         <template v-if="hasBeenUpdated">
-          <span aria-hidden="true">·</span>
           <span>
             更新于
             <XTime :time="post.updatedAt" preset="relative" />
