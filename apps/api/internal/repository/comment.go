@@ -111,17 +111,21 @@ func (r *commentRepository) ListRoots(
 	// matching the first page of ListReplies.
 	repliesByRoot := make(map[int64][]domain.Comment, len(rootIDs))
 	if len(rootIDs) > 0 {
-		ranked := SELECT(table.Comment.AllColumns,
-			ROW_NUMBER().OVER(PARTITION_BY(table.Comment.RootID).
-				ORDER_BY(table.Comment.CreatedAt.ASC(), table.Comment.ID.ASC())).AS("reply_rank"),
-		).FROM(table.Comment).
-			WHERE(table.Comment.SubjectType.EQ(Int16(int16(subjectType))).
-				AND(table.Comment.SubjectKey.EQ(String(subjectKey))).
-				AND(table.Comment.RootID.IN(integerExpressions(rootIDs)...))).AsTable("ranked")
+		// A per-root LIMIT lets the replies index stop after the preview instead
+		// of scanning every reply in a window partition for a busy thread.
+		roots := table.Comment.AS("preview_root")
+		preview := LATERAL(
+			SELECT(table.Comment.AllColumns).FROM(table.Comment).
+				WHERE(table.Comment.SubjectType.EQ(Int16(int16(subjectType))).
+					AND(table.Comment.SubjectKey.EQ(String(subjectKey))).
+					AND(table.Comment.RootID.EQ(roots.ID))).
+				ORDER_BY(table.Comment.CreatedAt.ASC(), table.Comment.ID.ASC()).
+				LIMIT(CommentReplyPageSize),
+		).AS("preview")
 		var replies []model.Comment
-		err := SELECT(ranked.AllColumns()).FROM(ranked).
-			WHERE(IntegerColumn("reply_rank").From(ranked).LT_EQ(Int64(CommentReplyPageSize))).
-			ORDER_BY(table.Comment.CreatedAt.From(ranked).ASC(), table.Comment.ID.From(ranked).ASC()).
+		err := SELECT(preview.AllColumns()).FROM(roots.CROSS_JOIN(preview)).
+			WHERE(roots.ID.IN(integerExpressions(rootIDs)...)).
+			ORDER_BY(table.Comment.CreatedAt.From(preview).ASC(), table.Comment.ID.From(preview).ASC()).
 			QueryContext(ctx, executor(ctx, r.db), &replies)
 		if err != nil {
 			return 0, nil, err

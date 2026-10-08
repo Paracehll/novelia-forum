@@ -42,6 +42,10 @@ comment on column post.comments_locked is 'true=评论区锁定状态，禁止�
 comment on column post.pin_order is 'NULL=普通帖；非NULL=置顶帖的排序优先级，数值越小越靠前';
 comment on column post.active_at is '帖子最后活跃时间；产生有效新评论等活跃事件时由应用层更新，用于列表排序';
 
+create index if not exists idx_post_published_pin_active
+    on post (pin_order nulls last, active_at desc, id desc)
+    where status = 0;
+
 create index if not exists idx_post_category_published_pin_active
     on post (category_id, pin_order nulls last, active_at desc, id desc)
     where status = 0;

@@ -118,6 +118,21 @@ func TestCommentRootReplyPreviews(t *testing.T) {
 			create("preview", &root.ID)
 		}
 	}
+	// Equal timestamps must use ID as a deterministic tie-breaker. Hidden and
+	// deleted replies still occupy preview slots and contribute to the count.
+	if _, err := testDB.Exec(`UPDATE comment SET created_at = '2026-01-01T00:00:00Z'
+		WHERE subject_key = 'preview' AND root_id IS NOT NULL`); err != nil {
+		t.Fatal(err)
+	}
+	for _, root := range roots[:2] {
+		if _, err := testDB.Exec(`UPDATE comment SET status = CASE WHEN id = (
+			SELECT min(id) FROM comment WHERE root_id = $1
+		) THEN 1 ELSE 2 END WHERE id IN (
+			SELECT id FROM comment WHERE root_id = $1 ORDER BY id LIMIT 2
+		)`, root.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
 	other := create("other", nil)
 	create("other", &other.ID)
 	total, threads, err := commentRepo.ListRoots(context.Background(), domain.CommentSubjectNovel, "preview", 3, 0)
@@ -150,6 +165,10 @@ func TestCommentRootReplyPreviews(t *testing.T) {
 		}
 		if thread.ReplyCount != count || count != 23 || len(thread.Replies) != 20 {
 			t.Fatalf("bad preview size/count: %#v", thread)
+		}
+		if thread.Replies[0].Status != domain.CommentStatusHidden ||
+			thread.Replies[1].Status != domain.CommentStatusDeleted {
+			t.Fatal("preview excluded unpublished replies")
 		}
 		for j, reply := range thread.Replies {
 			if j > 0 && (reply.CreatedAt.Before(thread.Replies[j-1].CreatedAt) ||
