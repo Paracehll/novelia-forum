@@ -14,6 +14,8 @@ import PostCreateView from '@/views/post-editor/PostCreateView.vue';
 import PostEditView from '@/views/post-editor/PostEditView.vue';
 import PostListView from '@/views/post-list/PostListView.vue';
 import ProfileView from '@/views/profile/ProfileView.vue';
+import AccountSettingsView from '@/views/settings/AccountSettingsView.vue';
+import BlacklistView from '@/views/settings/BlacklistView.vue';
 import { MyStrikeListView } from '@novelia/web-kit';
 
 function defaultCategorySlug() {
@@ -77,6 +79,21 @@ const router = createRouter({
     {
       path: '/favorites',
       redirect: (to) => ({ name: 'favorites', query: to.query, hash: to.hash }),
+    },
+    {
+      path: '/settings',
+      name: 'account-settings',
+      component: AccountSettingsView,
+      meta: { title: '账户设置' },
+      redirect: (to) => ({ name: 'blacklist', query: to.query, hash: to.hash }),
+      children: [
+        {
+          path: 'blacklist',
+          name: 'blacklist',
+          component: BlacklistView,
+          meta: { title: '黑名单管理 - 账户设置' },
+        },
+      ],
     },
     {
       path: '/strikes',

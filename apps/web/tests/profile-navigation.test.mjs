@@ -67,6 +67,23 @@ test('profile entry defaults to my posts inside the profile layout', async () =>
   assert.equal(document.title, '我的帖子 - 个人主页 | Novelia Forum');
 });
 
+test('account settings defaults to the blacklist child page', async () => {
+  await router.push({ name: 'account-settings' });
+  assert.equal(router.currentRoute.value.fullPath, '/settings/blacklist');
+  assert.deepEqual(
+    router.currentRoute.value.matched.map((r) => r.name),
+    ['account-settings', 'blacklist'],
+  );
+  assert.equal(document.title, '黑名单管理 - 账户设置 | Novelia Forum');
+});
+
+test('blacklist child page is directly accessible', async () => {
+  await router.push('/my/posts');
+  await router.push('/settings/blacklist');
+  assert.equal(router.currentRoute.value.name, 'blacklist');
+  assert.equal(router.currentRoute.value.matched.length, 2);
+});
+
 test('legacy favorites links preserve pagination and hash', async () => {
   await router.push('/favorites?page=3#saved');
   assert.equal(

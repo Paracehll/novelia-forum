@@ -7,6 +7,7 @@ import {
   LanguageOutlined,
   MenuBookOutlined,
   StarBorderOutlined,
+  SettingsOutlined,
 } from '@vicons/material';
 import {
   useWebKit,
@@ -104,6 +105,12 @@ const accountOptions: WebKitMenuOption[] = [
     label: '个人主页',
     icon: PersonOutlineOutlined,
     to: { name: 'profile' },
+  },
+  {
+    key: 'account-settings',
+    label: '账户设置',
+    icon: SettingsOutlined,
+    to: { name: 'account-settings' },
   },
 ];
 

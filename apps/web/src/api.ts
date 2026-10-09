@@ -246,6 +246,15 @@ export async function deleteCommentsByAuthor(authorId: number) {
   await client.delete(`admin/comment/author/${authorId}`);
 }
 
+export interface BlacklistEntry {
+  userId: number;
+  createdAt: string;
+}
+
+export function getBlacklist(signal?: AbortSignal) {
+  return client.get('me/blacklist', { signal }).json<Page<BlacklistEntry>>();
+}
+
 export async function setUserBlocked(userId: number, blocked: boolean) {
   const path = `me/blacklist/${userId}`;
   await (blocked ? client.put(path) : client.delete(path));
