@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {
-  ArticleOutlined,
+  PersonOutlineOutlined,
   ExploreOutlined,
   FactCheckOutlined,
   ForumOutlined,
@@ -100,16 +100,10 @@ const navigationOptions = computed<WebKitMenuOption[]>(() => [
 
 const accountOptions: WebKitMenuOption[] = [
   {
-    key: 'my-posts',
-    label: '我的帖子',
-    icon: ArticleOutlined,
-    to: { name: 'my-posts' },
-  },
-  {
-    key: 'favorites',
-    label: '我的收藏',
-    icon: StarBorderOutlined,
-    to: { name: 'favorites' },
+    key: 'profile',
+    label: '个人主页',
+    icon: PersonOutlineOutlined,
+    to: { name: 'profile' },
   },
 ];
 

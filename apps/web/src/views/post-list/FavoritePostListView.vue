@@ -44,38 +44,31 @@ function changePage(nextPage: number) {
 </script>
 
 <template>
-  <div class="page-container py-4 md:py-6">
-    <div class="mx-auto max-w-4xl">
-      <header class="mb-5">
-        <h1 class="text-2xl font-bold tracking-tight text-ink">我的收藏</h1>
-        <p class="mt-1 text-sm text-muted">查看你收藏过的帖子。</p>
-      </header>
+  <section aria-label="我的收藏">
+    <section v-if="!whoami.isSignedIn" class="py-8 text-center">
+      <div
+        class="mx-auto grid size-12 place-items-center rounded-full bg-primary-soft text-primary"
+        aria-hidden="true"
+      >
+        <StarBorderOutlined class="size-6" />
+      </div>
+      <h2 class="mt-4 text-lg font-semibold text-ink">登录后查看收藏</h2>
+      <p class="mt-2 text-sm text-muted">
+        请使用页面右上角的登录入口登录账号。
+      </p>
+    </section>
 
-      <section v-if="!whoami.isSignedIn" class="py-8 text-center">
-        <div
-          class="mx-auto grid size-12 place-items-center rounded-full bg-primary-soft text-primary"
-          aria-hidden="true"
-        >
-          <StarBorderOutlined class="size-6" />
-        </div>
-        <h2 class="mt-4 text-lg font-semibold text-ink">登录后查看收藏</h2>
-        <p class="mt-2 text-sm text-muted">
-          请使用页面右上角的登录入口登录账号。
-        </p>
-      </section>
-
-      <PostList
-        v-else
-        :posts="posts"
-        :loading="loading"
-        :error="error"
-        :page="page"
-        :total-pages="totalPages"
-        empty-title="暂无收藏"
-        empty-description="收藏感兴趣的帖子后，它们会出现在这里。"
-        @retry="loadFavorites"
-        @change-page="changePage"
-      />
-    </div>
-  </div>
+    <PostList
+      v-else
+      :posts="posts"
+      :loading="loading"
+      :error="error"
+      :page="page"
+      :total-pages="totalPages"
+      empty-title="暂无收藏"
+      empty-description="收藏感兴趣的帖子后，它们会出现在这里。"
+      @retry="loadFavorites"
+      @change-page="changePage"
+    />
+  </section>
 </template>

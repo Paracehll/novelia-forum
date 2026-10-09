@@ -13,6 +13,7 @@ import PostDetailView from '@/views/post-detail/PostDetailView.vue';
 import PostCreateView from '@/views/post-editor/PostCreateView.vue';
 import PostEditView from '@/views/post-editor/PostEditView.vue';
 import PostListView from '@/views/post-list/PostListView.vue';
+import ProfileView from '@/views/profile/ProfileView.vue';
 import { MyStrikeListView } from '@novelia/web-kit';
 
 function defaultCategorySlug() {
@@ -53,16 +54,29 @@ const router = createRouter({
       meta: { title: '社区守则' },
     },
     {
-      path: '/favorites',
-      name: 'favorites',
-      component: FavoritePostListView,
-      meta: { title: '我的收藏' },
+      path: '/my',
+      name: 'profile',
+      component: ProfileView,
+      meta: { title: '个人主页' },
+      redirect: (to) => ({ name: 'my-posts', query: to.query, hash: to.hash }),
+      children: [
+        {
+          path: 'posts',
+          name: 'my-posts',
+          component: MyPostListView,
+          meta: { title: '我的帖子 - 个人主页' },
+        },
+        {
+          path: 'favorites',
+          name: 'favorites',
+          component: FavoritePostListView,
+          meta: { title: '我的收藏 - 个人主页' },
+        },
+      ],
     },
     {
-      path: '/my/posts',
-      name: 'my-posts',
-      component: MyPostListView,
-      meta: { title: '我的帖子' },
+      path: '/favorites',
+      redirect: (to) => ({ name: 'favorites', query: to.query, hash: to.hash }),
     },
     {
       path: '/strikes',
