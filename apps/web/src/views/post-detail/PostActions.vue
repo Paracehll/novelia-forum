@@ -27,6 +27,7 @@ import PostFavoriteButton from './PostFavoriteButton.vue';
 import PostShareDialog from './PostShareDialog.vue';
 import { XActionMenuItem } from '@novelia/web-kit';
 import { XConfirmDialog } from '@novelia/web-kit';
+import UserBlacklistDialog from '@/components/UserBlacklistDialog.vue';
 import UserModerationDialog from '@/components/UserModerationDialog.vue';
 import { getApiErrorMessage, Notify } from '@novelia/web-kit';
 
@@ -46,6 +47,10 @@ const emit = defineEmits<{
 }>();
 
 const { whoami } = useWebKit();
+const blacklistOpen = ref(false);
+const canBlockAuthor = computed(
+  () => whoami.value.isSignedIn && !isOwner.value,
+);
 const actionLoading = ref(false);
 const shareOpen = ref(false);
 const confirmationAction = ref<'delete' | 'hide'>();
@@ -58,6 +63,7 @@ watch(
       context++;
       actionLoading.value = false;
       shareOpen.value = false;
+      blacklistOpen.value = false;
       confirmationAction.value = undefined;
       userModerationAction.value = undefined;
     }
@@ -229,7 +235,7 @@ function toggleLock() {
       >
         <ShareOutlined class="size-5" aria-hidden="true" />
       </XButton>
-      <DropdownMenuRoot v-if="asAdmin || canDelete">
+      <DropdownMenuRoot v-if="asAdmin || canDelete || canBlockAuthor">
         <DropdownMenuTrigger as-child>
           <XButton
             variant="ghost"
@@ -272,6 +278,13 @@ function toggleLock() {
             >
               删除帖子
             </XActionMenuItem>
+            <XActionMenuItem
+              v-if="canBlockAuthor"
+              :disabled="actionLoading"
+              @activate="blacklistOpen = true"
+            >
+              {{ post.authorBlocked ? '取消拉黑' : '拉黑作者' }}
+            </XActionMenuItem>
             <template v-if="canModerateAuthor">
               <XActionMenuItem
                 danger
@@ -306,6 +319,13 @@ function toggleLock() {
       danger
       @update:open="handleConfirmationOpenChange"
       @confirm="confirmAction"
+    />
+    <UserBlacklistDialog
+      v-if="blacklistOpen && canBlockAuthor"
+      :user-id="post.authorId"
+      :username="post.authorUsername"
+      :author-blocked="post.authorBlocked"
+      @close="blacklistOpen = false"
     />
     <UserModerationDialog
       v-if="userModerationAction"

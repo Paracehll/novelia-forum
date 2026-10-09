@@ -13,9 +13,7 @@ import {
 } from '@/api';
 import { whoami } from '@/session';
 
-// Post payloads vary by viewer only through `favorited`, which the backend
-// derives from the account id; admin mode cannot change a post response, so
-// keying on it would needlessly drop the cache on every mode toggle.
+// Favorites and blacklist filtering depend on the account, not admin mode.
 const viewerKey = computed(() => whoami.value.user?.id ?? 'guest');
 const postKey = (id: number) => ['posts', viewerKey.value, 'detail', id];
 const listKey = () => ['posts', viewerKey.value, 'list'];
@@ -48,6 +46,35 @@ export const usePostStore = defineStore('post', () => {
   function invalidateLists() {
     cache.cancelQueries({ key: listKey() });
     void cache.invalidateQueries({ key: listKey() });
+  }
+
+  function refreshBlacklist(authorId: number, blocked: boolean) {
+    const details = { key: ['posts', viewerKey.value, 'detail'] };
+    cache.cancelQueries(details);
+    for (const entry of cache.getEntries(details)) {
+      const post = entry.state.value.data as Post | undefined;
+      if (post?.authorId === authorId) {
+        cache.setQueryData<Post>(entry.key, {
+          ...post,
+          authorBlocked: blocked,
+        });
+      }
+    }
+    void cache.invalidateQueries(details);
+    const filter = { key: listKey() };
+    cache.cancelQueries(filter);
+    if (blocked) {
+      for (const entry of cache.getEntries(filter)) {
+        const page = entry.state.value.data as Page<PostSummary> | undefined;
+        if (!page) continue;
+        const items = page.items.filter((item) => item.authorId !== authorId);
+        cache.setQueryData<Page<PostSummary>>(entry.key, {
+          total: Math.max(0, page.total - (page.items.length - items.length)),
+          items,
+        });
+      }
+    }
+    invalidateLists();
   }
 
   function setPost(post: Post) {
@@ -91,7 +118,14 @@ export const usePostStore = defineStore('post', () => {
     invalidateLists();
   }
 
-  return { currentPostId, currentPost, setPost, removePost, invalidateLists };
+  return {
+    currentPostId,
+    currentPost,
+    setPost,
+    removePost,
+    invalidateLists,
+    refreshBlacklist,
+  };
 });
 
 type CategoryParams = Parameters<typeof getPosts>[0];

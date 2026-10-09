@@ -86,6 +86,23 @@ export const useCommentStore = defineStore('comment', () => {
     void cache.invalidateQueries(filter);
   }
 
+  function refreshBlacklist(authorId: number, blocked: boolean) {
+    const filter = { key: commentsKey() };
+    cache.cancelQueries(filter);
+    if (blocked) {
+      for (const entry of cache.getEntries(filter)) {
+        const page = entry.state.value.data as Page<PostComment> | undefined;
+        if (!page) continue;
+        const items = page.items.filter((item) => item.authorId !== authorId);
+        cache.setQueryData<Page<PostComment>>(entry.key, {
+          total: Math.max(0, page.total - (page.items.length - items.length)),
+          items,
+        });
+      }
+    }
+    void cache.invalidateQueries(filter);
+  }
+
   async function createComment(
     postId: number,
     input: { content: string; rootId?: number },
@@ -223,6 +240,7 @@ export const useCommentStore = defineStore('comment', () => {
     registerDeletedCommentsByAuthor,
     updateComment,
     touchPage,
+    refreshBlacklist,
   };
 });
 

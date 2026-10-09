@@ -12,6 +12,7 @@ import type { PostComment } from '@/api';
 import { useWebKit, XButton } from '@novelia/web-kit';
 import { XActionMenuItem } from '@novelia/web-kit';
 import { XConfirmDialog } from '@novelia/web-kit';
+import UserBlacklistDialog from '@/components/UserBlacklistDialog.vue';
 import UserModerationDialog from '@/components/UserModerationDialog.vue';
 import { getApiErrorMessage, Notify } from '@novelia/web-kit';
 import { useCommentStore } from '@/stores/comment';
@@ -31,6 +32,10 @@ const emit = defineEmits<{
 }>();
 
 const { whoami } = useWebKit();
+const blacklistOpen = ref(false);
+const canBlockAuthor = computed(
+  () => whoami.value.isSignedIn && !isOwner.value,
+);
 const commentStore = useCommentStore();
 const submitting = ref(false);
 const copying = ref(false);
@@ -214,6 +219,13 @@ function handleUserModerationOpenChange(open: boolean) {
           >
             删除评论
           </XActionMenuItem>
+          <XActionMenuItem
+            v-if="canBlockAuthor"
+            :disabled="submitting"
+            @activate="blacklistOpen = true"
+          >
+            {{ comment.authorBlocked ? '取消拉黑' : '拉黑作者' }}
+          </XActionMenuItem>
           <template v-if="canModerateAuthor">
             <XActionMenuItem
               danger
@@ -243,6 +255,13 @@ function handleUserModerationOpenChange(open: boolean) {
       danger
       @update:open="handleConfirmationOpenChange"
       @confirm="confirmAction"
+    />
+    <UserBlacklistDialog
+      v-if="blacklistOpen && canBlockAuthor"
+      :user-id="comment.authorId"
+      :username="comment.authorUsername"
+      :author-blocked="comment.authorBlocked"
+      @close="blacklistOpen = false"
     />
     <UserModerationDialog
       v-if="userModerationAction"

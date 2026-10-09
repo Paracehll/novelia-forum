@@ -61,6 +61,7 @@ const mocks = {
     'export const DropdownMenuContent = {}, DropdownMenuPortal = {}, DropdownMenuRoot = {}, DropdownMenuTrigger = {};',
   './PostFavoriteButton.vue': 'export default {};',
   './PostShareDialog.vue': 'export default {};',
+  '@/components/UserBlacklistDialog.vue': 'export default {};',
   '@/components/UserModerationDialog.vue': 'export default {};',
 };
 

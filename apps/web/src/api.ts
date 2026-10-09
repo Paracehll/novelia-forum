@@ -37,6 +37,7 @@ export interface PostSummary {
   title: string;
   authorId: number;
   authorUsername: string;
+  authorBlocked: boolean;
   status: PostStatus;
   viewsCount: number;
   commentsCount: number;
@@ -62,6 +63,7 @@ export interface PostComment {
   content: string;
   authorId: number;
   authorUsername: string;
+  authorBlocked: boolean;
   status: CommentStatus;
   createdAt: string;
   updatedAt: string;
@@ -242,4 +244,9 @@ export async function setPostCommentStatus(
 
 export async function deleteCommentsByAuthor(authorId: number) {
   await client.delete(`admin/comment/author/${authorId}`);
+}
+
+export async function setUserBlocked(userId: number, blocked: boolean) {
+  const path = `me/blacklist/${userId}`;
+  await (blocked ? client.put(path) : client.delete(path));
 }
