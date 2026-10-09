@@ -12,10 +12,10 @@ defineProps<{
 
 const tagColors = [
   'bg-primary-soft text-primary',
-  'bg-blue-50 text-blue-600',
-  'bg-orange-50 text-orange-600',
+  'bg-info-soft text-info',
+  'bg-warning-soft text-warning',
   'bg-purple-50 text-purple-600',
-  'bg-red-50 text-red-600',
+  'bg-error-soft text-error-strong',
 ];
 
 function tagClass(color: number) {
@@ -33,7 +33,7 @@ function tagClass(color: number) {
     </span>
     <span
       v-if="pinned"
-      class="inline-flex size-5 items-center justify-center rounded-sm bg-orange-50 text-orange-600"
+      class="inline-flex size-5 items-center justify-center rounded-sm bg-warning-soft text-warning"
       title="已置顶"
       aria-label="已置顶"
     >
@@ -41,7 +41,7 @@ function tagClass(color: number) {
     </span>
     <span
       v-if="locked"
-      class="inline-flex size-5 items-center justify-center rounded-sm bg-orange-50 text-orange-600"
+      class="inline-flex size-5 items-center justify-center rounded-sm bg-warning-soft text-warning"
       title="评论区已锁定"
       aria-label="评论区已锁定"
     >

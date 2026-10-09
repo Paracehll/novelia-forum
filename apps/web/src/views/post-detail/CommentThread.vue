@@ -76,7 +76,7 @@ async function handleCreated(comment: PostComment) {
     <div v-if="comment.replyCount > 0" class="border-t border-divider/60">
       <p v-if="loading" class="py-4 pl-8 text-sm text-muted">正在加载回复…</p>
       <div v-else-if="error" class="flex items-center gap-3 py-4 pl-8 text-sm">
-        <span class="text-red-600">{{ error }}</span>
+        <span class="text-error-strong">{{ error }}</span>
         <XButton variant="outline" size="xs" @click="retry">重试</XButton>
       </div>
       <template v-else>

@@ -94,7 +94,7 @@ function submit() {
         <p
           v-if="titleHint"
           id="post-title-hint"
-          :class="title ? 'text-orange-700' : 'text-muted'"
+          :class="title ? 'text-warning' : 'text-muted'"
           aria-live="polite"
         >
           {{ titleHint }}
@@ -169,7 +169,7 @@ function submit() {
         <p
           v-if="contentHint"
           :id="contentHintId"
-          :class="content ? 'text-orange-700' : 'text-muted'"
+          :class="content ? 'text-warning' : 'text-muted'"
           aria-live="polite"
         >
           {{ contentHint }}

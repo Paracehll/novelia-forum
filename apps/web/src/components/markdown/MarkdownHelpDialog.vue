@@ -118,7 +118,7 @@ const features: MarkdownFeature[] = [
                 </h3>
                 <span
                   v-if="feature.articleOnly"
-                  class="mt-1 block text-xs text-orange-700"
+                  class="mt-1 block text-xs text-warning"
                 >
                   评论不支持
                 </span>

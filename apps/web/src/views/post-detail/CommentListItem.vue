@@ -148,7 +148,7 @@ async function saveEdit() {
         <p
           v-if="commentHint"
           :id="commentHintId"
-          :class="content ? 'text-orange-700' : 'text-muted'"
+          :class="content ? 'text-warning' : 'text-muted'"
           aria-live="polite"
         >
           {{ commentHint }}

@@ -127,12 +127,12 @@ const permissions = [
                 >
                   <CheckOutlined
                     v-if="allowed"
-                    class="size-5 text-green-600"
+                    class="size-5 text-success"
                     aria-hidden="true"
                   />
                   <CloseOutlined
                     v-else
-                    class="size-5 text-red-500"
+                    class="size-5 text-error-strong"
                     aria-hidden="true"
                   />
                 </span>

@@ -128,7 +128,7 @@ function changePage(nextPage: number) {
         aria-label="意见反馈告示"
         class="space-y-2 text-sm leading-relaxed text-ink"
       >
-        <p class="text-orange-600">
+        <p class="text-warning">
           FishHawk陷入加班地狱，网站开发速度大幅下降已成常态，论坛反馈目前没有精力维护，有问题加群@吧
         </p>
         <p class="flex flex-wrap gap-x-4 gap-y-2">
@@ -154,7 +154,7 @@ function changePage(nextPage: number) {
         aria-label="新论坛问题反馈提醒"
         class="space-y-2 text-sm leading-relaxed text-ink"
       >
-        <p class="text-orange-600">
+        <p class="text-warning">
           新论坛已上线，使用中遇到问题欢迎到
           <RouterLink
             :to="{ name: 'post-detail', params: { id: 1099 } }"

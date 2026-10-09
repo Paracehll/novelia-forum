@@ -89,7 +89,7 @@ async function submitComment() {
   <section :class="replyTo ? 'mt-3' : 'border-b border-divider py-4'">
     <div
       v-if="locked"
-      :class="['py-2 text-sm text-orange-700', { 'mt-4': replyTo }]"
+      :class="['py-2 text-sm text-warning', { 'mt-4': replyTo }]"
     >
       评论区已锁定，暂时无法发表新评论。
     </div>
@@ -118,7 +118,7 @@ async function submitComment() {
         <p
           v-if="commentHint"
           :id="commentHintId"
-          :class="content ? 'text-orange-700' : 'text-muted'"
+          :class="content ? 'text-warning' : 'text-muted'"
           aria-live="polite"
         >
           {{ commentHint }}

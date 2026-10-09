@@ -33,7 +33,7 @@ function formatCount(value: number) {
       <h2 class="text-base leading-snug font-medium wrap-anywhere">
         <span
           v-if="post.pinOrder != null"
-          class="mr-1.5 inline-flex size-5 items-center justify-center rounded-sm bg-orange-50 align-text-bottom text-orange-600"
+          class="mr-1.5 inline-flex size-5 items-center justify-center rounded-sm bg-warning-soft align-text-bottom text-warning"
           title="已置顶"
           aria-label="已置顶"
         >
@@ -41,7 +41,7 @@ function formatCount(value: number) {
         </span>
         <span
           v-if="post.commentsLocked"
-          class="mr-1.5 inline-flex size-5 items-center justify-center rounded-sm bg-orange-50 align-text-bottom text-orange-600"
+          class="mr-1.5 inline-flex size-5 items-center justify-center rounded-sm bg-warning-soft align-text-bottom text-warning"
           title="评论区已锁定"
           aria-label="评论区已锁定"
         >
@@ -72,13 +72,13 @@ function formatCount(value: number) {
         >
           <span class="inline-flex items-center gap-1">
             <VisibilityOutlined class="size-4" aria-hidden="true" />
-            <span :class="{ 'text-orange-600': post.viewsCount > 1000 }">
+            <span :class="{ 'text-warning': post.viewsCount > 1000 }">
               {{ formatCount(post.viewsCount) }}
             </span>
           </span>
           <span class="inline-flex items-center gap-1">
             <ChatBubbleOutlineOutlined class="size-4" aria-hidden="true" />
-            <span :class="{ 'text-orange-600': post.commentsCount > 1000 }">
+            <span :class="{ 'text-warning': post.commentsCount > 1000 }">
               {{ formatCount(post.commentsCount) }}
             </span>
           </span>
@@ -90,7 +90,7 @@ function formatCount(value: number) {
       <dt class="sr-only">查看</dt>
       <dd
         class="text-lg leading-tight font-medium tabular-nums break-all"
-        :class="post.viewsCount > 1000 ? 'text-orange-600' : 'text-ink/80'"
+        :class="post.viewsCount > 1000 ? 'text-warning' : 'text-ink/80'"
       >
         {{ formatCount(post.viewsCount) }}
       </dd>
@@ -99,7 +99,7 @@ function formatCount(value: number) {
       <dt class="sr-only">评论</dt>
       <dd
         class="text-lg leading-tight font-medium tabular-nums break-all"
-        :class="post.commentsCount > 1000 ? 'text-orange-600' : 'text-ink/80'"
+        :class="post.commentsCount > 1000 ? 'text-warning' : 'text-ink/80'"
       >
         {{ formatCount(post.commentsCount) }}
       </dd>
