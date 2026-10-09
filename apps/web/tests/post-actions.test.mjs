@@ -157,6 +157,60 @@ async function settle(request) {
   await Promise.resolve();
 }
 
+test('copy original is available to guests and preserves raw Markdown', async (t) => {
+  const { scope, actions, props } = setup(null);
+  const content = '# 标题\n\n**原文** [链接](https://example.com)\n';
+  props.post.content = content;
+  const writeText = t.mock.fn(async () => {});
+  const descriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText },
+  });
+  try {
+    const { descriptor: sfc } = parse(
+      readFileSync(new URL(actionsUrl), 'utf8'),
+    );
+    assert.match(sfc.template.content, /<DropdownMenuRoot>/);
+    assert.match(sfc.template.content, /@activate="copyPost"/);
+    await actions.copyPost();
+    assert.equal(writeText.mock.calls[0].arguments[0], content);
+    assert.deepEqual(fixture.notices, [['success', '帖子原文已复制']]);
+    assert.equal(actions.copying.value, false);
+  } finally {
+    scope.stop();
+    if (descriptor) Object.defineProperty(navigator, 'clipboard', descriptor);
+    else delete navigator.clipboard;
+  }
+});
+
+test('copy original prevents duplicate writes and unlocks after clipboard failure', async (t) => {
+  const { scope, actions } = setup();
+  const request = deferred();
+  const writeText = t.mock.fn(() => request.promise);
+  const descriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText },
+  });
+  try {
+    const pending = actions.copyPost();
+    await actions.copyPost();
+    assert.equal(writeText.mock.calls.length, 1);
+    assert.equal(actions.copying.value, true);
+    request.reject(new Error('clipboard denied'));
+    await pending;
+    assert.equal(actions.copying.value, false);
+    assert.deepEqual(fixture.notices, [
+      ['error', '复制失败，请手动选择帖子内容复制'],
+    ]);
+  } finally {
+    scope.stop();
+    if (descriptor) Object.defineProperty(navigator, 'clipboard', descriptor);
+    else delete navigator.clipboard;
+  }
+});
+
 test('two favorite entrances share a single request lock and source of truth', async () => {
   const { scope, favorite } = setup();
   try {

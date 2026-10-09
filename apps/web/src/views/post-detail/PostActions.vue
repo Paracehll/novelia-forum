@@ -52,6 +52,7 @@ const canBlockAuthor = computed(
   () => whoami.value.isSignedIn && !isOwner.value,
 );
 const actionLoading = ref(false);
+const copying = ref(false);
 const shareOpen = ref(false);
 const confirmationAction = ref<'delete' | 'hide'>();
 const userModerationAction = ref<'strike' | 'ban'>();
@@ -100,6 +101,19 @@ const confirmation = computed(() =>
         confirmLabel: '隐藏帖子',
       },
 );
+
+async function copyPost() {
+  if (copying.value) return;
+  copying.value = true;
+  try {
+    await navigator.clipboard.writeText(props.post.content);
+    Notify.success('帖子原文已复制');
+  } catch {
+    Notify.error('复制失败，请手动选择帖子内容复制');
+  } finally {
+    copying.value = false;
+  }
+}
 
 function editPost() {
   emit('edit');
@@ -235,7 +249,7 @@ function toggleLock() {
       >
         <ShareOutlined class="size-5" aria-hidden="true" />
       </XButton>
-      <DropdownMenuRoot v-if="asAdmin || canDelete || canBlockAuthor">
+      <DropdownMenuRoot>
         <DropdownMenuTrigger as-child>
           <XButton
             variant="ghost"
@@ -256,6 +270,9 @@ function toggleLock() {
             :collision-padding="8"
             class="z-30 w-40 rounded-md border border-border bg-surface p-1 shadow-xl outline-none"
           >
+            <XActionMenuItem :disabled="copying" @activate="copyPost">
+              复制原文
+            </XActionMenuItem>
             <template v-if="asAdmin">
               <XActionMenuItem :disabled="actionLoading" @activate="togglePin">
                 {{ post.pinOrder == null ? '置顶帖子' : '取消置顶' }}
