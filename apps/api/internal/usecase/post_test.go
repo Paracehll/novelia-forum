@@ -357,3 +357,7 @@ func TestPostReadErrorsKeepCause(t *testing.T) {
 		})
 	}
 }
+
+func (r *postUsecaseRepoStub) BlockedAuthorIDs(context.Context, int64, []int64) (map[int64]bool, error) {
+	return nil, nil
+}

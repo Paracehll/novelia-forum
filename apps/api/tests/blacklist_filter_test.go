@@ -134,7 +134,7 @@ func TestBlacklistCommentVisibility(t *testing.T) {
 				}
 				return commentRepo.u.List(ctx, actor, usecase.ListCommentsQuery{SubjectType: kind, SubjectKey: key, Limit: 1})
 			}
-			listReplies := func(root, offset int64) (int64, []domain.Comment, error) {
+			listReplies := func(root, offset int64) (int64, []domain.CommentReadModel, error) {
 				if kind == domain.CommentSubjectNovel {
 					return commentRepo.u.ListExternalReplies(ctx, viewer, usecase.ListExternalCommentRepliesQuery{
 						Kind: "novel", SubjectKey: key, RootID: root, Limit: 20, Offset: offset,

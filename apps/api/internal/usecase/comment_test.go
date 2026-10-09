@@ -63,7 +63,7 @@ func (r *commentRepoStub) ListRoots(
 	int64,
 	int64,
 ) (int64, []domain.CommentThreadPreview, error) {
-	return 1, []domain.CommentThreadPreview{{Root: r.comment, ReplyCount: 1, Replies: []domain.Comment{r.comment}}}, nil
+	return 1, []domain.CommentThreadPreview{{Root: domain.CommentReadModel{Comment: r.comment}, ReplyCount: 1, Replies: []domain.CommentReadModel{{Comment: r.comment}}}}, nil
 }
 func (r *commentRepoStub) ListReplies(
 	context.Context,
@@ -73,8 +73,8 @@ func (r *commentRepoStub) ListReplies(
 	int64,
 	int64,
 	int64,
-) (int64, []domain.Comment, error) {
-	return 1, []domain.Comment{r.comment}, nil
+) (int64, []domain.CommentReadModel, error) {
+	return 1, []domain.CommentReadModel{{Comment: r.comment}}, nil
 }
 
 type subjectCheckFunc func(context.Context, string, string) bool
@@ -360,7 +360,7 @@ func (r failingCommentRepository) ListReplies(
 	int64,
 	int64,
 	int64,
-) (int64, []domain.Comment, error) {
+) (int64, []domain.CommentReadModel, error) {
 	return 0, nil, r.err
 }
 
@@ -568,13 +568,13 @@ func TestCommentListContentVisibility(t *testing.T) {
 				if err != nil || total != 1 || len(roots) != 1 {
 					t.Fatalf("roots=%+v total=%d err=%v", roots, total, err)
 				}
-				if roots[0].Root != want || roots[0].ReplyCount != 1 || len(roots[0].Replies) != 1 || roots[0].Replies[0] != want {
+				if roots[0].Root.Comment != want || roots[0].ReplyCount != 1 || len(roots[0].Replies) != 1 || roots[0].Replies[0].Comment != want {
 					t.Fatalf("unexpected thread: %+v", roots[0])
 				}
 				total, replies, err := u.ListReplies(context.Background(), actor, ListCommentRepliesQuery{
 					SubjectType: domain.CommentSubjectNovel, SubjectKey: "book", RootID: 7, Limit: 20,
 				})
-				if err != nil || total != 1 || len(replies) != 1 || replies[0] != want {
+				if err != nil || total != 1 || len(replies) != 1 || replies[0].Comment != want {
 					t.Fatalf("replies=%+v total=%d err=%v", replies, total, err)
 				}
 			})
@@ -630,4 +630,8 @@ func TestCommentCreationRequiresThirtyDayOldAccount(t *testing.T) {
 			}
 		}
 	}
+}
+
+func (r *commentRepoStub) BlockedAuthorIDs(context.Context, int64, []int64) (map[int64]bool, error) {
+	return nil, nil
 }

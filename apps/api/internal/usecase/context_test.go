@@ -132,7 +132,7 @@ func TestPostContextSurvivesHelpersAndMultipleRepositories(t *testing.T) {
 		{"update", func(u *PostUsecase) error {
 			_, err := u.Update(ctx, actor, 7, PostInput{CategoryID: forumcategory.NovelID, Title: "标题", Content: "body"})
 			return err
-		}, []string{"post.lock", "post.update", "post.replace_tags", "favorite.has"}},
+		}, []string{"post.lock", "post.update", "post.replace_tags", "post.blocked_authors", "favorite.has"}},
 		{"delete", func(u *PostUsecase) error {
 			return u.Delete(ctx, actor, 7)
 		}, []string{"post.lock", "post.status"}},
@@ -207,4 +207,9 @@ func TestCommentContextSurvivesSubjectCheckAndWrite(t *testing.T) {
 		}
 		r.assertCalls("subject.check", "comment.create")
 	})
+}
+
+func (r contextPostRepository) BlockedAuthorIDs(ctx context.Context, _ int64, _ []int64) (map[int64]bool, error) {
+	r.recorder.record(ctx, "post.blocked_authors")
+	return nil, nil
 }

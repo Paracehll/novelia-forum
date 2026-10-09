@@ -303,7 +303,7 @@ func TestPostListOmitsContentAndDetailPreservesIt(t *testing.T) {
 	if _, ok := item["content"]; ok {
 		t.Fatal("list must not include content, even as an empty string")
 	}
-	detailJSON, err := json.Marshal(newPostResponse(post, false))
+	detailJSON, err := json.Marshal(newPostResponse(usecase.PostResult{Post: post}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -508,4 +508,16 @@ func TestPostDeletionWindow(t *testing.T) {
 			}
 		})
 	}
+}
+
+func (r listPostRepository) BlockedAuthorIDs(context.Context, int64, []int64) (map[int64]bool, error) {
+	return nil, nil
+}
+
+func (r *capturingPostRepository) BlockedAuthorIDs(context.Context, int64, []int64) (map[int64]bool, error) {
+	return nil, nil
+}
+
+func (r *writePostRepository) BlockedAuthorIDs(context.Context, int64, []int64) (map[int64]bool, error) {
+	return nil, nil
 }

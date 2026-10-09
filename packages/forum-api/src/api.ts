@@ -13,6 +13,8 @@ export interface Comment {
   content: string;
   authorId: number;
   authorUsername: string;
+  /** Whether the current viewer has blocked this author. */
+  authorBlocked: boolean;
   status: CommentStatus;
   createdAt: string;
   updatedAt: string;

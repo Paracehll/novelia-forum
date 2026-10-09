@@ -32,7 +32,7 @@ func (r *listingCommentRepository) ListRoots(
 	_ int64,
 ) (int64, []domain.CommentThreadPreview, error) {
 	return 1, []domain.CommentThreadPreview{{
-		Root:       domain.Comment{ID: r.rootID, SubjectKey: subjectKey, Content: "一级评论"},
+		Root:       domain.CommentReadModel{Comment: domain.Comment{ID: r.rootID, SubjectKey: subjectKey, Content: "一级评论"}},
 		ReplyCount: 2,
 	}}, nil
 }
@@ -43,10 +43,10 @@ func (r *listingCommentRepository) ListReplies(
 	subjectKey string,
 	rootID, limit, offset int64,
 	_ int64,
-) (int64, []domain.Comment, error) {
-	return 2, []domain.Comment{{
+) (int64, []domain.CommentReadModel, error) {
+	return 2, []domain.CommentReadModel{{Comment: domain.Comment{
 		ID: 9, SubjectKey: subjectKey, RootID: &rootID, Content: "二级评论",
-	}}, nil
+	}}}, nil
 }
 
 func TestExternalCommentRepliesArePaginatedSeparately(t *testing.T) {
@@ -323,11 +323,11 @@ func TestCommentResponsesPreserveContent(t *testing.T) {
 		ID: 2, SubjectKey: "123", RootID: &rootID,
 		Content: "原始内容", Status: domain.CommentStatusHidden,
 	}
-	post, err := newCommentResponse(comment)
+	post, err := newCommentResponse(domain.CommentReadModel{Comment: comment})
 	if err != nil {
 		t.Fatal(err)
 	}
-	external := newExternalCommentResponse(comment)
+	external := newExternalCommentResponse(domain.CommentReadModel{Comment: comment})
 	if post.Content != comment.Content || external.Content != comment.Content ||
 		post.Status != int16(comment.Status) || external.Status != int16(comment.Status) ||
 		post.ID != comment.ID || external.ID != comment.ID ||
@@ -340,7 +340,7 @@ func TestCommentResponsesPreserveContent(t *testing.T) {
 func TestEmbeddedReplyResponse(t *testing.T) {
 	rootID := int64(1)
 	thread := domain.CommentThreadPreview{
-		Root:       domain.Comment{ID: rootID, SubjectKey: domain.PostCommentSubjectKey(42)},
+		Root:       domain.CommentReadModel{Comment: domain.Comment{ID: rootID, SubjectKey: domain.PostCommentSubjectKey(42)}},
 		ReplyCount: 3,
 	}
 	for _, status := range []domain.CommentStatus{
@@ -348,10 +348,10 @@ func TestEmbeddedReplyResponse(t *testing.T) {
 		domain.CommentStatusHidden,
 		domain.CommentStatusDeleted,
 	} {
-		thread.Replies = append(thread.Replies, domain.Comment{
+		thread.Replies = append(thread.Replies, domain.CommentReadModel{Comment: domain.Comment{
 			ID: int64(status) + 2, SubjectKey: thread.Root.SubjectKey, RootID: &rootID,
 			Content: "body", Status: status,
-		})
+		}})
 	}
 	post, err := newCommentThreadResponse(thread)
 	if err != nil {
@@ -562,4 +562,8 @@ func TestCommentPublishingRequiresThirtyDayOldAccount(t *testing.T) {
 			}
 		}
 	}
+}
+
+func (r *editableCommentRepository) BlockedAuthorIDs(context.Context, int64, []int64) (map[int64]bool, error) {
+	return nil, nil
 }

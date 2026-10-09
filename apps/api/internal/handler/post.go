@@ -27,6 +27,7 @@ type postListItemResponse struct {
 	Title          string            `json:"title"`
 	AuthorID       int64             `json:"authorId"`
 	AuthorUsername string            `json:"authorUsername"`
+	AuthorBlocked  bool              `json:"authorBlocked"`
 	Status         int16             `json:"status"`
 	ViewsCount     int32             `json:"viewsCount"`
 	CommentsCount  int32             `json:"commentsCount"`
@@ -44,14 +45,16 @@ type postResponse struct {
 	Content string `json:"content"`
 }
 
-func newPostResponse(value domain.Post, favorited bool) postResponse {
+func newPostResponse(result usecase.PostResult) postResponse {
+	value := result.Post
 	metadata := domain.PostListItem{
 		ID: value.ID, CategoryID: value.CategoryID, Title: value.Title,
-		AuthorID: value.AuthorID, AuthorUsername: value.AuthorUsername, Status: value.Status,
+		AuthorID: value.AuthorID, AuthorUsername: value.AuthorUsername,
+		AuthorBlocked: result.AuthorBlocked, Status: value.Status,
 		ViewsCount: value.ViewsCount, CommentsCount: value.CommentsCount,
 		CommentsLocked: value.CommentsLocked, PinOrder: value.PinOrder,
 		CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt, ActiveAt: value.ActiveAt,
-		Tags: value.Tags, Favorited: favorited,
+		Tags: value.Tags, Favorited: result.Favorited,
 	}
 	return postResponse{
 		postListItemResponse: newPostListItemResponse(metadata),
@@ -74,6 +77,7 @@ func newPostListItemResponse(value domain.PostListItem) postListItemResponse {
 		Title:          value.Title,
 		AuthorID:       value.AuthorID,
 		AuthorUsername: value.AuthorUsername,
+		AuthorBlocked:  value.AuthorBlocked,
 		Status:         int16(value.Status),
 		ViewsCount:     value.ViewsCount,
 		CommentsCount:  value.CommentsCount,
@@ -181,7 +185,7 @@ func (h *postHandler) get(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return transportError(err)
 	}
-	render.JSON(w, r, newPostResponse(post.Post, post.Favorited))
+	render.JSON(w, r, newPostResponse(*post))
 	return nil
 }
 
@@ -212,7 +216,7 @@ func (h *postHandler) create(w http.ResponseWriter, r *http.Request) error {
 		return transportError(err)
 	}
 	render.Status(r, http.StatusCreated)
-	render.JSON(w, r, newPostResponse(post.Post, post.Favorited))
+	render.JSON(w, r, newPostResponse(*post))
 	return nil
 }
 
@@ -230,7 +234,7 @@ func (h *postHandler) update(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return transportError(err)
 	}
-	render.JSON(w, r, newPostResponse(post.Post, post.Favorited))
+	render.JSON(w, r, newPostResponse(*post))
 	return nil
 }
 

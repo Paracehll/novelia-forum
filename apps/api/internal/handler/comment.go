@@ -56,6 +56,7 @@ type commentResponse struct {
 	Content        string                 `json:"content"`
 	AuthorID       int64                  `json:"authorId"`
 	AuthorUsername string                 `json:"authorUsername"`
+	AuthorBlocked  bool                   `json:"authorBlocked"`
 	Status         int16                  `json:"status"`
 	CreatedAt      time.Time              `json:"createdAt"`
 	UpdatedAt      time.Time              `json:"updatedAt"`
@@ -63,7 +64,7 @@ type commentResponse struct {
 	Replies        *page[commentResponse] `json:"replies,omitempty"`
 }
 
-func newCommentResponse(value domain.Comment) (commentResponse, error) {
+func newCommentResponse(value domain.CommentReadModel) (commentResponse, error) {
 	postID, err := domain.PostIDFromCommentSubjectKey(value.SubjectKey)
 	if err != nil {
 		return commentResponse{}, fmt.Errorf("comment %d: %w", value.ID, err)
@@ -75,6 +76,7 @@ func newCommentResponse(value domain.Comment) (commentResponse, error) {
 		Content:        value.Content,
 		AuthorID:       value.AuthorID,
 		AuthorUsername: value.AuthorUsername,
+		AuthorBlocked:  value.AuthorBlocked,
 		Status:         int16(value.Status),
 		CreatedAt:      value.CreatedAt,
 		UpdatedAt:      value.UpdatedAt,

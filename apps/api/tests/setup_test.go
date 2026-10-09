@@ -100,12 +100,24 @@ func (r commentFixture) Create(ctx context.Context, input domain.Comment) (*doma
 		if err != nil {
 			return nil, err
 		}
-		return r.u.Create(ctx, actor, usecase.CreatePostCommentCommand{PostID: id, RootID: input.RootID, Content: input.Content})
+		result, err := r.u.Create(ctx, actor, usecase.CreatePostCommentCommand{PostID: id, RootID: input.RootID, Content: input.Content})
+		if err != nil {
+			return nil, err
+		}
+		return &result.Comment, nil
 	}
-	return r.u.CreateExternal(ctx, actor, usecase.CreateExternalCommentCommand{Kind: "novel", SubjectKey: input.SubjectKey, RootID: input.RootID, Content: input.Content})
+	result, err := r.u.CreateExternal(ctx, actor, usecase.CreateExternalCommentCommand{Kind: "novel", SubjectKey: input.SubjectKey, RootID: input.RootID, Content: input.Content})
+	if err != nil {
+		return nil, err
+	}
+	return &result.Comment, nil
 }
 func (r commentFixture) Update(ctx context.Context, kind domain.CommentSubjectType, id int64, content string) (*domain.Comment, error) {
-	return r.u.Update(ctx, usecase.Actor{IsAdmin: true}, usecase.UpdateCommentCommand{SubjectType: kind, CommentID: id, Content: content})
+	result, err := r.u.Update(ctx, usecase.Actor{IsAdmin: true}, usecase.UpdateCommentCommand{SubjectType: kind, CommentID: id, Content: content})
+	if err != nil {
+		return nil, err
+	}
+	return &result.Comment, nil
 }
 func (r commentFixture) SetStatus(ctx context.Context, kind domain.CommentSubjectType, id int64, status domain.CommentStatus) error {
 	return r.u.SetStatus(ctx, usecase.Actor{IsAdmin: true}, usecase.SetCommentStatusCommand{SubjectType: kind, CommentID: id, Status: status})

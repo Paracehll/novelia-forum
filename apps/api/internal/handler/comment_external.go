@@ -40,6 +40,7 @@ type externalCommentResponse struct {
 	Content        string                         `json:"content"`
 	AuthorID       int64                          `json:"authorId"`
 	AuthorUsername string                         `json:"authorUsername"`
+	AuthorBlocked  bool                           `json:"authorBlocked"`
 	Status         int16                          `json:"status"`
 	CreatedAt      time.Time                      `json:"createdAt"`
 	UpdatedAt      time.Time                      `json:"updatedAt"`
@@ -58,7 +59,7 @@ func newExternalCommentThreadResponse(value domain.CommentThreadPreview) externa
 	return response
 }
 
-func newExternalCommentResponse(value domain.Comment) externalCommentResponse {
+func newExternalCommentResponse(value domain.CommentReadModel) externalCommentResponse {
 	return externalCommentResponse{
 		ID:             value.ID,
 		SubjectKey:     value.SubjectKey,
@@ -66,6 +67,7 @@ func newExternalCommentResponse(value domain.Comment) externalCommentResponse {
 		Content:        value.Content,
 		AuthorID:       value.AuthorID,
 		AuthorUsername: value.AuthorUsername,
+		AuthorBlocked:  value.AuthorBlocked,
 		Status:         int16(value.Status),
 		CreatedAt:      value.CreatedAt,
 		UpdatedAt:      value.UpdatedAt,

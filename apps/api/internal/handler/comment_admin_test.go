@@ -29,16 +29,16 @@ func (r *adminCommentRepository) ListAdmin(
 	ctx context.Context,
 	filter repository.CommentFilter,
 	limit, offset int64,
-) (int64, []domain.Comment, error) {
+) (int64, []domain.CommentReadModel, error) {
 	r.called = true
 	r.filter, r.limit, r.offset = filter, limit, offset
-	return 1, []domain.Comment{{
+	return 1, []domain.CommentReadModel{{Comment: domain.Comment{
 		ID:          5,
 		SubjectKey:  "42",
 		SubjectType: domain.CommentSubjectPost,
 		Content:     "隐藏评论原文",
 		Status:      domain.CommentStatusHidden,
-	}}, nil
+	}}}, nil
 }
 
 func (r *adminCommentRepository) SetStatus(
@@ -200,4 +200,8 @@ func TestAdminCommentList(t *testing.T) {
 			}
 		})
 	}
+}
+
+func (r *adminCommentRepository) BlockedAuthorIDs(context.Context, int64, []int64) (map[int64]bool, error) {
+	return nil, nil
 }

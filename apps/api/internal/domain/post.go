@@ -75,6 +75,7 @@ type PostListItem struct {
 	CategoryID     int64
 	Title          string
 	AuthorID       int64
+	AuthorBlocked  bool // Viewer-specific read metadata; not persisted.
 	AuthorUsername string
 	Status         PostStatus
 	ViewsCount     int32

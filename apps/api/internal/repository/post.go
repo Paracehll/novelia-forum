@@ -39,6 +39,7 @@ type UpdatePostInput struct {
 
 // Lock and write operations spanning multiple statements require a transaction context.
 type PostRepository interface {
+	BlockedAuthorIDs(ctx context.Context, viewerID int64, authorIDs []int64) (map[int64]bool, error)
 	List(ctx context.Context, filter PostFilter, limit, offset int64) (int64, []domain.PostListItem, error)
 	Find(ctx context.Context, id int64) (*domain.Post, error)
 	IncrementViews(ctx context.Context, id int64) (int32, error)
@@ -374,4 +375,9 @@ func (r *postRepository) SetPinOrder(ctx context.Context, id int64, pinOrder *in
 		SET(pinOrder, TimestampzT(time.Now())).
 		WHERE(table.Post.ID.EQ(Int64(id)))
 	return requireAffectedRow(stmt.ExecContext(ctx, executor(ctx, r.db)))
+}
+
+// BlockedAuthorIDs loads viewer metadata for the requested authors in one query.
+func (r *postRepository) BlockedAuthorIDs(ctx context.Context, viewerID int64, authorIDs []int64) (map[int64]bool, error) {
+	return blockedAuthorIDs(ctx, r.db, viewerID, authorIDs)
 }

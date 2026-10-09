@@ -22,7 +22,8 @@ type CommentFilter struct {
 
 // Lock and all write operations require a context provided by WithinTransaction.
 type CommentRepository interface {
-	ListAdmin(ctx context.Context, filter CommentFilter, limit, offset int64) (int64, []domain.Comment, error)
+	BlockedAuthorIDs(ctx context.Context, viewerID int64, authorIDs []int64) (map[int64]bool, error)
+	ListAdmin(ctx context.Context, filter CommentFilter, limit, offset int64) (int64, []domain.CommentReadModel, error)
 	ListRoots(
 		ctx context.Context,
 		subjectType domain.CommentSubjectType,
@@ -36,7 +37,7 @@ type CommentRepository interface {
 		subjectKey string,
 		rootID, limit, offset int64,
 		viewerID int64,
-	) (int64, []domain.Comment, error)
+	) (int64, []domain.CommentReadModel, error)
 	Find(ctx context.Context, subjectType domain.CommentSubjectType, id int64) (*domain.Comment, error)
 	Lock(ctx context.Context, subjectType domain.CommentSubjectType, id int64) (*domain.Comment, error)
 	Create(ctx context.Context, comment domain.Comment) (*domain.Comment, error)
@@ -114,7 +115,7 @@ func (r *commentRepository) ListRoots(
 	}
 	// Replies read oldest first, the opposite of roots, so the preview keeps
 	// matching the first page of ListReplies.
-	repliesByRoot := make(map[int64][]domain.Comment, len(rootIDs))
+	repliesByRoot := make(map[int64][]domain.CommentReadModel, len(rootIDs))
 	if len(rootIDs) > 0 {
 		// A per-root LIMIT lets the replies index stop after the preview instead
 		// of scanning every reply in a window partition for a busy thread.
@@ -137,13 +138,13 @@ func (r *commentRepository) ListRoots(
 			return 0, nil, err
 		}
 		for _, reply := range replies {
-			repliesByRoot[*reply.RootID] = append(repliesByRoot[*reply.RootID], commentFromModel(reply))
+			repliesByRoot[*reply.RootID] = append(repliesByRoot[*reply.RootID], domain.CommentReadModel{Comment: commentFromModel(reply)})
 		}
 	}
 	threads := make([]domain.CommentThreadPreview, len(dest))
 	for i, comment := range dest {
 		threads[i] = domain.CommentThreadPreview{
-			Root:       commentFromModel(comment),
+			Root:       domain.CommentReadModel{Comment: commentFromModel(comment)},
 			ReplyCount: countsByRoot[comment.ID],
 			Replies:    repliesByRoot[comment.ID],
 		}
@@ -157,7 +158,7 @@ func (r *commentRepository) ListReplies(
 	subjectKey string,
 	rootID, limit, offset int64,
 	viewerID int64,
-) (total int64, items []domain.Comment, err error) {
+) (total int64, items []domain.CommentReadModel, err error) {
 	defer func() { err = storageError(err, "comment.ListReplies") }()
 	rootStmt := SELECT(table.Comment.ID).FROM(table.Comment).WHERE(
 		table.Comment.ID.EQ(Int64(rootID)).
@@ -184,14 +185,14 @@ func (r *commentRepository) ListReplies(
 		LIMIT(limit).OFFSET(offset).QueryContext(ctx, executor(ctx, r.db), &dest); err != nil {
 		return 0, nil, err
 	}
-	return count.Count, commentsFromModels(dest), nil
+	return count.Count, commentReadModelsFromModels(dest), nil
 }
 
 func (r *commentRepository) ListAdmin(
 	ctx context.Context,
 	filter CommentFilter,
 	limit, offset int64,
-) (total int64, items []domain.Comment, err error) {
+) (total int64, items []domain.CommentReadModel, err error) {
 	defer func() { err = storageError(err, "comment.ListAdmin") }()
 	condition := table.Comment.SubjectType.EQ(Int16(int16(domain.CommentSubjectPost)))
 	if filter.PostID > 0 {
@@ -216,7 +217,7 @@ func (r *commentRepository) ListAdmin(
 		LIMIT(limit).
 		OFFSET(offset).
 		QueryContext(ctx, executor(ctx, r.db), &dest)
-	return count.Count, commentsFromModels(dest), err
+	return count.Count, commentReadModelsFromModels(dest), err
 }
 
 func (r *commentRepository) Find(
@@ -402,6 +403,20 @@ func commentsFromModels(values []model.Comment) []domain.Comment {
 	comments := make([]domain.Comment, len(values))
 	for i, value := range values {
 		comments[i] = commentFromModel(value)
+	}
+	return comments
+}
+
+// BlockedAuthorIDs loads viewer metadata for the requested authors in one query.
+func (r *commentRepository) BlockedAuthorIDs(ctx context.Context, viewerID int64, authorIDs []int64) (map[int64]bool, error) {
+	return blockedAuthorIDs(ctx, r.db, viewerID, authorIDs)
+}
+
+// Public reads exclude blocked authors; admin reads are enriched by the usecase.
+func commentReadModelsFromModels(values []model.Comment) []domain.CommentReadModel {
+	comments := make([]domain.CommentReadModel, len(values))
+	for i, value := range values {
+		comments[i] = domain.CommentReadModel{Comment: commentFromModel(value)}
 	}
 	return comments
 }

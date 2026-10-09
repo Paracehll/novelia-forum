@@ -96,7 +96,7 @@ func (u *CommentUsecase) ListAdmin(
 	ctx context.Context,
 	actor Actor,
 	query ListAdminCommentsQuery,
-) (int64, []domain.Comment, error) {
+) (int64, []domain.CommentReadModel, error) {
 	if err := checkCommentAdmin(actor); err != nil {
 		return 0, nil, err
 	}
@@ -112,6 +112,19 @@ func (u *CommentUsecase) ListAdmin(
 	total, items, err := u.commentRepo.ListAdmin(ctx, filter, query.Limit, query.Offset)
 	if err != nil {
 		return 0, nil, fmt.Errorf("comment.list_admin: %w", err)
+	}
+	if actor.UserID > 0 && len(items) > 0 {
+		authorIDs := make([]int64, len(items))
+		for i, comment := range items {
+			authorIDs[i] = comment.AuthorID
+		}
+		blocked, err := u.commentRepo.BlockedAuthorIDs(ctx, actor.UserID, authorIDs)
+		if err != nil {
+			return 0, nil, fmt.Errorf("comment.list_author_blocks: %w", err)
+		}
+		for i := range items {
+			items[i].AuthorBlocked = blocked[items[i].AuthorID]
+		}
 	}
 	return total, items, nil
 }
@@ -163,9 +176,9 @@ func (u *CommentUsecase) List(
 	}
 	if !actor.IsAdmin {
 		for i := range items {
-			redactUnpublishedContent(&items[i].Root)
+			redactUnpublishedContent(&items[i].Root.Comment)
 			for j := range items[i].Replies {
-				redactUnpublishedContent(&items[i].Replies[j])
+				redactUnpublishedContent(&items[i].Replies[j].Comment)
 			}
 		}
 	}
@@ -184,7 +197,7 @@ func (u *CommentUsecase) ListReplies(
 	ctx context.Context,
 	actor Actor,
 	query ListCommentRepliesQuery,
-) (int64, []domain.Comment, error) {
+) (int64, []domain.CommentReadModel, error) {
 	if err := u.checkSubjectExist(ctx, query.SubjectType, query.SubjectKey); err != nil {
 		return 0, nil, err
 	}
@@ -201,7 +214,7 @@ func (u *CommentUsecase) ListReplies(
 	}
 	if !actor.IsAdmin {
 		for i := range items {
-			redactUnpublishedContent(&items[i])
+			redactUnpublishedContent(&items[i].Comment)
 		}
 	}
 	return total, items, nil
@@ -272,7 +285,7 @@ func (u *CommentUsecase) Create(
 	ctx context.Context,
 	actor Actor,
 	command CreatePostCommentCommand,
-) (*domain.Comment, error) {
+) (*domain.CommentReadModel, error) {
 	if err := checkCommentPublisher(actor); err != nil {
 		return nil, err
 	}
@@ -298,7 +311,7 @@ func (u *CommentUsecase) CreateExternal(
 	ctx context.Context,
 	actor Actor,
 	command CreateExternalCommentCommand,
-) (*domain.Comment, error) {
+) (*domain.CommentReadModel, error) {
 	if err := checkCommentPublisher(actor); err != nil {
 		return nil, err
 	}
@@ -333,7 +346,7 @@ func (u *CommentUsecase) createComment(
 	actor Actor,
 	input domain.Comment,
 	operation string,
-) (*domain.Comment, error) {
+) (*domain.CommentReadModel, error) {
 	input.AuthorID = actor.UserID
 	input.AuthorUsername = actor.Username
 	input.Status = domain.CommentStatusPublished
@@ -396,7 +409,7 @@ func (u *CommentUsecase) createComment(
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", operation, err)
 	}
-	return comment, nil
+	return &domain.CommentReadModel{Comment: *comment}, nil
 }
 
 type UpdateCommentCommand struct {
@@ -409,15 +422,23 @@ func (u *CommentUsecase) Update(
 	ctx context.Context,
 	actor Actor,
 	command UpdateCommentCommand,
-) (*domain.Comment, error) {
+) (*domain.CommentReadModel, error) {
 	if err := u.checkContent(command.Content); err != nil {
 		return nil, err
 	}
 	var comment *domain.Comment
+	authorBlocked := false
 	err := u.tx.WithinTransaction(ctx, func(txCtx context.Context) error {
 		existing, err := u.findModifiableComment(txCtx, actor, command.SubjectType, command.CommentID)
 		if err != nil {
 			return err
+		}
+		if actor.UserID > 0 && actor.UserID != existing.AuthorID {
+			blocked, err := u.commentRepo.BlockedAuthorIDs(txCtx, actor.UserID, []int64{existing.AuthorID})
+			if err != nil {
+				return fmt.Errorf("comment.get_author_block: %w", err)
+			}
+			authorBlocked = blocked[existing.AuthorID]
 		}
 		if !existing.CanEditContent() {
 			return Conflict(CodeCommentNotEditable, "只有已发布的评论可以编辑")
@@ -431,7 +452,7 @@ func (u *CommentUsecase) Update(
 	if err != nil {
 		return nil, fmt.Errorf("comment.update: %w", err)
 	}
-	return comment, nil
+	return &domain.CommentReadModel{Comment: *comment, AuthorBlocked: authorBlocked}, nil
 }
 
 type DeleteCommentCommand struct {
@@ -614,7 +635,7 @@ func (u *CommentUsecase) ListExternalReplies(
 	ctx context.Context,
 	actor Actor,
 	query ListExternalCommentRepliesQuery,
-) (int64, []domain.Comment, error) {
+) (int64, []domain.CommentReadModel, error) {
 	subjectType, err := u.externalSubjectType(query.Kind)
 	if err != nil {
 		return 0, nil, err
@@ -638,7 +659,7 @@ func (u *CommentUsecase) UpdateExternal(
 	ctx context.Context,
 	actor Actor,
 	command UpdateExternalCommentCommand,
-) (*domain.Comment, error) {
+) (*domain.CommentReadModel, error) {
 	subjectType, err := u.externalSubjectType(command.Kind)
 	if err != nil {
 		return nil, err

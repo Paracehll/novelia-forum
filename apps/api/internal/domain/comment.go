@@ -43,10 +43,17 @@ func (c Comment) CanEditContent() bool {
 	return c.Status == CommentStatusPublished
 }
 
+// CommentReadModel adds viewer-specific metadata to a comment response.
+// Persistence and business mutations continue to use Comment.
+type CommentReadModel struct {
+	Comment
+	AuthorBlocked bool
+}
+
 type CommentThreadPreview struct {
-	Root       Comment
+	Root       CommentReadModel
 	ReplyCount int64
-	Replies    []Comment
+	Replies    []CommentReadModel
 }
 
 func PostCommentSubjectKey(postID int64) string {

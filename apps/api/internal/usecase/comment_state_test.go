@@ -18,7 +18,7 @@ func TestCommentEditingStatePolicy(t *testing.T) {
 				t.Run(fmt.Sprintf("external=%t/user=%d/admin=%t/status=%d", external, actor.UserID, actor.IsAdmin, status), func(t *testing.T) {
 					repo := &commentRepoStub{comment: domain.Comment{ID: 7, AuthorID: 1, Content: "original", Status: status, CreatedAt: time.Now()}}
 					u := NewCommentUsecase(immediateTransaction{}, repo, postExistenceStub{exists: true}, nil, subjectResolverStub{supported: true})
-					var comment *domain.Comment
+					var comment *domain.CommentReadModel
 					var err error
 					if external {
 						comment, err = u.UpdateExternal(

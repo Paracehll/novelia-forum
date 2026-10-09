@@ -106,3 +106,24 @@ func authorNotBlocked(authorID IntegerExpression, viewerID int64) BoolExpression
 				AND(table.UserBlacklist.BlockedUserID.EQ(authorID))),
 	))
 }
+
+// Only query the authors present in the response, not the viewer's full blacklist.
+func blockedAuthorIDs(ctx context.Context, db *sql.DB, viewerID int64, authorIDs []int64) (map[int64]bool, error) {
+	blocked := make(map[int64]bool)
+	if viewerID <= 0 || len(authorIDs) == 0 {
+		return blocked, nil
+	}
+	var records []model.UserBlacklist
+	err := SELECT(table.UserBlacklist.BlockedUserID).
+		FROM(table.UserBlacklist).
+		WHERE(table.UserBlacklist.UserID.EQ(Int64(viewerID)).
+			AND(table.UserBlacklist.BlockedUserID.IN(integerExpressions(authorIDs)...))).
+		QueryContext(ctx, executor(ctx, db), &records)
+	if err != nil {
+		return nil, storageError(err, "blacklist.BlockedAuthorIDs")
+	}
+	for _, record := range records {
+		blocked[record.BlockedUserID] = true
+	}
+	return blocked, nil
+}

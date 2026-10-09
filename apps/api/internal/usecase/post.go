@@ -63,9 +63,11 @@ func NewPostUsecase(
 	}
 }
 
+// PostResult is the detail read model, including the viewer's relationships.
 type PostResult struct {
-	Post      domain.Post
-	Favorited bool
+	Post          domain.Post
+	Favorited     bool
+	AuthorBlocked bool
 }
 
 type ListPostsQuery struct {
@@ -182,6 +184,20 @@ func (u *PostUsecase) list(
 	if err != nil {
 		return 0, nil, fmt.Errorf("post.list: %w", err)
 	}
+	// Public lists already exclude blocked authors. Administrative lists do not.
+	if blacklistUserID == 0 && actor.UserID > 0 && len(posts) > 0 {
+		authorIDs := make([]int64, len(posts))
+		for i, post := range posts {
+			authorIDs[i] = post.AuthorID
+		}
+		blocked, err := u.postRepo.BlockedAuthorIDs(ctx, actor.UserID, authorIDs)
+		if err != nil {
+			return 0, nil, fmt.Errorf("post.list_author_blocks: %w", err)
+		}
+		for i := range posts {
+			posts[i].AuthorBlocked = blocked[posts[i].AuthorID]
+		}
+	}
 	var favorites map[int64]bool
 	if actor.UserID > 0 {
 		ids := make([]int64, len(posts))
@@ -226,6 +242,14 @@ func (u *PostUsecase) Get(ctx context.Context, actor Actor, id int64) (*PostResu
 }
 
 func (u *PostUsecase) result(ctx context.Context, actor Actor, post *domain.Post) (*PostResult, error) {
+	authorBlocked := false
+	if actor.UserID > 0 && actor.UserID != post.AuthorID {
+		blocked, err := u.postRepo.BlockedAuthorIDs(ctx, actor.UserID, []int64{post.AuthorID})
+		if err != nil {
+			return nil, fmt.Errorf("post.get_author_block: %w", err)
+		}
+		authorBlocked = blocked[post.AuthorID]
+	}
 	favorited := false
 	if actor.UserID > 0 {
 		var err error
@@ -234,7 +258,7 @@ func (u *PostUsecase) result(ctx context.Context, actor Actor, post *domain.Post
 			return nil, fmt.Errorf("post.get_favorite: %w", err)
 		}
 	}
-	return &PostResult{Post: *post, Favorited: favorited}, nil
+	return &PostResult{Post: *post, Favorited: favorited, AuthorBlocked: authorBlocked}, nil
 }
 
 type PostInput struct {
