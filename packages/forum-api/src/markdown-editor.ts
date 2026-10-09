@@ -4,6 +4,7 @@ export function createMarkdownLink(
   clipboardText: string,
 ): string | null {
   if (!selection || /[\r\n]/.test(selection)) return null;
+  if (/http/i.test(selection)) return null;
   const pastedText = clipboardText.trim();
   if (!/^https?:\/\/\S+$/i.test(pastedText)) return null;
 
