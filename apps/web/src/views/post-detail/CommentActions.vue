@@ -221,6 +221,7 @@ function handleUserModerationOpenChange(open: boolean) {
           </XActionMenuItem>
           <XActionMenuItem
             v-if="canBlockAuthor"
+            :danger="!comment.authorBlocked"
             :disabled="submitting"
             @activate="blacklistOpen = true"
           >
