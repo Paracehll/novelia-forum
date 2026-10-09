@@ -34,7 +34,7 @@ test('escaped labels and URL parentheses survive Markdown parsing', () => {
   assert.equal(tokens[2].type, 'link_close');
 });
 
-test('invalid URLs, empty selections and multiline selections are ignored', () => {
+test('invalid URLs, empty selections, multiline selections and selections with http are ignored', () => {
   for (const url of [
     'javascript:alert(1)',
     'ftp://example.com',
@@ -45,6 +45,14 @@ test('invalid URLs, empty selections and multiline selections are ignored', () =
     assert.equal(createMarkdownLink('文字', url), null);
   }
   for (const selection of ['', 'a\nb', 'a\rb']) {
+    assert.equal(createMarkdownLink(selection, 'https://example.com'), null);
+  }
+  for (const selection of [
+    'https://example.com',
+    'http://example.com',
+    'HTTP://EXAMPLE.COM',
+    'see http://test.com',
+  ]) {
     assert.equal(createMarkdownLink(selection, 'https://example.com'), null);
   }
 });
