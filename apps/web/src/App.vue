@@ -5,6 +5,7 @@ import {
   FactCheckOutlined,
   ForumOutlined,
   LanguageOutlined,
+  HomeOutlined,
   MenuBookOutlined,
   StarBorderOutlined,
   SettingsOutlined,
@@ -62,6 +63,13 @@ const navigationOptions = computed<WebKitMenuOption[]>(() => [
     label: '小说站',
     icon: LanguageOutlined,
     children: [
+      {
+        type: 'external',
+        key: 'novel-home',
+        label: '首页',
+        icon: HomeOutlined,
+        href: 'https://n.novelia.cc/',
+      },
       {
         type: 'external',
         key: 'web-novels',
