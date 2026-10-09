@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@novelia/web-kit": "github:auto-novel/auth#8d4781d4c0d0b374909fde1f351aa55a90029a86&path:packages/web-kit",
+    "@novelia/web-kit": "github:auto-novel/auth#f378746569cbdb42edf02899910baea74e04bfe8&path:packages/web-kit",
     "@tailwindcss/vite": "^4.3.3",
     "@vicons/material": "^0.13.0",
     "@vitejs/plugin-vue": "^6.0.8",

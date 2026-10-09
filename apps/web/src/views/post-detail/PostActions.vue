@@ -297,6 +297,7 @@ function toggleLock() {
             </XActionMenuItem>
             <XActionMenuItem
               v-if="canBlockAuthor"
+              :danger="!post.authorBlocked"
               :disabled="actionLoading"
               @activate="blacklistOpen = true"
             >
